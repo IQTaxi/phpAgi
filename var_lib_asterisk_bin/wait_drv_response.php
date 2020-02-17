@@ -5,10 +5,10 @@
   error_reporting(E_ALL);  
 
   $mExtention=$argv[1];
-  $mChannel=$argv[2];
-  $hashPos = strpos($mChannel, '-');
-  $mCh = substr($mChannel, 4, $hashPos-4);
   $mEx = substr($mExtention, 3, strlen($mExtention));
+  $hashPos = strpos($mEx, '-');
+  $mPhone = substr($mEx, $hashPos+1, strlen($mEx));
+  $mCallID = substr($mEx, 0, $hashPos);
 
   $agi = new AGI();
   $agi->answer();
@@ -27,7 +27,7 @@
 
   #$agi->exec('dial', "SIP/27");
 
-  $mUrl = "http://192.168.24.27/webapi/api/asterisk/get/$mCh/$mEx/$keys";
+  $mUrl = "http://192.168.24.27/webapi/api/asterisk/get/$mPhone/$mCallID/$keys";
   $response = file_get_contents($mUrl);
   
   $agi->hangup();
