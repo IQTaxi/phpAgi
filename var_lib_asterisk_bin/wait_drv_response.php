@@ -19,7 +19,7 @@
   $result = $agi->get_data('custom/taxi_arrived_tts', 1000, 20);
   $keys = $result['result'];
 
-  while($keys != '1' && $keys != '2'){
+  while($keys == null){
     $result = $agi->get_data('beep', 1000, 20);
     $keys = $result['result'];
     #$agi->exec('SayDigits',$keys);
