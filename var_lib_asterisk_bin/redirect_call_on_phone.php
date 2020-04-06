@@ -3,7 +3,7 @@
   set_time_limit(30);
   require('phpagi.php');
   error_reporting(E_ALL);  
-  
+
   $mPhone= trim($argv[1]);
   $agi = new AGI();
   $agi->answer();
@@ -25,11 +25,21 @@
 
   $agi->exec('NoOp', '@@'.$returnedPhoneToCall.'@@');
   $agi->exec('NoOp', $modPhone);
+  
+  do {
+#    $agi->exec('dial', 'SIP/'.${returnedPhoneToCall});
+#    $agi->exec('dial', 'SIP/26');
+    $agi->exec('dial', 'SIP/2310314194@berofix_trunk');
+#    $agi->exec('dial', 'SIP/6978527553@berofix_trunk');
+    $dialstatus = $agi->get_variable('DIALSTATUS');
 
-  $agi->exec('dial', 'SIP/'.${returnedPhoneToCall});
-#  $agi->exec('dial', 'SIP/26');
-#	$agi->exec('dial', 'SIP/2310208100@Beronet');
-
-
+    if($dialstatus[data] != 'ANSWER'){
+      $agi->set_music(true,"myholdclass"); //To start playing music while waiting
+      sleep(3); //Time before each call
+      $agi->exec('NoOp', 'Retry to call because it is : '.$dialstatus[data]); 
+    } 
+    $agi->exec('NoOp', $dialstatus);
+  }while ( $dialstatus[data] != 'ANSWER' );
+  
   $agi->hangup();
 ?>
