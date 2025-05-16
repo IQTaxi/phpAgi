@@ -59,7 +59,7 @@ def register_call(caller_phone, name_file, pickup_file, pickup_latlng_file, dest
     pickup_lat, pickup_lng = read_latlng_file(pickup_latlng_file, "παραλαβής")
     dest_lat, dest_lng = read_latlng_file(dest_latlng_file, "προορισμού")
 
-    url = base_url.rstrip("/") + "/api/Calls/Register"
+    url = base_url.rstrip("/") + "/api/Calls/RegisterNoLogin"
     headers = {
         "Authorization": accessToken,
         "Content-Type": "application/json; charset=UTF-8",
@@ -74,7 +74,8 @@ def register_call(caller_phone, name_file, pickup_file, pickup_latlng_file, dest
         "destination": destination,
         "destLatitude": dest_lat,
         "destLongitude": dest_lng,
-        "taxisNo": 1
+        "taxisNo": 1,
+        "comments": "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]"
     }
 
     try:
@@ -105,4 +106,3 @@ if __name__ == "__main__":
         register_call(caller_phone, name_file, pickup_file, pickup_latlng_file, dest_file, dest_latlng_file)
     except Exception as e:
         print(str(e))
-
