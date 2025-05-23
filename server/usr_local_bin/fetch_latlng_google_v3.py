@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import sys
 import json
 import requests
@@ -19,26 +18,25 @@ def fetch_coordinates(address_query, api_key):
             "key": api_key,
             "language": "el-GR"
         }
-
         response = requests.get(api_url, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
-
+        
         if data.get("status") != "OK":
             return ""
-
+            
         results = data.get("results", [])
         if not results:
             return ""
-
+            
         location = results[0]["geometry"]["location"]
         lat = location.get("lat")
         lng = location.get("lng")
         formatted_address = results[0].get("formatted_address", "")
-
+        
         if lat is None or lng is None:
             return ""
-
+            
         # Create proper JSON object
         output = {
             "address": str(formatted_address),
@@ -47,24 +45,30 @@ def fetch_coordinates(address_query, api_key):
                 "lng": float(lng)
             }
         }
-
+        
         # Return properly formatted JSON with quoted keys
         return json.dumps(output, ensure_ascii=False, separators=(',', ':'))
-
+        
     except Exception as e:
         return ""
 
 if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("")
+        sys.exit(0)
+    
+    current_exten = sys.argv[1]
+    address_query = " ".join(sys.argv[2:])
+    
     config = load_config('/usr/local/bin/config.json')
-    if not config or 'googleApiKey' not in config:
+    if not config or current_exten not in config:
         print("")
         sys.exit(0)
-
-    if len(sys.argv) < 2:
+        
+    if 'googleApiKey' not in config[current_exten]:
         print("")
         sys.exit(0)
-
-    address_query = " ".join(sys.argv[1:])
-    result = fetch_coordinates(address_query, config['googleApiKey'])
-
+    
+    api_key = config[current_exten]['googleApiKey']
+    result = fetch_coordinates(address_query, api_key)
     print(result if result else "")

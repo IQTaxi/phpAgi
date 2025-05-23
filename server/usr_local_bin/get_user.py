@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import sys
 import json
 import requests
@@ -21,14 +20,22 @@ def load_config(filepath):
         print("{}")  # Return empty JSON object on error
         sys.exit(1)
 
-def get_user_info(phone_number):
+def get_user_info(current_exten, phone_number):
     # Load configuration
     config = load_config('/usr/local/bin/config.json')
-    accessToken = config.get("clientToken")
-    base_url = config.get("registerBaseUrl")
-
+    
+    # Check if extension exists in config
+    if current_exten not in config:
+        logging.error(f"Extension {current_exten} not found in config")
+        print("{}")
+        sys.exit(1)
+    
+    extension_config = config[current_exten]
+    accessToken = extension_config.get("clientToken")
+    base_url = extension_config.get("registerBaseUrl")
+    
     if not accessToken or not base_url:
-        logging.error("Missing clientToken or registerBaseUrl in config")
+        logging.error(f"Missing clientToken or registerBaseUrl for extension {current_exten}")
         print("{}")
         sys.exit(1)
 
@@ -81,14 +88,15 @@ def get_user_info(phone_number):
         return {}
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("{}")  # Return empty JSON if no phone number provided
+    if len(sys.argv) != 3:
+        print("{}")  # Return empty JSON if arguments are incorrect
         sys.exit(1)
 
-    phone_number = sys.argv[1]
+    current_exten = sys.argv[1]
+    phone_number = sys.argv[2]
 
     try:
-        user_info = get_user_info(phone_number)
+        user_info = get_user_info(current_exten, phone_number)
         print(json.dumps(user_info, ensure_ascii=False))
     except Exception as e:
         logging.error(f"Script execution failed: {e}")

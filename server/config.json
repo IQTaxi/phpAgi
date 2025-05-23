@@ -1,7 +1,9 @@
 {
-  "name": "test",
-  "googleApiKey": "AIzaSyDtMW5sRWQ2IsBtAT7ZxoR5LywsKdiVPJw",
-  "clientToken": "H4sIAAAAAAAACmOwMPxvz8DA/B8IJBmAgG3xZyBLBAAaV4WFGAAAAA==",
-  "registerBaseUrl": "https://www.iqtaxi.com/IQ_WebAPIV3"
+	"4036":
+	{
+		"name": "test",
+		"googleApiKey": "AIzaSyDtMW5sRWQ2IsBtAT7ZxoR5LywsKdiVPJw",
+		"clientToken": "H4sIAAAAAAAACmOwMPxvz8DA/B8IJBmAgG3xZyBLBAAaV4WFGAAAAA==",
+		"registerBaseUrl": "https://www.iqtaxi.com/IQ_WebAPIV3"
+	}
 }
-

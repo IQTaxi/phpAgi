@@ -73,14 +73,22 @@ def load_json_data(json_file_path):
         logging.error(f"Σφάλμα ανάγνωσης JSON: {e}")
         raise ValueError(f"Σφάλμα: Αποτυχία ανάγνωσης JSON: {e}")
 
-def register_call(json_file_path):
+def register_call(current_exten, json_file_path):
     # Φόρτωση ρυθμίσεων
-    config = load_config('/usr/local/bin/config.json')  # Προσαρμογή διαδρομής αν χρειάζεται
-    accessToken = config.get("clientToken")
-    base_url = config.get("registerBaseUrl")
+    config = load_config('/usr/local/bin/config.json')
+    
+    # Έλεγχος αν υπάρχει το extension στο config
+    if current_exten not in config:
+        logging.error(f"Το extension {current_exten} δεν βρέθηκε στις ρυθμίσεις")
+        print(f"Σφάλμα: Το extension {current_exten} δεν βρέθηκε στις ρυθμίσεις")
+        sys.exit(1)
+    
+    extension_config = config[current_exten]
+    accessToken = extension_config.get("clientToken")
+    base_url = extension_config.get("registerBaseUrl")
 
     if not accessToken or not base_url:
-        logging.error("Λείπει το clientToken ή το registerBaseUrl στις ρυθμίσεις")
+        logging.error(f"Λείπει το clientToken ή το registerBaseUrl για το extension {current_exten}")
         print("Σφάλμα: Λείπουν παράμετροι ρυθμίσεων")
         sys.exit(1)
 
@@ -147,14 +155,15 @@ def register_call(json_file_path):
         print(f"Σφάλμα: {e}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Σφάλμα: Χρήση: python register_call_v3.py <αρχείο_json>")
+    if len(sys.argv) != 3:
+        print("Σφάλμα: Χρήση: python register_call_v3.py <extension> <αρχείο_json>")
         sys.exit(1)
 
-    json_file_path = sys.argv[1]
+    current_exten = sys.argv[1]
+    json_file_path = sys.argv[2]
 
     try:
-        register_call(json_file_path)
+        register_call(current_exten, json_file_path)
     except Exception as e:
         logging.error(f"Αποτυχία εκτέλεσης σεναρίου: {e}")
         print(str(e))
