@@ -75,7 +75,7 @@ def register_call(caller_phone, name_file, pickup_file, pickup_latlng_file, dest
         "destLatitude": dest_lat,
         "destLongitude": dest_lng,
         "taxisNo": 1,
-        "comments": "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]"
+	"comments": "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]"
     }
 
     try:
@@ -106,3 +106,4 @@ if __name__ == "__main__":
         register_call(caller_phone, name_file, pickup_file, pickup_latlng_file, dest_file, dest_latlng_file)
     except Exception as e:
         print(str(e))
+

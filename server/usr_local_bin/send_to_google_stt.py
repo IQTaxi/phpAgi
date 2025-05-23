@@ -40,7 +40,8 @@ def send_to_google_stt(wav_file):
             "config": {
                 "encoding": "LINEAR16",
                 "sampleRateHertz": 16000,
-                "languageCode": "el-GR"
+                "languageCode": "el-GR",
+		"profanityFilter": True 
             },
             "audio": {
                 "content": audio_content
@@ -78,4 +79,3 @@ if __name__ == "__main__":
     wav_file = sys.argv[1]
     result = send_to_google_stt(wav_file)
     print(result, flush=True)
-
