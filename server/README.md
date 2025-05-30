@@ -53,10 +53,22 @@ sudo nano /usr/local/bin/config.json
 
 ```json
 {
-  "name": "<NAME_NOT_CURRENTLY_IN_USR>",
-  "googleApiKey": "AIzaS***************KdiVPJw",
-  "clientToken": "a0a5d57*****************4165a",
-  "registerBaseUrl": "http://******************IQTaxiApi"
+	"4036":
+	{
+	  "name": "<NAME_NOT_CURRENTLY_IN_USR>",
+	  "googleApiKey": "<API_KEY_LOOK_AT_3>",
+	  "clientToken": "a0a5d57*****************4165a",
+	  "registerBaseUrl": "http://******************IQTaxiApi"
+	  "failCallTo": "SIP/<NUMBER_TO_CALL>@<TRUNK>"
+	},
+	"4039":
+	{
+	  "name": "<NAME_NOT_CURRENTLY_IN_USR>",
+	  "googleApiKey": "<API_KEY_LOOK_AT_3>",
+	  "clientToken": "asdf*****************zxcv",
+	  "registerBaseUrl": "http://******************IQTaxiApi"
+	  "failCallTo": "SIP/<NUMBER_TO_CALL>@<TRUNK>"
+	}
 }
 ```
 
@@ -118,7 +130,7 @@ sudo tail -f /var/log/asterisk/full
 ## File Structure
 
 ```
-/usr/local/bin/taxi-system/
+/usr/local/bin/
 ├── config.json                    # Main configuration file
 ├── google-credentials.json        # Google service account credentials
 ├── send_to_google_stt.py         # Speech-to-text processing
@@ -193,5 +205,5 @@ For technical support or questions:
 ---
 
 **Version**: 2.0.0  
-**Last Updated**: May 2025  
+**Last Updated**: 30 May 2025  
 **Compatibility**: FreePBX 15+, Asterisk 16+, Python 3.6+
