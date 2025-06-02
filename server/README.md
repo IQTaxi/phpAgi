@@ -25,11 +25,11 @@ An automated taxi booking system that integrates with FreePBX/Asterisk to provid
 - **Network**: Stable internet connection for Google API calls
 
 ### FreePBX installation ###
-	Make sure that you have installided Debian v12+
-	Then follow instructions from:
+- **Make sure that you have installided Debian v12+
+- **Then follow instructions from:
 ```
 	https://github.com/FreePBX/sng_freepbx_debian_install
-```	
+```
 
 ```
 	wget https://github.com/FreePBX/sng_freepbx_debian_install/raw/master/sng_freepbx_debian_install.sh -O /tmp/sng_freepbx_debian_install.sh
@@ -37,10 +37,9 @@ An automated taxi booking system that integrates with FreePBX/Asterisk to provid
 ```
 	
 ### OpenVPN installation###
-	
-	follow instructions from:
+- **follow instructions from:
 ```
-	https://www.cyberciti.biz/faq/debian-11-set-up-openvpn-server-in-5-minutes/```
+	https://www.cyberciti.biz/faq/debian-11-set-up-openvpn-server-in-5-minutes/
 ```
 
 ```
