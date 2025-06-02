@@ -24,6 +24,29 @@ An automated taxi booking system that integrates with FreePBX/Asterisk to provid
 - **Asterisk/FreePBX**: FreePBX 15+ with Asterisk 16+
 - **Network**: Stable internet connection for Google API calls
 
+### FreePBX installation ###
+	Make sure that you have installided Debian v12+
+	Then follow instructions from:
+	```https://github.com/FreePBX/sng_freepbx_debian_install```
+```	
+	wget https://github.com/FreePBX/sng_freepbx_debian_install/raw/master/sng_freepbx_debian_install.sh -O /tmp/sng_freepbx_debian_install.sh
+	bash /tmp/sng_freepbx_debian_install.sh
+```
+	
+### OpenVPN installation###
+	
+	follow instructions from:
+	```https://www.cyberciti.biz/faq/debian-11-set-up-openvpn-server-in-5-minutes/```
+	```
+	sudo apt update
+	sudo apt upgrade
+	ip a show eth0
+	wget https://raw.githubusercontent.com/Angristan/openvpn-install/master/openvpn-install.sh -O debian-11-vpn-server.sh
+	chmod -v +x debian-11-vpn-server.sh
+	sudo ./debian-11-vpn-server.sh
+	
+
+
 ### Required APIs
 - **Google Speech-to-Text API**: For voice recognition
 - **Google Geocoding API**: For address location services
