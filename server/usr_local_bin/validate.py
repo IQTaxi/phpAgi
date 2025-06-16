@@ -24,7 +24,6 @@ def is_valid_json(value):
             return 0
         if isinstance(parsed, list) and len(parsed) == 0:
             return 0
-            
         # For location objects, check if they have required fields
         if isinstance(parsed, dict):
             if "latLng" in parsed:
@@ -35,8 +34,12 @@ def is_valid_json(value):
                     return 0
                 if lat_lng["lat"] is None or lat_lng["lng"] is None:
                     return 0
-                return 1
-        
+                    
+            if "location_type" in parsed:  # Check if key exists before accessing
+                location_type = parsed["location_type"]
+                if location_type == "APPROXIMATE":
+                    return -1
+                
         return 1
         
     except (json.JSONDecodeError, TypeError):
@@ -61,15 +64,21 @@ if __name__ == "__main__":
             sys.exit(1)
     elif len(sys.argv) == 2:
         value = sys.argv[1]
+    elif len(sys.argv) == 3:
+        value = sys.argv[2]
     else:
         print(0)
         sys.exit(1)
     
     # First try JSON validation
     result = is_valid_json(value)
+    
     if result == 0:
         # Fall back to string validation
         result = is_valid_string(value)
-    
+        
+    if result == -1:
+        result = 0
+        
     print(result)
     sys.exit(0)

@@ -10,7 +10,7 @@ def load_config(filepath):
     except:
         return None
 
-def fetch_coordinates(address_query, api_key):
+def fetch_coordinates(address_query, api_key, pickup):
     try:
         api_url = "https://maps.googleapis.com/maps/api/geocode/json"
         params = {
@@ -30,6 +30,7 @@ def fetch_coordinates(address_query, api_key):
             return ""
             
         location = results[0]["geometry"]["location"]
+        
         lat = location.get("lat")
         lng = location.get("lng")
         formatted_address = results[0].get("formatted_address", "")
@@ -37,9 +38,14 @@ def fetch_coordinates(address_query, api_key):
         if lat is None or lng is None:
             return ""
             
+        location_type = ""
+        if pickup == "1":
+            location_type = str(results[0]["geometry"]["location_type"])
+        
         # Create proper JSON object
         output = {
             "address": str(formatted_address),
+            "location_type": str(location_type),
             "latLng": {
                 "lat": float(lat),
                 "lng": float(lng)
@@ -58,7 +64,8 @@ if __name__ == "__main__":
         sys.exit(0)
     
     current_exten = sys.argv[1]
-    address_query = " ".join(sys.argv[2:])
+    pickup = sys.argv[2]
+    address_query = " ".join(sys.argv[3:])
     
     config = load_config('/usr/local/bin/config.json')
     if not config or current_exten not in config:
@@ -70,5 +77,5 @@ if __name__ == "__main__":
         sys.exit(0)
     
     api_key = config[current_exten]['googleApiKey']
-    result = fetch_coordinates(address_query, api_key)
+    result = fetch_coordinates(address_query, api_key, pickup)
     print(result if result else "")

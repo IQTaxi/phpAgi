@@ -235,3 +235,6 @@ For technical support or questions:
 **Version**: 2.0.0  
 **Last Updated**: 30 May 2025  
 **Compatibility**: FreePBX 15+, Asterisk 16+, Python 3.6+
+
+Downgrade Asterisk for SIP (not PJSIP)
+https://sangomakb.atlassian.net/wiki/spaces/FP/pages/242581508/Using+FreePBX+17+with+chan_sip
