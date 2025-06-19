@@ -103,13 +103,16 @@ def register_call(current_exten, json_file_path):
     pickup_lat = data["pickupLocation"]["latLng"]["lat"]
     pickup_lng = data["pickupLocation"]["latLng"]["lng"]
     destination = data["destination"]
-    if "latLng" not in data["destinationLocation"] or "lat" not in data["destinationLocation"]["latLng"] or "lng" not in data["destinationLocation"]["latLng"]:
+    try:
+        if "latLng" not in data["destinationLocation"] or "lat" not in data["destinationLocation"]["latLng"] or "lng" not in data["destinationLocation"]["latLng"]:
+            dest_lat = 0
+            dest_lng = 0
+        else:
+            dest_lat = data["destinationLocation"]["latLng"]["lat"]
+            dest_lng = data["destinationLocation"]["latLng"]["lng"]
+    except Exception as e:
         dest_lat = 0
         dest_lng = 0
-    else:
-        dest_lat = data["destinationLocation"]["latLng"]["lat"]
-        dest_lng = data["destinationLocation"]["latLng"]["lng"]
-    
 
     # Κατασκευή αιτήματος API
     url = base_url.rstrip("/") + "/api/Calls/RegisterNoLogin"

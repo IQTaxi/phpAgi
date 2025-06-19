@@ -2,6 +2,7 @@
 import sys
 import json
 import requests
+import unicodedata
 
 def load_config(filepath):
     try:
@@ -10,8 +11,24 @@ def load_config(filepath):
     except:
         return None
 
-def fetch_coordinates(address_query, api_key, pickup):
+def remove_diacritics(text):
+    if not isinstance(text, str):
+        return text
+    normalized = unicodedata.normalize('NFD', text)
+    return ''.join(c for c in normalized if unicodedata.category(c) != 'Mn')
+
+def fetch_coordinates(address_query, api_key, force_check, pickup):
     try:
+        if pickup == "0" and remove_diacritics(address_query.strip().lower()) in ["κεντρο", "τοπικο", "κεντρο αθηνα", "κεντρο θεσσαλονικη", "κεντρο πατρα", "κεντρο ηρακλειο", "κεντρο λαρισα"]:
+            output = {
+                "address": str(address_query),
+                "location_type": str("EXACT"),
+                "latLng": {
+                    "lat": float(0),
+                    "lng": float(0)
+                }
+            }
+            return json.dumps(output, ensure_ascii=False, separators=(',', ':'))
         api_url = "https://maps.googleapis.com/maps/api/geocode/json"
         params = {
             "address": address_query,
@@ -39,7 +56,7 @@ def fetch_coordinates(address_query, api_key, pickup):
             return ""
             
         location_type = ""
-        if pickup == "1":
+        if force_check != "0":
             location_type = str(results[0]["geometry"]["location_type"])
         
         # Create proper JSON object
@@ -64,8 +81,9 @@ if __name__ == "__main__":
         sys.exit(0)
     
     current_exten = sys.argv[1]
-    pickup = sys.argv[2]
-    address_query = " ".join(sys.argv[3:])
+    force_check = sys.argv[2]
+    pickup = sys.argv[3]
+    address_query = " ".join(sys.argv[4:])
     
     config = load_config('/usr/local/bin/config.json')
     if not config or current_exten not in config:
@@ -77,5 +95,5 @@ if __name__ == "__main__":
         sys.exit(0)
     
     api_key = config[current_exten]['googleApiKey']
-    result = fetch_coordinates(address_query, api_key, pickup)
+    result = fetch_coordinates(address_query, api_key, force_check, pickup)
     print(result if result else "")
