@@ -100,9 +100,16 @@ def register_call(current_exten, json_file_path):
     caller_phone = str(data["phone"])  # Μετατροπή σε string για συμβατότητα με το API
     customer_name = data["name"]
     road_name = data["pickup"]
+    comments = data["comments"] if "comments" in data else ""
     pickup_lat = data["pickupLocation"]["latLng"]["lat"]
     pickup_lng = data["pickupLocation"]["latLng"]["lng"]
     destination = data["destination"]
+    reservation_date = None
+    if "reservationStamp" not in data:
+        reservation_date = None
+    else:
+        reservation_date = data["reservationStamp"]
+        
     try:
         if "latLng" not in data["destinationLocation"] or "lat" not in data["destinationLocation"]["latLng"] or "lng" not in data["destinationLocation"]["latLng"]:
             dest_lat = 0
@@ -122,6 +129,7 @@ def register_call(current_exten, json_file_path):
     }
 
     payload = {
+        "callTimeStamp": reservation_date,
         "callerPhone": caller_phone,
         "customerName": customer_name,
         "roadName": road_name,
@@ -131,7 +139,7 @@ def register_call(current_exten, json_file_path):
         "destLatitude": dest_lat,
         "destLongitude": dest_lng,
         "taxisNo": 1,
-        "comments": "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]"
+        "comments": "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ] "+comments
     }
 
     logging.debug(f"Φορτίο API: {json.dumps(payload, ensure_ascii=False)}")

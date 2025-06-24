@@ -69,6 +69,11 @@ def get_user_info(current_exten, phone_number):
             if main_address.get("address"):
                 output["pickup"] = main_address["address"]
             
+            if main_address.get("comments"):
+                output["comments"] = main_address["comments"]
+            else :
+                output["comments"] = ""
+
             if main_address.get("lat") is not None and main_address.get("lng") is not None:
                 output["latLng"] = {
                         "lat": main_address["lat"],
