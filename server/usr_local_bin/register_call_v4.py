@@ -152,7 +152,7 @@ def register_call(current_exten, json_file_path):
         logging.debug(f"Απάντηση API: {json.dumps(data, ensure_ascii=False)}")
 
         if data.get("response", {}).get("id", 0) > 0:
-            print("Σας ευχαριστούμε που καλέσατε. Ο οδηγός θα είναι κοντά σας σύντομα. Καλή διαδρομή!")
+            print("Σας ευχαριστούμε που καλέσατε. Σύντομα θα ενημερωθείτε για την εξέλιξη της διαδρομής σας")
             return
         else:
             logging.error(f"Αποτυχία καταχώρησης κλήσης: {json.dumps(data, ensure_ascii=False)}")
