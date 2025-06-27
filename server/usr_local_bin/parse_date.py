@@ -26,7 +26,7 @@ def parse_date(api_key, datetext):
         }
         
         response = requests.post(
-            "http://www.iqdriver.com/Recognizers/api/Recognize/Date",
+            "https://www.iqtaxi.com/DateRecognizers/api/Recognize/Date",
             headers=headers,
             data=json.dumps(body),
             timeout=60

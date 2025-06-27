@@ -128,6 +128,8 @@ def register_call(current_exten, json_file_path):
         "Content-Type": "application/json; charset=UTF-8",
     }
 
+    resultID = -1
+
     payload = {
         "callTimeStamp": reservation_date,
         "callerPhone": caller_phone,
@@ -152,20 +154,29 @@ def register_call(current_exten, json_file_path):
         logging.debug(f"Απάντηση API: {json.dumps(data, ensure_ascii=False)}")
 
         if data.get("response", {}).get("id", 0) > 0:
-            print("Σας ευχαριστούμε που καλέσατε. Σύντομα θα ενημερωθείτε για την εξέλιξη της διαδρομής σας")
+            resultID = data.get("response", {}).get("id", 0)
+            if reservation_date == None:
+                print("Σας ευχαριστούμε που καλέσατε. Σύντομα θα ενημερωθείτε για την εξέλιξη της διαδρομής σας")
+            else:
+                print("Σας ευχαριστούμε που καλέσατε. Το ραντεβού σας καταχωρήθηκε, εάν θέλετε να το αλλάξετε ή να το ακυρώσετε καλέστε το κέντρο του ραδιοταξί")
             return
         else:
-            logging.error(f"Αποτυχία καταχώρησης κλήσης: {json.dumps(data, ensure_ascii=False)}")
-            print("Σφάλμα: Αποτυχία καταχώρησης της κλήσης. Παρακαλώ προσπαθήστε ξανά.")
+            if reservation_date == None:
+                logging.error(f"Αποτυχία καταχώρησης κλήσης: {json.dumps(data, ensure_ascii=False)}")
+            else: 
+                logging.error(f"Αποτυχία καταχώρησης ραντεβού: {json.dumps(data, ensure_ascii=False)}")
     except requests.RequestException as e:
         logging.error(f"Σφάλμα αιτήματος API: {e}")
-        print(f"Σφάλμα: Αποτυχία σύνδεσης με τον διακομιστή: {e}")
     except json.JSONDecodeError:
         logging.error("Μη έγκυρη απόκριση JSON από το API")
-        print("Σφάλμα: Μη έγκυρη απόκριση διακομιστή")
     except Exception as e:
         logging.error(f"Απροσδόκητο σφάλμα: {e}")
-        print(f"Σφάλμα: {e}")
+
+    if resultID<0:
+        if reservation_date == None:
+            print(f"Κάτι πήγε στραβά με την καταχώρηση της διαδρομής σας")
+        else:
+            print(f"Κάτι πήγε στραβά με την καταχώρηση του ραντεβού σας")
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
