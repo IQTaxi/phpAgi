@@ -1,4 +1,5 @@
 ﻿using Microsoft.Recognizers.Text;
+using System.Globalization;
 
 namespace Recognizers.Models
 {
@@ -68,7 +69,8 @@ namespace Recognizers.Models
             {
                 if (BestMatch == null)
                     return null;
-                return ((DateTime)BestMatch).ToString("dddd dd MMMM yyyy στις HH:mm");
+                CultureInfo frenchCulture = new CultureInfo("el-GR");
+                return ((DateTime)BestMatch).ToString("dddd dd MMMM yyyy στις HH:mm", frenchCulture);
             }
         }
     }
