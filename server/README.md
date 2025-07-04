@@ -153,6 +153,9 @@ sudo asterisk -rx "dialplan show 4036"
 
 # Monitor Asterisk logs
 sudo tail -f /var/log/asterisk/full
+
+sudo tail -f /var/log/asterisk/full | grep 4037 | ccze -A
+
 ```
 
 ## File Structure
