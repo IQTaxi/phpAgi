@@ -93,8 +93,23 @@ def register_call(current_exten, json_file_path, external_reference_id):
     extension_config = config[current_exten]
     accessToken = extension_config.get("clientToken")
     base_url = extension_config.get("registerBaseUrl")
+    days_valid = extension_config.get("daysValid")
+    
     if not accessToken or not base_url:
         logging.error(f"Λείπει το clientToken ή το registerBaseUrl για το extension {current_exten}")
+        print_result_json(True, "Κάτι πήγε στραβά με την καταχώρηση της διαδρομής σας")
+        return
+    
+    # Επαλήθευση του daysValid - πρέπει να είναι ακέραιος αριθμός
+    if days_valid is None:
+        logging.error(f"Λείπει το daysValid για το extension {current_exten}")
+        print_result_json(True, "Κάτι πήγε στραβά με την καταχώρηση της διαδρομής σας")
+        return
+    
+    try:
+        days_valid = int(days_valid)
+    except (ValueError, TypeError):
+        logging.error(f"Μη έγκυρη τιμή daysValid για το extension {current_exten}: {days_valid}")
         print_result_json(True, "Κάτι πήγε στραβά με την καταχώρηση της διαδρομής σας")
         return
     
@@ -148,7 +163,8 @@ def register_call(current_exten, json_file_path, external_reference_id):
         "destLongitude": dest_lng,
         "taxisNo": 1,
         "comments": "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ] "+comments,
-        "referencePath": external_reference_id
+        "referencePath": external_reference_id,
+        "daysValid": days_valid
     }
     
     logging.debug(f"Φορτίο API: {json.dumps(payload, ensure_ascii=False)}")
