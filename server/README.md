@@ -132,11 +132,13 @@ copy file extensions_custom.conf
 # Test configuration file
 python3 -c "import json; print(json.load(open('/usr/local/bin/config.json')))"
 
-# Test speech-to-text (record a test audio file first)
-python3 /usr/local/bin/send_to_google_stt.py /path/to/test-audio.wav
+# Test speech-to-text conversion with extension ID and WAV file path
+python3 /usr/local/bin/send_to_google_stt.py 39 /path/to/audio.wav
+# Converts Greek speech in WAV file (16kHz LINEAR16) to text using Google Speech-to-Text API
 
-# Test geocoding
-python3 /usr/local/bin/fetch_latlng_google.py "123 Main Street, New York, NY"
+# Test geocoding with extension ID, force_check flag, pickup flag, and address query
+python3 /usr/local/bin/fetch_latlng_google_v4.py 39 0 0 "athens center"
+# Returns JSON with coordinates - handles local centers, airports (Cosmos extension), and Google Maps geocoding
 
 # Test call registration (with sample data)
 python3 /usr/local/bin/register_call.py /tmp/auto_register_call/<CALLER_ID>/<UNIQUE_CALL_ID>/progress.json
