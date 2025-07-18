@@ -1,0 +1,39 @@
+{
+    "company": {
+        "name": "Taxi Cosmos 18300",
+        "title": "📞 Ημερήσια Αναλυτική Auto Call Center", 
+        "subtitle": "Ημερήσια Ανάλυση",
+        "footer_text": "Ημερήσια Ανάλυση"
+    },
+    "taxi_rates": {
+		"base_fare_day": 1.80,
+		"per_km_rate_day": 0.90,
+		"base_fare_night": 1.80,
+		"per_km_rate_night": 1.25,
+		"minimum_fare": 4.00,
+		"airport_surcharge": 0.00,
+		"route_factor": 1.00,
+		"route_factor_description": "Κανονικά χιλιόμετρα",
+		"night_hours_start": 0,
+		"night_hours_end": 5,
+		"night_hours_description": "Νυχτερινό τιμολόγιο: 00:00-05:00"
+	},
+    "analysis": {
+        "frequent_customer_threshold": 3,
+        "regular_customer_threshold": 2,
+        "min_distance_km": 0.05,
+        "max_distance_km": 100,
+        "earth_radius_km": 6371,
+        "utilization_time_window_minutes": 30
+    },
+    "output": {
+        "output_dir": "/tmp/analytics",
+        "date_format": "%Y-%m-%d %H:%M:%S",
+        "date_format_with_microseconds": "%Y-%m-%d %H:%M:%S,%f"
+    },
+    "ui": {
+        "theme": "yellow_black",
+        "show_animations": true,
+        "chart_animation_delay": 100
+    }
+}
