@@ -243,3 +243,24 @@ For technical support or questions:
 
 Downgrade Asterisk for SIP (not PJSIP)
 https://sangomakb.atlassian.net/wiki/spaces/FP/pages/242581508/Using+FreePBX+17+with+chan_sip
+
+-----
+for analytics debug site to work you need
+
+# Create override directory
+sudo mkdir -p /etc/systemd/system/apache2.service.d/
+
+# Create override file to disable PrivateTmp
+sudo tee /etc/systemd/system/apache2.service.d/override.conf > /dev/null << 'EOF'
+[Service]
+PrivateTmp=no
+EOF
+
+# Reload systemd configuration
+sudo systemctl daemon-reload
+
+# Restart Apache
+sudo systemctl restart apache2
+
+# Verify the change
+sudo systemctl show apache2 | grep PrivateTmp
