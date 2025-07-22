@@ -37,7 +37,7 @@ def is_valid_json(value):
                     
             if "location_type" in parsed:  # Check if key exists before accessing
                 location_type = parsed["location_type"]
-                if location_type == "APPROXIMATE":
+                if location_type == "APPROXIMATE" or location_type == "GEOMETRIC_CENTER":
                     return -1
                 
         return 1

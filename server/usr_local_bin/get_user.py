@@ -63,6 +63,9 @@ def get_user_info(current_exten, phone_number):
         if response_data.get("callerName"):
             output["name"] = response_data["callerName"]
 
+        if response_data.get("doNotServe"):
+            output["doNotServe"] = "1" if response_data["doNotServe"] else "0"
+
         # Include address if available
         main_address = response_data.get("mainAddresss")
         if main_address:
