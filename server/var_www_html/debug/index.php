@@ -17,6 +17,36 @@ $ANALYTICS_PATH = '/tmp/analytics';
 $CALL_RECORDS_PASSWORD_HASH = md5('iqtaxi_call'); // f8e8a9b9e3c1f7d2a5b4c8e1d9f7a3b6
 $ANALYTICS_PASSWORD_HASH = md5('iqtaxi_analytics'); // a7b9d2c5f8e1a4b7c9e2f5a8b1d4c7e0
 
+// NEW: Handle URL parameters for direct navigation
+$autoNavigate = false;
+$targetPhone = '';
+$targetSession = '';
+
+// Check for URL parameters
+if (isset($_GET['callPath']) && isset($_GET['password'])) {
+    $providedPassword = $_GET['password'];
+    $callPath = $_GET['callPath'];
+    
+    // Auto-authenticate if password is correct
+    if (md5($providedPassword) === $CALL_RECORDS_PASSWORD_HASH) {
+        $_SESSION['call_records_auth'] = true;
+        
+        // Parse the call path to extract phone and session
+        // Expected format: /tmp/auto_register_call/4037/{phone}/{session}
+        $pathParts = explode('/', trim($callPath, '/'));
+        
+        // Find the phone number and session
+        $basePathParts = explode('/', trim($CALL_RECORDS_PATH, '/'));
+        $baseDepth = count($basePathParts);
+        
+        if (count($pathParts) >= $baseDepth + 2) {
+            $targetPhone = $pathParts[$baseDepth];
+            $targetSession = $pathParts[$baseDepth + 1];
+            $autoNavigate = true;
+        }
+    }
+}
+
 // Έλεγχος εξουσιοδότησης για συγκεκριμένες ενότητες
 function isCallRecordsAuthorized() {
     return isset($_SESSION['call_records_auth']) && $_SESSION['call_records_auth'] === true;
@@ -417,6 +447,7 @@ if (isset($_GET['serve_analytics'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Διαχειριστής Καταγραφών Κλήσεων & Αναλυτικών</title>
+    <!-- ... [REST OF THE CSS STAYS THE SAME] ... -->
     <style>
         * {
             margin: 0;
@@ -1339,6 +1370,31 @@ if (isset($_GET['serve_analytics'])) {
             margin-top: 30px;
         }
 
+        /* NEW: Auto-navigate indicator */
+        .auto-navigate-indicator {
+            background: linear-gradient(135deg, #4caf50, #388e3c);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 2px solid #2e7d32;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+        }
+
+        .highlighted-session {
+            border: 3px solid #4caf50 !important;
+            background: linear-gradient(135deg, #e8f5e8, #c8e6c9) !important;
+            animation: highlight-pulse 2s ease-in-out;
+        }
+
+        @keyframes highlight-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            50% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -1435,10 +1491,17 @@ if (isset($_GET['serve_analytics'])) {
         <!-- Ενότητα Καταγραφών Κλήσεων -->
         <?php if (isCallRecordsAuthorized()): ?>
         <div id="calls-section" class="content-section active">
+            <?php if ($autoNavigate): ?>
+                <div class="auto-navigate-indicator">
+                    🎯 Αυτόματη πλοήγηση σε κλήση: <?php echo htmlspecialchars($targetPhone); ?> / <?php echo htmlspecialchars($targetSession); ?>
+                </div>
+            <?php endif; ?>
+            
             <div class="search-box">
                 <input type="text" class="search-input" id="phone-search" 
                        placeholder="🔍 Αναζήτηση αριθμού τηλεφώνου..." 
-                       oninput="searchPhones(this.value)">
+                       oninput="searchPhones(this.value)"
+                       value="<?php echo $autoNavigate ? htmlspecialchars($targetPhone) : ''; ?>">
                 <div class="search-results" id="search-results"></div>
             </div>
             
@@ -1475,6 +1538,11 @@ if (isset($_GET['serve_analytics'])) {
     <script>
         let currentPhone = '';
         
+        // NEW: Auto-navigation variables
+        const autoNavigate = <?php echo $autoNavigate ? 'true' : 'false'; ?>;
+        const targetPhone = <?php echo $autoNavigate ? '"' . addslashes($targetPhone) . '"' : '""'; ?>;
+        const targetSession = <?php echo $autoNavigate ? '"' . addslashes($targetSession) . '"' : '""'; ?>;
+        
         function switchTab(tab) {
             // Ενημέρωση καρτελών πλοήγησης
             document.querySelectorAll('.nav-tab').forEach(t => {
@@ -1492,6 +1560,19 @@ if (isset($_GET['serve_analytics'])) {
                 loadAnalytics();
             }
         }
+        
+        // NEW: Auto-navigate on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            if (autoNavigate && targetPhone && targetSession) {
+                setTimeout(() => {
+                    selectPhone(targetPhone);
+                }, 500);
+            }
+            
+            <?php if (isAnalyticsAuthorized() && !isCallRecordsAuthorized()): ?>
+            loadAnalytics();
+            <?php endif; ?>
+        });
         
         function searchPhones(query) {
             const resultsDiv = document.getElementById('search-results');
@@ -1560,6 +1641,21 @@ if (isset($_GET['serve_analytics'])) {
                             const sessionCard = createSessionCard(phone, session);
                             grid.appendChild(sessionCard);
                         });
+                        
+                        // NEW: Auto-expand target session if we're auto-navigating
+                        if (autoNavigate && targetSession && phone === targetPhone) {
+                            setTimeout(() => {
+                                const targetButton = document.querySelector(`[onclick*="${targetSession}"]`);
+                                if (targetButton) {
+                                    targetButton.closest('.session-card').classList.add('highlighted-session');
+                                    targetButton.click();
+                                    targetButton.closest('.session-card').scrollIntoView({ 
+                                        behavior: 'smooth', 
+                                        block: 'center' 
+                                    });
+                                }
+                            }, 300);
+                        }
                     } else {
                         container.innerHTML = `
                             <div class="empty-state">
@@ -2193,13 +2289,6 @@ if (isset($_GET['serve_analytics'])) {
                 closeLogModal();
             }
         });
-
-        // Initialize analytics if user has access and no call records access
-        <?php if (isAnalyticsAuthorized() && !isCallRecordsAuthorized()): ?>
-        document.addEventListener('DOMContentLoaded', function() {
-            loadAnalytics();
-        });
-        <?php endif; ?>
     </script>
 </body>
 </html>
