@@ -5,30 +5,12 @@ All sound files should be saved in: /var/lib/asterisk/sounds/custom/
 
 ---
 
-FILE: custom/welcome-v2 (Main welcome message for general extensions)
-GREEK:
-"Καλησπερα, καλωσηρθατε στο IQTaxi. Πατηστε 1 για αμεση διαδρομη, πατηστε 2 για κρατηση διαδρομης, ή πατηστε 3 για να μιλησετε με χειριστη."
-
-ENGLISH:
-"Good evening, welcome to IQTaxi. Press 1 for immediate trip, press 2 for trip reservation, or press 3 to speak with an operator."
-
----
-
 FILE: custom/welcome-v3 (Alternative welcome message)
 GREEK:
 "Καλησπερα, καλωσηρθατε στο ραδιοταξι. Πατηστε 1 για αμεση διαδρομη, πατηστε 2 για κρατηση διαδρομης, ή πατηστε 3 για να μιλησετε με χειριστη."
 
 ENGLISH:
 "Good evening, welcome to radio taxi. Press 1 for immediate trip, press 2 for trip reservation, or press 3 to speak with an operator."
-
----
-
-FILE: custom/welcome-kosmos-2 (Cosmos extension welcome)
-GREEK:
-"Καλησπερα, καλωσηρθατε στο ραδιοταξι Κοσμος. Πατηστε 1 για αμεση διαδρομη, πατηστε 2 για κρατηση διαδρομης, ή πατηστε 3 για να μιλησετε με χειριστη."
-
-ENGLISH:
-"Good evening, welcome to Cosmos radio taxi. Press 1 for immediate trip, press 2 for trip reservation, or press 3 to speak with an operator."
 
 ---
 
@@ -83,33 +65,6 @@ GREEK:
 
 ENGLISH:
 "Invalid choice. Please try again."
-
----
-
-FILE: custom/invalid-v3 (Alternative invalid input message)
-GREEK:
-"Δεν καταλαβα τη συγκεκριμενη διευθυνση. Παρακαλω δοκιμαστε ξανα."
-
-ENGLISH:
-"I didn't understand that specific address. Please try again."
-
----
-
-FILE: custom/register-call-conf (Fallback registration confirmation)
-GREEK:
-"Η διαδρομη σας καταχωρηθηκε επιτυχως. Θα ειδοποιηθειτε συντομα για την εξελιξη."
-
-ENGLISH:
-"Your trip has been registered successfully. You will be notified shortly about the progress."
-
----
-
-FILE: custom/confirm-default-address-v2 (Address confirmation - if needed)
-GREEK:
-"Θελετε να χρησιμοποιησετε τη διευθυνση που εχουμε στα αρχεια μας;"
-
-ENGLISH:
-"Would you like to use the address we have on file?"
 
 ---
 

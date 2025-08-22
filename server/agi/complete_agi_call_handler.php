@@ -157,6 +157,20 @@ class AGICallHandler {
     }
     
     /**
+     * Start music on hold for better user experience during processing
+     */
+    private function startMusicOnHold() {
+        $this->agiCommand('EXEC StartMusicOnHold');
+    }
+    
+    /**
+     * Stop music on hold when processing is complete
+     */
+    private function stopMusicOnHold() {
+        $this->agiCommand('EXEC StopMusicOnHold');
+    }
+    
+    /**
      * Save data to JSON progress file
      */
     private function saveJson($key, $value) {
@@ -572,7 +586,9 @@ class AGICallHandler {
             $this->logMessage("ASAP call selected");
             
             $this->logMessage("Getting user data from API");
+            $this->startMusicOnHold();
             $user_data = $this->getUserFromAPI($this->caller_num);
+            $this->stopMusicOnHold();
             
             if (isset($user_data['doNotServe']) && $user_data['doNotServe'] === '1') {
                 $this->logMessage("User is blocked (doNotServe=1)");
@@ -591,9 +607,9 @@ class AGICallHandler {
                 
                 $confirm_file = "{$this->filebase}/pickup_confirm";
                 $this->logMessage("Generating TTS for pickup address confirmation");
-                $this->agiCommand('EXEC StartMusicOnHold');
+                $this->startMusicOnHold();
                 $tts_success = $this->callGoogleTTS($confirmation_text, $confirm_file);
-                $this->agiCommand('EXEC StopMusicOnHold');
+                $this->stopMusicOnHold();
                 
                 if ($tts_success) {
                     $this->logMessage("Playing pickup address confirmation");
@@ -667,16 +683,15 @@ class AGICallHandler {
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->logMessage("Name attempt {$try}/{$this->max_retries}");
             $this->agiCommand('EXEC Playback "custom/give-name-v2"');
-            $this->agiCommand('EXEC Wait "1"');
             
             $recording_file = "{$this->filebase}/recordings/name_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
             $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
             $this->logMessage("Record result: {$record_result}");
             
-            $this->agiCommand('EXEC StartMusicOnHold');
+            $this->startMusicOnHold();
             $name = $this->callGoogleSTT($recording_file . ".wav");
-            $this->agiCommand('EXEC StopMusicOnHold');
+            $this->stopMusicOnHold();
             
             $this->logMessage("STT result for name: {$name}");
             
@@ -705,20 +720,19 @@ class AGICallHandler {
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->logMessage("Pickup attempt {$try}/{$this->max_retries}");
             $this->agiCommand('EXEC Playback "custom/give-pickup-address-v2"');
-            $this->agiCommand('EXEC Wait "1"');
             
             $recording_file = "{$this->filebase}/recordings/pickup_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
             $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
             $this->logMessage("Record result: {$record_result}");
             
-            $this->agiCommand('EXEC StartMusicOnHold');
+            $this->startMusicOnHold();
             $pickup = $this->callGoogleSTT($recording_file . ".wav");
             $this->logMessage("STT result for pickup: {$pickup}");
             
             if (!empty($pickup) && strlen(trim($pickup)) > 2) {
                 $location = $this->getLatLngFromGoogle($pickup, true);
-                $this->agiCommand('EXEC StopMusicOnHold');
+                $this->stopMusicOnHold();
                 
                 if ($location) {
                     $this->pickup_result = trim($pickup);
@@ -729,7 +743,7 @@ class AGICallHandler {
                     return true;
                 }
             } else {
-                $this->agiCommand('EXEC StopMusicOnHold');
+                $this->stopMusicOnHold();
             }
             
             if ($try < $this->max_retries) {
@@ -750,20 +764,19 @@ class AGICallHandler {
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->logMessage("Destination attempt {$try}/{$this->max_retries}");
             $this->agiCommand('EXEC Playback "custom/give-dest-address-v2"');
-            $this->agiCommand('EXEC Wait "1"');
             
             $recording_file = "{$this->filebase}/recordings/dest_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
             $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
             $this->logMessage("Record result: {$record_result}");
             
-            $this->agiCommand('EXEC StartMusicOnHold');
+            $this->startMusicOnHold();
             $dest = $this->callGoogleSTT($recording_file . ".wav");
             $this->logMessage("STT result for destination: {$dest}");
             
             if (!empty($dest) && strlen(trim($dest)) > 2) {
                 $location = $this->getLatLngFromGoogle($dest, false);
-                $this->agiCommand('EXEC StopMusicOnHold');
+                $this->stopMusicOnHold();
                 
                 if ($location) {
                     $this->dest_result = trim($dest);
@@ -774,7 +787,7 @@ class AGICallHandler {
                     return true;
                 }
             } else {
-                $this->agiCommand('EXEC StopMusicOnHold');
+                $this->stopMusicOnHold();
             }
             
             if ($try < $this->max_retries) {
@@ -796,9 +809,9 @@ class AGICallHandler {
             $confirm_text = "Παρακαλώ επιβεβαιώστε. Όνομα: {$this->name_result}. Παραλαβή: {$this->pickup_result}. Προορισμός: {$this->dest_result}";
             $confirm_file = "{$this->filebase}/confirm";
             
-            $this->agiCommand('EXEC StartMusicOnHold');
+            $this->startMusicOnHold();
             $tts_success = $this->callGoogleTTS($confirm_text, $confirm_file);
-            $this->agiCommand('EXEC StopMusicOnHold');
+            $this->stopMusicOnHold();
             
             if ($tts_success) {
                 $this->agiCommand("EXEC Playback \"{$confirm_file}\"");
@@ -812,14 +825,16 @@ class AGICallHandler {
             
             if ($choice == "0") {
                 $this->logMessage("User confirmed, registering call");
+                $this->startMusicOnHold();
                 $result = $this->registerCall();
+                $this->stopMusicOnHold();
                 
                 if (!empty($result['msg'])) {
                     $register_file = "{$this->filebase}/register";
                     $this->logMessage("Generating TTS for message: {$result['msg']}");
-                    $this->agiCommand('EXEC StartMusicOnHold');
+                    $this->startMusicOnHold();
                     $tts_success = $this->callGoogleTTS($result['msg'], $register_file);
-                    $this->agiCommand('EXEC StopMusicOnHold');
+                    $this->stopMusicOnHold();
                     
                     if ($tts_success) {
                         $this->logMessage("Playing TTS message to caller");
@@ -835,7 +850,7 @@ class AGICallHandler {
                     $this->redirectToOperator();
                 } else {
                     $this->logMessage("Registration successful - ending call normally");
-                    $this->agiCommand('EXEC Wait "2"');
+                    $this->agiCommand('EXEC Wait "1"');
                     $this->agiCommand('HANGUP');
                 }
                 return;
