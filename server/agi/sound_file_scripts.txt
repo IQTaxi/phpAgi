@@ -1,0 +1,141 @@
+SOUND FILE SCRIPTS FOR TAXI CALL SYSTEM
+========================================
+
+All sound files should be saved in: /var/lib/asterisk/sounds/custom/
+
+---
+
+FILE: custom/welcome-v2 (Main welcome message for general extensions)
+GREEK:
+"Καλησπερα, καλωσηρθατε στο IQTaxi. Πατηστε 1 για αμεση διαδρομη, πατηστε 2 για κρατηση διαδρομης, ή πατηστε 3 για να μιλησετε με χειριστη."
+
+ENGLISH:
+"Good evening, welcome to IQTaxi. Press 1 for immediate trip, press 2 for trip reservation, or press 3 to speak with an operator."
+
+---
+
+FILE: custom/welcome-v3 (Alternative welcome message)
+GREEK:
+"Καλησπερα, καλωσηρθατε στο ραδιοταξι. Πατηστε 1 για αμεση διαδρομη, πατηστε 2 για κρατηση διαδρομης, ή πατηστε 3 για να μιλησετε με χειριστη."
+
+ENGLISH:
+"Good evening, welcome to radio taxi. Press 1 for immediate trip, press 2 for trip reservation, or press 3 to speak with an operator."
+
+---
+
+FILE: custom/welcome-kosmos-2 (Cosmos extension welcome)
+GREEK:
+"Καλησπερα, καλωσηρθατε στο ραδιοταξι Κοσμος. Πατηστε 1 για αμεση διαδρομη, πατηστε 2 για κρατηση διαδρομης, ή πατηστε 3 για να μιλησετε με χειριστη."
+
+ENGLISH:
+"Good evening, welcome to Cosmos radio taxi. Press 1 for immediate trip, press 2 for trip reservation, or press 3 to speak with an operator."
+
+---
+
+FILE: custom/anonymous-v2 (For anonymous callers)
+GREEK:
+"Δεν μπορουμε να σας εξυπηρετησουμε με αποκρυμμενο αριθμο. Παρακαλω καλεστε ξανα χωρις αποκρυψη ή μιληστε με χειριστη."
+
+ENGLISH:
+"We cannot serve you with a hidden number. Please call again without hiding your number or speak with an operator."
+
+---
+
+FILE: custom/give-name-v2 (Request customer name)
+GREEK:
+"Παρακαλω πειτε μου το ονομα σας μετα τον ηχο."
+
+ENGLISH:
+"Please tell me your name after the tone."
+
+---
+
+FILE: custom/give-pickup-address-v2 (Request pickup address)
+GREEK:
+"Παρακαλω πειτε μου τη διευθυνση παραλαβης σας μετα τον ηχο."
+
+ENGLISH:
+"Please tell me your pickup address after the tone."
+
+---
+
+FILE: custom/give-dest-address-v2 (Request destination address)
+GREEK:
+"Παρακαλω πειτε μου τον προορισμο σας μετα τον ηχο."
+
+ENGLISH:
+"Please tell me your destination after the tone."
+
+---
+
+FILE: custom/options-v2 (Confirmation options)
+GREEK:
+"Πατηστε 0 για επιβεβαιωση, πατηστε 1 για αλλαγη ονοματος, πατηστε 2 για αλλαγη διευθυνσης παραλαβης, ή πατηστε 3 για αλλαγη προορισμου."
+
+ENGLISH:
+"Press 0 to confirm, press 1 to change name, press 2 to change pickup address, or press 3 to change destination."
+
+---
+
+FILE: custom/invalid-v2 (Invalid input message)
+GREEK:
+"Λαθος επιλογη. Παρακαλω δοκιμαστε ξανα."
+
+ENGLISH:
+"Invalid choice. Please try again."
+
+---
+
+FILE: custom/invalid-v3 (Alternative invalid input message)
+GREEK:
+"Δεν καταλαβα τη συγκεκριμενη διευθυνση. Παρακαλω δοκιμαστε ξανα."
+
+ENGLISH:
+"I didn't understand that specific address. Please try again."
+
+---
+
+FILE: custom/register-call-conf (Fallback registration confirmation)
+GREEK:
+"Η διαδρομη σας καταχωρηθηκε επιτυχως. Θα ειδοποιηθειτε συντομα για την εξελιξη."
+
+ENGLISH:
+"Your trip has been registered successfully. You will be notified shortly about the progress."
+
+---
+
+FILE: custom/confirm-default-address-v2 (Address confirmation - if needed)
+GREEK:
+"Θελετε να χρησιμοποιησετε τη διευθυνση που εχουμε στα αρχεια μας;"
+
+ENGLISH:
+"Would you like to use the address we have on file?"
+
+---
+
+TECHNICAL NOTES:
+===============
+
+1. All sound files should be in WAV format, mono channel, 8kHz sample rate
+2. Keep recordings clear and at consistent volume
+3. Pause slightly before and after each recording
+4. For DTMF prompts, speak clearly and slowly
+5. Test each file in the system before production use
+
+RECORDING COMMANDS (if using Asterisk):
+=====================================
+
+To record directly in Asterisk console:
+- originate Local/s@record-context extension s@record-context
+- Use Monitor() or MixMonitor() applications
+- Convert to proper format: sox input.wav output.wav rate 8000 channels 1
+
+QUALITY CHECKLIST:
+=================
+☐ Clear pronunciation in Greek
+☐ Appropriate speaking pace
+☐ No background noise
+☐ Consistent volume levels
+☐ Proper file naming convention
+☐ Correct audio format (WAV, 8kHz, mono)
+☐ Test playback in Asterisk system
