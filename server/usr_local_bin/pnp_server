@@ -1,0 +1,275 @@
+#!/usr/bin/python
+# coding: utf-8
+#
+# Copyright (c) 2018 Sangoma Technologies Corporation. All rights reserved.
+#
+# NOTICE! This is not free or open source software!
+#
+# By installing, copying, downloading, distributing, inspecting or using the
+# materials provided herewith, you agree to all of the terms of use as outlined
+# in our End User Agreement which can be found and reviewed at
+#     https://www.freepbx.org/legal/freepbx-commercial-modules-eula/
+#
+
+from __future__ import print_function
+from subprocess import check_output
+import re
+import os
+import sys
+import getopt
+import time
+import configparser
+import socket
+import select
+import struct
+import MySQLdb
+
+# Are we in debug mode?
+opts = getopt.getopt(sys.argv[1:], "d", ["debug"])
+if opts[0]:
+	debug = True
+else:
+	debug = False
+
+# Can only run as root in debug mode
+if os.geteuid() == 0 and not debug:
+	print("This can not be run as root. It must be run as the Asterisk user.")
+	sys.exit()
+
+# This process needs to restart semi-regularly.  Make sure it doesn't hang around
+# for more than a week (7 * 24 * 60 * 60 = 604800)
+exitafter = time.time() + 604800
+
+print("Starting Sangoma pnp_server")
+
+def get_db_handle():
+	# Get fpbx config
+	fpbx = {}
+	conffile = open('/etc/freepbx.conf').read()
+	r = re.compile(r"amp_conf\['(\w+)'\] = '(.+)'", re.MULTILINE)
+
+	with open('/etc/freepbx.conf') as fd:
+		conffile = fd.read()
+		for match in r.finditer(conffile):
+			fpbx[match.group(1)] = match.group(2)
+
+	# Get MySQL port
+	if "AMPDBPORT" in fpbx and fpbx["AMPDBPORT"] != "" :
+		mysqlport = int(fpbx["AMPDBPORT"])	
+	else:
+		mysqlport = 3306
+
+	# Now connect to the DB
+	db = MySQLdb.connect(host=fpbx['AMPDBHOST'], port=mysqlport, user=fpbx['AMPDBUSER'], passwd=fpbx['AMPDBPASS'], db=fpbx['AMPDBNAME'])
+	return db
+
+def get_ip_from_endpoint():
+	dbh = get_db_handle()
+	# Ask endpoint what it thinks its internal address is
+	c = dbh.cursor()
+	c.execute("SELECT `values` FROM `endpoint_global` WHERE `key`='internal'")
+	internal = c.fetchone()
+	try:
+		return internal[0]
+	except TypeError:
+		return False
+
+def get_provisioning_uri(localip, sysadmin):
+	# Has sysadmin told us to override the URI?
+	if sysadmin['pnpconf'] == "manual":
+		return sysadmin['pnpoverrideuri']
+
+	# Is there auth on this machine?
+	if sysadmin['provisauth'] != "none":
+		authstr = "://%s:%s@" % (sysadmin['provisuser'], sysadmin['provispass'])
+	else:
+		authstr = "://"
+
+	# Try http normal provisioning
+	if sysadmin['hpro'].isdigit():
+		return "http%s%s:%s" % (authstr, localip, sysadmin['hpro'])
+
+	# Is SSL Provisioning enabled?
+	if sysadmin['sslhpro'].isdigit():
+		return "https%s%s:%s" % (authstr, localip, sysadmin['sslhpro'])
+
+	# Fail back to tftp.
+	return "tftp://%s" % localip
+
+def get_sysadmin_settings():
+	# Set defaults, to handle old machines, or things in the middle of upgrading
+	ret = {"provisauth": "none", "provisuser": "", "provispass": "", "pnpserver": "", "pnpdesc": "", "pnpconf": "auto"}
+
+	# Get our settings from sysadmin
+	dbh = get_db_handle()
+	c = dbh.cursor()
+	c.execute("SELECT `key`,`value` FROM `sysadmin_options` WHERE `key` IN ('hpro', 'sslhpro', 'provisauth', 'provisuser', 'provispass', 'pnpserver', 'pnpdesc', 'pnpconf', 'pnpoverrideuri', 'pnpdefault')")
+	sysadmin = c.fetchall()
+
+	for row in sysadmin:
+		ret[row[0]] = row[1]
+
+	# If we don't have a description, use the default
+	if not ret['pnpdesc']:
+		ret['pnpdesc'] = ret['pnpdefault']
+
+	return ret
+
+def send_response_to_device(device, myip, packet, uri, sysadmin):
+	if debug:
+		print("Sending to %s, connect uri %s" %(device, uri))
+
+	pkt = parse_sip_packet(packet)
+	pkt['pnpdesc'] = sysadmin['pnpdesc']
+	tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+	# tx.bind(('%s' % myip, 50000))
+	# Bind to any interface, the phones don't mind.
+	tx.bind(('', 50000))
+	# Build the OK response
+	ok = "\r\n".join(("SIP/2.0 200 OK",
+		"Via: {Via}",
+		"Contact: {Contact}",
+		"To: {To}",
+		"From: {From}",
+		"Call-ID: {Call-ID}",
+		"CSeq: {CSeq}",
+		"Expires: 0",
+		"Content-Length: 0",
+		"",
+		)).format(**pkt)
+
+	if debug:
+		print(ok)
+
+	tx.sendto(ok, ("%s" % device, int(pkt['contact_port'])))
+
+	# Now build the actual response
+	notify = "\r\n".join(("NOTIFY sip:%s:%s SIP/2.0" % (pkt['contact_ip'], pkt['contact_port']),
+		"Via: {Via}",
+		"Max-Forwards: 20",
+		# This is who *I* am.
+		"Contact: <sip:zerotouch@224.0.1.7>",
+		"To: {To}",
+		"From: {From}",
+		"Call-ID: {Call-ID}",
+		"CSeq: 3 NOTIFY",
+		"Content-Type: application/url",
+		"Subscription-State: terminated;reason=invariant",
+		"System-Identifier:   {pnpdesc}", # Leading spaces are there deliberately.
+		"Event: {Event}",
+		"Content-Length: %i" % len(uri),
+		"",
+		uri,
+		)).format(**pkt)
+
+	if debug:
+		print(notify)
+
+	# Logging
+	print("Sent '%s' to %s identifiying as %s" % (uri, pkt['contact_ip'], pkt['To']))
+
+	tx.sendto(notify, ("%s" % device, int(pkt['contact_port'])))
+
+def parse_sip_packet(packet):
+	resp = {}
+	r = re.compile(r"^([\w-]+): (.+)$", re.MULTILINE)
+
+	for match in r.finditer(packet):
+		resp[match.group(1)] = match.group(2).rstrip()
+
+	# Extract the ip and port of the phone, purely for the contact. We don't send data
+	# there, because it may be wrong (How? Who the hell knows), but it's PROBABLY what
+	# the phone is expecting.  (We send data back to where it was received from, just
+	# in case there is some strange packet mangling going on)
+	(resp['contact_ip'], resp['contact_port']) = resp['Contact'][:-1].split('@', 1)[1].split(':')
+	return resp;
+
+# These should probably not be changed
+MCAST_GRP = '224.0.1.75'
+MCAST_PORT = 60000
+
+# Magic to make it work
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(('', MCAST_PORT))
+
+# We need to bind to every interface on this machine -
+# https://stackoverflow.com/questions/46066244/python-socket-ip-add-membership-and-inaddr-any-confusion
+#
+# "I've worked with Linux, Solaris, FreeBSD, and Windows, and none of 
+#  them joins a multicast group on all interfaces when using INADDR_ANY."
+#
+ints = re.compile(r"inet ([\d\.]+)")
+out = check_output([ "/usr/sbin/ip", "-o", "addr" ]).split(' \n '.encode())
+
+for line in out:
+	i = ints.search(line.decode('utf-8'))
+	if i:
+		# We've found an IP address. Make sure it's not a loopback address
+		if i.group(1).startswith("127"):
+			continue
+
+		# This is the correct way to build mreq - not using struct.pack,
+		# which is explicitly wrong, and works purely through coincidence.
+		mreq = socket.inet_aton(MCAST_GRP) + socket.inet_aton(i.group(1))
+
+		# If we can't bind to it, we don't care.
+		try:
+			sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+		except:
+			pass
+
+# Build regexps
+sng = re.compile(r"Event: ua-profile;.+vendor=\"Sangoma\"")
+subscr = re.compile(r"^SUBSCRIBE sip:.+")
+
+# If we've been asked for debug, display our options
+if debug:
+	print(get_sysadmin_settings())
+
+while True:
+	# Have we lived too long? If we have, die, and we will
+	# be restarted by the service
+	if time.time() > exitafter:
+		sys.exit()
+
+	# Call select to wait for traffic, for up to 60 mins.
+	ready = select.select([sock], [], [], 3600)
+	if not ready[0]:
+		if debug:
+			print("No PnP request recevied in 60 mins")
+		continue
+
+	rx = sock.recvfrom(10240)
+	packet = rx[0]
+	deviceip = rx[1][0]
+
+	# Make sure we're meant to be responding to this packet
+	sysadmin = get_sysadmin_settings()
+	if sysadmin['pnpserver'] == "disabled":
+		if debug:
+			print("PnP server disabled. Not responding to packet")
+		continue
+
+	if not subscr.search(packet):
+		if debug:
+			print("Not a subscribe")
+		continue
+		
+	if not sng.search(packet):
+		if debug:
+			print("Not a sangoma phone")
+		continue
+
+	localip = get_ip_from_endpoint()
+	if not localip:
+		# Need to get our IP, so connect back to the phone and then see
+		# where we're connecting from
+		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		s.connect((deviceip, 0))
+		localip = s.getsockname()[0]
+	
+	provisuri = get_provisioning_uri(localip, sysadmin)
+
+	send_response_to_device(device = deviceip, myip = localip, packet = packet, uri = provisuri, sysadmin = sysadmin)
+

@@ -42,6 +42,7 @@ class AGICallHandler {
     private $reservation_timestamp = '';
     private $is_reservation = false;
     private $tts_provider = 'google';
+    private $days_valid = 7;
     
     public function __construct() {
         $this->setupAGIEnvironment();
@@ -95,7 +96,8 @@ class AGICallHandler {
                 "registerBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3",
                 "failCallTo" => "SIP/6979753028@vodafone_sip",
                 "welcomePlayback" => "custom/welcome-v2",
-                "tts" => "google"
+                "tts" => "google",
+                "daysValid" => 7
             ],
             "4039" => [
                 "name" => "iqtaxi.com",
@@ -104,7 +106,8 @@ class AGICallHandler {
                 "registerBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3",
                 "failCallTo" => "SIP/6974888710@vodafone_sip",
                 "welcomePlayback" => "custom/welcome-v3",
-                "tts" => "google"
+                "tts" => "google",
+                "daysValid" => 7
             ],
             "4033" => [
                 "name" => "Hermis-Peireas",
@@ -113,7 +116,8 @@ class AGICallHandler {
                 "registerBaseUrl" => "http://79.129.41.206:8080/IQTaxiAPIV3",
                 "failCallTo" => "SIP/2104115200@vodafone_sip",
                 "welcomePlayback" => "custom/welcome-v3",
-                "tts" => "edge-tts"
+                "tts" => "edge-tts",
+                "daysValid" => 30
             ],
             "4036" => [
                 "name" => "Cosmos",
@@ -122,7 +126,8 @@ class AGICallHandler {
                 "registerBaseUrl" => "http://18300.fortiddns.com:8000/IQTaxiApi",
                 "failCallTo" => "SIP/2104118300@vodafone_sip",
                 "welcomePlayback" => "custom/welcome-kosmos-2",
-                "tts" => "edge-tts"
+                "tts" => "edge-tts",
+                "daysValid" => 30
             ]
         ];
         
@@ -134,6 +139,7 @@ class AGICallHandler {
             $this->client_token = $config['clientToken'];
             $this->register_base_url = $config['registerBaseUrl'];
             $this->tts_provider = isset($config['tts']) ? $config['tts'] : 'google';
+            $this->days_valid = isset($config['daysValid']) ? intval($config['daysValid']) : 7;
         }
     }
     
@@ -530,7 +536,9 @@ class AGICallHandler {
             "destLatitude" => isset($this->dest_location['latLng']['lat']) ? $this->dest_location['latLng']['lat'] : 0,
             "destLongitude" => isset($this->dest_location['latLng']['lng']) ? $this->dest_location['latLng']['lng'] : 0,
             "taxisNo" => 1,
-            "comments" => $this->is_reservation ? "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΡΑΤΗΣΗ - {$this->reservation_result}]" : "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]"
+            "comments" => $this->is_reservation ? "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΡΑΤΗΣΗ - {$this->reservation_result}]" : "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]",
+            "referencePath" => $this->filebase,
+            "daysValid" => $this->days_valid
         ];
         
         $ch = curl_init();

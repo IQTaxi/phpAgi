@@ -1,20 +1,42 @@
 {
-        "39": {
-                "name": "iqtaxi.com",
-                "googleApiKey": "<API_KEY_HERE>",
-                "clientToken": "cc03e747a6afbbcbf8be7668acfebee5",
-                "registerBaseUrl": "https://www.iqtaxi.com/IQ_WebAPIV3",
-                "failCallTo": "SIP/6979753028@vodafone_sip",
-                "welcomePlayback": "custom/tp_welcome",
-				"daysValid": 7
-        },
-        "33": {
-                "name": "Hermis-Peireas",
-                "googleApiKey": "<API_KEY_HERE>",
-                "clientToken": "cc03e747a6afbbcbf8be7668acfebee5",
-                "registerBaseUrl": "http://79.129.41.206:8080/IQTaxiAPIV3",
-                "failCallTo": "SIP/2104115200@vodafone_sip",
-                "welcomePlayback": "custom/welcome-v3",
-				"daysValid":7
-        }
+	"4036":
+	{
+		"name": "Cosmos",
+		"googleApiKey": "AIzaSyDtd2ZkH_upgOuxGqh3ubVsBZlvMfqj088",
+		"clientToken": "a0a5d57bc105156016549b9a5de4165a",
+		"registerBaseUrl": "http://192.168.1.105/IQTaxiApi",
+		"failCallTo": "SIP/5012@EpigyTrunksip",
+		"welcomePlayback": "custom/welcome-kosmos-5",
+		"daysValid" : 7
+	},
+	"4037":
+	{
+		"name": "Cosmos",
+		"googleApiKey": "AIzaSyBHaWwVuMMqy_a4ukyLkPu9kf89ybgN2tQ",
+		"clientToken": "a0a5d57bc105156016549b9a5de4165a",
+		"registerBaseUrl": "http://192.168.1.105/IQTaxiApi",
+		"failCallTo": "SIP/5000@EpigyTrunksip",
+		"welcomePlayback": "custom/welcome-kosmos-ai-5",
+		"daysValid" : 7
+	},
+	"4038":
+	{
+		"name": "Cosmos-test",
+		"googleApiKey": "AIzaSyDtd2ZkH_upgOuxGqh3ubVsBZlvMfqj088",
+		"clientToken": "a0a5d57bc105156016549b9a5de4165a",
+		"registerBaseUrl": "http://192.168.1.105/IQTaxiApi",
+		"failCallTo": "SIP/5000@EpigyTrunksip",
+		"welcomePlayback": "custom/welcome-kosmos-ai-5",
+		"daysValid" : 7
+	},
+	"4039":
+	{
+		"name": "Cosmos-test-new-key",
+		"googleApiKey": "AIzaSyBHaWwVuMMqy_a4ukyLkPu9kf89ybgN2tQ",
+		"clientToken": "a0a5d57bc105156016549b9a5de4165a",
+		"registerBaseUrl": "http://192.168.1.105/IQTaxiApi",
+		"failCallTo": "SIP/5000@EpigyTrunksip",
+		"welcomePlayback": "custom/welcome-kosmos-ai-5",
+		"daysValid" : 7
+	}
 }

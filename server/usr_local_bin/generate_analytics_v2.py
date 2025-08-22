@@ -2621,7 +2621,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='📞 Ημερήσια Αναλυτική Auto Call Center - JSON Only Configuration')
-    parser.add_argument('file_path', nargs='?', default='/tmp/register_call_v5.log', 
+    parser.add_argument('file_path', nargs='?', default='/tmp/register_call_v6.log', 
                        help='Διαδρομή προς το ημερήσιο αρχείο καταγραφής')
     parser.add_argument('--config', help='Διαδρομή προς το αρχείο διαμόρφωσης (δεν χρησιμοποιείται - μόνο analytics.json)')
     
@@ -2629,7 +2629,7 @@ def main():
     
     print("🚀 Έναρξη Ημερήσιας Αναλυτικής Auto Call Center (JSON Only Mode)...")
     print(f"📊 Ανάλυση ημερήσιων δεδομένων: {args.file_path}")
-    print(f"📋 Χρήση αρχείου: register_call_v5.log")
+    print(f"📋 Χρήση αρχείου: register_call_v6.log")
     print(f"⚙️ Ρυθμίσεις: ΜΟΝΟ από analytics.json (απαιτείται!)")
     print(f"❗ ΠΡΟΣΟΧΗ: Το analytics.json ΠΡΕΠΕΙ να υπάρχει με όλες τις απαραίτητες ρυθμίσεις!")
     
