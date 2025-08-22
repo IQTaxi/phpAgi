@@ -38,6 +38,9 @@ class AGICallHandler {
     private $pickup_location = [];
     private $dest_result = '';
     private $dest_location = [];
+    private $reservation_result = '';
+    private $reservation_timestamp = '';
+    private $is_reservation = false;
     
     public function __construct() {
         $this->setupAGIEnvironment();
@@ -465,7 +468,7 @@ class AGICallHandler {
         ];
         
         $payload = [
-            "callTimeStamp" => null,
+            "callTimeStamp" => $this->is_reservation ? $this->reservation_timestamp : null,
             "callerPhone" => $this->caller_num,
             "customerName" => $this->name_result,
             "roadName" => $this->pickup_result,
@@ -475,7 +478,7 @@ class AGICallHandler {
             "destLatitude" => isset($this->dest_location['latLng']['lat']) ? $this->dest_location['latLng']['lat'] : 0,
             "destLongitude" => isset($this->dest_location['latLng']['lng']) ? $this->dest_location['latLng']['lng'] : 0,
             "taxisNo" => 1,
-            "comments" => "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]"
+            "comments" => $this->is_reservation ? "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΡΑΤΗΣΗ - {$this->reservation_result}]" : "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]"
         ];
         
         $ch = curl_init();
@@ -572,8 +575,8 @@ class AGICallHandler {
             }
             
             if ($user_choice == "2") {
-                $this->logMessage("Reservation selected - not implemented, redirecting to operator");
-                $this->redirectToOperator();
+                $this->logMessage("Reservation selected");
+                $this->handleReservationFlow();
                 return;
             }
             
@@ -885,6 +888,292 @@ class AGICallHandler {
         }
         
         $this->logMessage("Too many invalid confirmation attempts");
+        $this->redirectToOperator();
+    }
+    
+    /**
+     * Handle the reservation flow when user selects option 2
+     */
+    private function handleReservationFlow() {
+        $this->is_reservation = true;
+        $this->logMessage("Starting reservation flow");
+        
+        $this->logMessage("Getting user data from API");
+        $this->startMusicOnHold();
+        $user_data = $this->getUserFromAPI($this->caller_num);
+        $this->stopMusicOnHold();
+        
+        if (isset($user_data['doNotServe']) && $user_data['doNotServe'] === '1') {
+            $this->logMessage("User is blocked (doNotServe=1)");
+            $this->redirectToOperator();
+            return;
+        }
+        
+        $has_name = !empty($user_data['name']);
+        $has_pickup = !empty($user_data['pickup']) && !empty($user_data['latLng']);
+        
+        if ($has_name && $has_pickup) {
+            $this->logMessage("Found existing user data: name={$user_data['name']}, pickup={$user_data['pickup']}");
+            $this->name_result = $user_data['name'];
+            
+            $confirmation_text = "Γεια σας {$user_data['name']}. Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {$user_data['pickup']}? Πατήστε 1 για ναι ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.";
+            
+            $confirm_file = "{$this->filebase}/pickup_confirm";
+            $this->logMessage("Generating TTS for pickup address confirmation");
+            $this->startMusicOnHold();
+            $tts_success = $this->callGoogleTTS($confirmation_text, $confirm_file);
+            $this->stopMusicOnHold();
+            
+            if ($tts_success) {
+                $this->logMessage("Playing pickup address confirmation");
+                $choice = $this->readDTMF($confirm_file, 1, 10);
+                $this->logMessage("User pickup address choice: {$choice}");
+                
+                if ($choice == "1") {
+                    $this->logMessage("User confirmed existing pickup address");
+                    $this->pickup_result = $user_data['pickup'];
+                    $this->pickup_location = [
+                        "address" => $user_data['pickup'],
+                        "latLng" => $user_data['latLng']
+                    ];
+                    $this->saveJson("name", $this->name_result);
+                    $this->saveJson("pickup", $this->pickup_result);
+                    $this->saveJson("pickupLocation", $this->pickup_location);
+                } else {
+                    $this->logMessage("User wants to enter new pickup address");
+                    $this->saveJson("name", $this->name_result);
+                }
+            } else {
+                $this->logMessage("TTS failed, using existing pickup address as fallback");
+                $this->pickup_result = $user_data['pickup'];
+                $this->pickup_location = [
+                    "address" => $user_data['pickup'],
+                    "latLng" => $user_data['latLng']
+                ];
+                $this->saveJson("name", $this->name_result);
+                $this->saveJson("pickup", $this->pickup_result);
+                $this->saveJson("pickupLocation", $this->pickup_location);
+            }
+        } else {
+            if (!$this->collectName()) {
+                $this->redirectToOperator();
+                return;
+            }
+            
+            if (!$this->collectPickup()) {
+                $this->redirectToOperator();
+                return;
+            }
+        }
+        
+        if (empty($this->pickup_result)) {
+            $this->logMessage("Pickup address not set, collecting now");
+            if (!$this->collectPickup()) {
+                $this->redirectToOperator();
+                return;
+            }
+        }
+        
+        if (!$this->collectDestination()) {
+            $this->redirectToOperator();
+            return;
+        }
+        
+        if (!$this->collectReservationTime()) {
+            $this->redirectToOperator();
+            return;
+        }
+        
+        $this->confirmReservationAndRegister();
+    }
+    
+    /**
+     * Collect reservation time via speech recognition and date parsing
+     */
+    private function collectReservationTime() {
+        $this->logMessage("Starting reservation time collection");
+        
+        for ($try = 1; $try <= $this->max_retries; $try++) {
+            $this->logMessage("Reservation time attempt {$try}/{$this->max_retries}");
+            $this->agiCommand('EXEC Playback "custom/rantevou_ask_time"');
+            
+            $recording_file = "{$this->filebase}/recordings/reservation_{$try}";
+            $this->logMessage("Starting recording to: {$recording_file}");
+            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
+            $this->logMessage("Record result: {$record_result}");
+            
+            $this->startMusicOnHold();
+            $reservation_speech = $this->callGoogleSTT($recording_file . ".wav");
+            $this->logMessage("STT result for reservation: {$reservation_speech}");
+            
+            if (!empty($reservation_speech) && strlen(trim($reservation_speech)) > 2) {
+                $parsed_date = $this->parseDateFromText(trim($reservation_speech));
+                $this->stopMusicOnHold();
+                
+                if ($parsed_date && !empty($parsed_date['formattedBestMatch'])) {
+                    $this->reservation_result = $parsed_date['formattedBestMatch'];
+                    $this->reservation_timestamp = $parsed_date['bestMatchUnixTimestamp'];
+                    
+                    $confirmation_text = "Το ραντεβού είναι για {$this->reservation_result}, πατήστε 0 για επιβεβαίωση ή 1 για να προσπαθήσετε ξανά";
+                    $confirm_file = "{$this->filebase}/confirmdate";
+                    
+                    $this->startMusicOnHold();
+                    $tts_success = $this->callGoogleTTS($confirmation_text, $confirm_file);
+                    $this->stopMusicOnHold();
+                    
+                    if ($tts_success) {
+                        $choice = $this->readDTMF($confirm_file, 1, 10);
+                        $this->logMessage("User reservation time choice: {$choice}");
+                        
+                        if ($choice == "0") {
+                            $this->logMessage("User confirmed reservation time: {$this->reservation_result}");
+                            $this->saveJson("reservation", $this->reservation_result);
+                            $this->saveJson("reservationStamp", $this->reservation_timestamp);
+                            return true;
+                        }
+                    }
+                }
+            } else {
+                $this->stopMusicOnHold();
+            }
+            
+            if ($try < $this->max_retries) {
+                $this->agiCommand('EXEC Playback "custom/invalid-v2"');
+            }
+        }
+        
+        $this->logMessage("Failed to capture reservation time after {$this->max_retries} attempts");
+        return false;
+    }
+    
+    /**
+     * Parse date from text using date recognition service
+     */
+    private function parseDateFromText($text) {
+        $url = "https://www.iqtaxi.com/DateRecognizers/api/Recognize/Date";
+        $headers = ["Content-Type: application/json"];
+        $body = [
+            "input" => $text,
+            "key" => $this->api_key,
+            "translateFrom" => "en",
+            "translateTo" => "en",
+            "matchLang" => "en-US"
+        ];
+        
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($body),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_HTTPHEADER => $headers
+        ]);
+        
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($http_code !== 200 || !$response) {
+            $this->logMessage("Date parsing HTTP error: {$http_code}");
+            return null;
+        }
+        
+        $result = json_decode($response, true);
+        if (!$result || empty($result['bestMatch'])) {
+            $this->logMessage("No date match found in response");
+            return null;
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Confirm reservation data and register the call
+     */
+    private function confirmReservationAndRegister() {
+        for ($try = 1; $try <= 3; $try++) {
+            $this->logMessage("Reservation confirmation attempt {$try}/3");
+            
+            $confirm_text = "Παρακαλώ επιβεβαιώστε. Όνομα: {$this->name_result}. Παραλαβή: {$this->pickup_result}. Προορισμός: {$this->dest_result}. Ώρα ραντεβού: {$this->reservation_result}";
+            $confirm_file = "{$this->filebase}/confirm_reservation";
+            
+            $this->startMusicOnHold();
+            $tts_success = $this->callGoogleTTS($confirm_text, $confirm_file);
+            $this->stopMusicOnHold();
+            
+            if ($tts_success) {
+                $this->agiCommand("EXEC Playback \"{$confirm_file}\"");
+            } else {
+                $this->logMessage("TTS failed, proceeding without confirmation audio");
+            }
+            
+            $this->logMessage("Waiting for user confirmation");
+            $choice = $this->readDTMF("custom/options-v2", 1, 10);
+            $this->logMessage("User choice: {$choice}");
+            
+            if ($choice == "0") {
+                $this->logMessage("User confirmed, registering reservation");
+                $this->startMusicOnHold();
+                $result = $this->registerCall();
+                $this->stopMusicOnHold();
+                
+                if (!empty($result['msg'])) {
+                    $register_file = "{$this->filebase}/register";
+                    $this->logMessage("Generating TTS for message: {$result['msg']}");
+                    $this->startMusicOnHold();
+                    $tts_success = $this->callGoogleTTS($result['msg'], $register_file);
+                    $this->stopMusicOnHold();
+                    
+                    if ($tts_success) {
+                        $this->logMessage("Playing TTS message to caller");
+                        $this->agiCommand("EXEC Playback \"{$register_file}\"");
+                    } else {
+                        $this->logMessage("TTS generation failed, playing fallback message");
+                        $this->agiCommand('EXEC Playback "custom/register-call-conf"');
+                    }
+                }
+                
+                if ($result['callOperator']) {
+                    $this->logMessage("Transferring to operator due to registration issue");
+                    $this->redirectToOperator();
+                } else {
+                    $this->logMessage("Reservation registration successful - ending call normally");
+                    $this->agiCommand('EXEC Wait "1"');
+                    $this->agiCommand('HANGUP');
+                }
+                return;
+                
+            } elseif ($choice == "1") {
+                if ($this->collectName()) {
+                    continue;
+                } else {
+                    $this->redirectToOperator();
+                    return;
+                }
+                
+            } elseif ($choice == "2") {
+                if ($this->collectPickup()) {
+                    continue;
+                } else {
+                    $this->redirectToOperator();
+                    return;
+                }
+                
+            } elseif ($choice == "3") {
+                if ($this->collectDestination()) {
+                    continue;
+                } else {
+                    $this->redirectToOperator();
+                    return;
+                }
+                
+            } else {
+                $this->agiCommand('EXEC Playback "custom/invalid-v2"');
+            }
+        }
+        
+        $this->logMessage("Too many invalid reservation confirmation attempts");
         $this->redirectToOperator();
     }
 }
