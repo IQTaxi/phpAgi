@@ -41,6 +41,7 @@ class AGICallHandler {
     private $reservation_result = '';
     private $reservation_timestamp = '';
     private $is_reservation = false;
+    private $tts_provider = 'google';
     
     public function __construct() {
         $this->setupAGIEnvironment();
@@ -93,7 +94,8 @@ class AGICallHandler {
                 "clientToken" => "cc03e747a6afbbcbf8be7668acfebee5",
                 "registerBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3",
                 "failCallTo" => "SIP/6979753028@vodafone_sip",
-                "welcomePlayback" => "custom/welcome-v2"
+                "welcomePlayback" => "custom/welcome-v2",
+                "tts" => "google"
             ],
             "4039" => [
                 "name" => "iqtaxi.com",
@@ -101,7 +103,8 @@ class AGICallHandler {
                 "clientToken" => "cc03e747a6afbbcbf8be7668acfebee5",
                 "registerBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3",
                 "failCallTo" => "SIP/6974888710@vodafone_sip",
-                "welcomePlayback" => "custom/welcome-v3"
+                "welcomePlayback" => "custom/welcome-v3",
+                "tts" => "google"
             ],
             "4033" => [
                 "name" => "Hermis-Peireas",
@@ -109,7 +112,8 @@ class AGICallHandler {
                 "clientToken" => "cc03e747a6afbbcbf8be7668acfebee5",
                 "registerBaseUrl" => "http://79.129.41.206:8080/IQTaxiAPIV3",
                 "failCallTo" => "SIP/2104115200@vodafone_sip",
-                "welcomePlayback" => "custom/welcome-v3"
+                "welcomePlayback" => "custom/welcome-v3",
+                "tts" => "edge-tts"
             ],
             "4036" => [
                 "name" => "Cosmos",
@@ -117,7 +121,8 @@ class AGICallHandler {
                 "clientToken" => "a0a5d57bc105156016549b9a5de4165a",
                 "registerBaseUrl" => "http://18300.fortiddns.com:8000/IQTaxiApi",
                 "failCallTo" => "SIP/2104118300@vodafone_sip",
-                "welcomePlayback" => "custom/welcome-kosmos-2"
+                "welcomePlayback" => "custom/welcome-kosmos-2",
+                "tts" => "edge-tts"
             ]
         ];
         
@@ -128,6 +133,7 @@ class AGICallHandler {
             $this->api_key = $config['googleApiKey'];
             $this->client_token = $config['clientToken'];
             $this->register_base_url = $config['registerBaseUrl'];
+            $this->tts_provider = isset($config['tts']) ? $config['tts'] : 'google';
         }
     }
     
@@ -392,6 +398,52 @@ class AGICallHandler {
     }
     
     /**
+     * Convert text to speech using Edge TTS
+     */
+    private function callEdgeTTS($text, $output_file) {
+        $wav_file = $output_file . '.wav';
+        
+        $escaped_text = escapeshellarg($text);
+        $escaped_output = escapeshellarg($wav_file);
+        
+        $cmd = "edge-tts --voice el-GR-AthinaNeural --text {$escaped_text} --write-media {$escaped_output} 2>/dev/null";
+        $this->logMessage("Edge TTS command: {$cmd}");
+        
+        exec($cmd, $output, $return_code);
+        
+        if ($return_code !== 0) {
+            $this->logMessage("Edge TTS failed with return code: {$return_code}");
+            return false;
+        }
+        
+        if (!file_exists($wav_file) || filesize($wav_file) <= 100) {
+            $this->logMessage("Edge TTS output file invalid or too small");
+            return false;
+        }
+        
+        $cmd_convert = "ffmpeg -y -i {$escaped_output} -ac 1 -ar 8000 {$escaped_output}_converted.wav 2>/dev/null";
+        exec($cmd_convert);
+        
+        if (file_exists($wav_file . '_converted.wav')) {
+            unlink($wav_file);
+            rename($wav_file . '_converted.wav', $wav_file);
+        }
+        
+        return file_exists($wav_file) && filesize($wav_file) > 100;
+    }
+    
+    /**
+     * Convert text to speech using the configured TTS provider
+     */
+    private function callTTS($text, $output_file) {
+        if ($this->tts_provider === 'edge-tts') {
+            return $this->callEdgeTTS($text, $output_file);
+        } else {
+            return $this->callGoogleTTS($text, $output_file);
+        }
+    }
+    
+    /**
      * Geocode address using Google Maps API
      */
     private function getLatLngFromGoogle($address, $is_pickup = true) {
@@ -611,7 +663,7 @@ class AGICallHandler {
                 $confirm_file = "{$this->filebase}/pickup_confirm";
                 $this->logMessage("Generating TTS for pickup address confirmation");
                 $this->startMusicOnHold();
-                $tts_success = $this->callGoogleTTS($confirmation_text, $confirm_file);
+                $tts_success = $this->callTTS($confirmation_text, $confirm_file);
                 $this->stopMusicOnHold();
                 
                 if ($tts_success) {
@@ -813,7 +865,7 @@ class AGICallHandler {
             $confirm_file = "{$this->filebase}/confirm";
             
             $this->startMusicOnHold();
-            $tts_success = $this->callGoogleTTS($confirm_text, $confirm_file);
+            $tts_success = $this->callTTS($confirm_text, $confirm_file);
             $this->stopMusicOnHold();
             
             if ($tts_success) {
@@ -836,7 +888,7 @@ class AGICallHandler {
                     $register_file = "{$this->filebase}/register";
                     $this->logMessage("Generating TTS for message: {$result['msg']}");
                     $this->startMusicOnHold();
-                    $tts_success = $this->callGoogleTTS($result['msg'], $register_file);
+                    $tts_success = $this->callTTS($result['msg'], $register_file);
                     $this->stopMusicOnHold();
                     
                     if ($tts_success) {
@@ -921,7 +973,7 @@ class AGICallHandler {
             $confirm_file = "{$this->filebase}/pickup_confirm";
             $this->logMessage("Generating TTS for pickup address confirmation");
             $this->startMusicOnHold();
-            $tts_success = $this->callGoogleTTS($confirmation_text, $confirm_file);
+            $tts_success = $this->callTTS($confirmation_text, $confirm_file);
             $this->stopMusicOnHold();
             
             if ($tts_success) {
@@ -1018,7 +1070,7 @@ class AGICallHandler {
                     $confirm_file = "{$this->filebase}/confirmdate";
                     
                     $this->startMusicOnHold();
-                    $tts_success = $this->callGoogleTTS($confirmation_text, $confirm_file);
+                    $tts_success = $this->callTTS($confirmation_text, $confirm_file);
                     $this->stopMusicOnHold();
                     
                     if ($tts_success) {
@@ -1099,7 +1151,7 @@ class AGICallHandler {
             $confirm_file = "{$this->filebase}/confirm_reservation";
             
             $this->startMusicOnHold();
-            $tts_success = $this->callGoogleTTS($confirm_text, $confirm_file);
+            $tts_success = $this->callTTS($confirm_text, $confirm_file);
             $this->stopMusicOnHold();
             
             if ($tts_success) {
@@ -1122,7 +1174,7 @@ class AGICallHandler {
                     $register_file = "{$this->filebase}/register";
                     $this->logMessage("Generating TTS for message: {$result['msg']}");
                     $this->startMusicOnHold();
-                    $tts_success = $this->callGoogleTTS($result['msg'], $register_file);
+                    $tts_success = $this->callTTS($result['msg'], $register_file);
                     $this->stopMusicOnHold();
                     
                     if ($tts_success) {
