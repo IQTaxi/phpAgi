@@ -1156,7 +1156,7 @@ class AGICallHandler
 
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->logMessage("Reservation time attempt {$try}/{$this->max_retries}");
-            $this->agiCommand('EXEC Playback "custom/rantevou_ask_time"');
+            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('date_input') . '"');
 
             $recording_file = "{$this->filebase}/recordings/reservation_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
