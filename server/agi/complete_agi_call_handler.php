@@ -1,6 +1,6 @@
 #!/usr/bin/php
 <?php
-include'config.php';
+include 'config.php';
 
 /**
  * Automated Taxi Call Registration System
@@ -49,6 +49,9 @@ class AGICallHandler
 
     public function __construct()
     {
+        //$configHandler = new AGICallHandlerConfig();
+        //echo json_encode($configHandler->globalConfiguration);
+
         echo "setupAGIEnvironment";
         $this->setupAGIEnvironment();
         echo "setupFilePaths";
@@ -99,8 +102,8 @@ class AGICallHandler
      */
     private function loadConfiguration()
     {
-	echo "Loading config";
-        $this->config = $globalConfiguration;
+        echo "Loading config";
+        $this->config = (new AGICallHandlerConfig())->globalConfiguration;
 
         if (isset($this->config[$this->extension])) {
             $config = $this->config[$this->extension];

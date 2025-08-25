@@ -1,7 +1,8 @@
 <?php
 
-// Example usage:
-$globalConfiguration = [
+class AGICallHandlerConfig
+{
+ public $globalConfiguration = [
     "1234" => [
         "name" => "Test Extension",
         "googleApiKey" => "AIzaSyDtMW5sRWQ2IsBtAT7ZxoR5LywsKdiVPJw",
@@ -53,3 +54,4 @@ $globalConfiguration = [
                 "daysValid" => 7
     ]
 ];
+}
