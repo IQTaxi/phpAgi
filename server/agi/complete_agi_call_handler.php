@@ -46,19 +46,14 @@ class AGICallHandler
     private $is_reservation = false;
     private $tts_provider = 'google';
     private $days_valid = 7;
+    private $current_language = 'el';
+    private $default_language = 'el';
 
     public function __construct()
     {
-        //$configHandler = new AGICallHandlerConfig();
-        //echo json_encode($configHandler->globalConfiguration);
-
-        echo "setupAGIEnvironment";
         $this->setupAGIEnvironment();
-        echo "setupFilePaths";
         $this->setupFilePaths();
-        echo "loadConfiguration";
         $this->loadConfiguration();
-        echo "checkExtensionExists";
         $this->checkExtensionExists();
     }
 
@@ -102,7 +97,6 @@ class AGICallHandler
      */
     private function loadConfiguration()
     {
-        echo "Loading config";
         $this->config = (new AGICallHandlerConfig())->globalConfiguration;
 
         if (isset($this->config[$this->extension])) {
@@ -114,6 +108,8 @@ class AGICallHandler
             $this->register_base_url = $config['registerBaseUrl'];
             $this->tts_provider = isset($config['tts']) ? $config['tts'] : 'google';
             $this->days_valid = isset($config['daysValid']) ? intval($config['daysValid']) : 7;
+            $this->default_language = isset($config['defaultLanguage']) ? $config['defaultLanguage'] : 'el';
+            $this->current_language = $this->default_language;
         }
     }
 
@@ -124,6 +120,97 @@ class AGICallHandler
             $this->redirectToOperator();
             exit;
         }
+    }
+
+    /**
+     * Get language configuration mapping
+     */
+    private function getLanguageConfig()
+    {
+        return [
+            'el' => [
+                'tts_code' => 'el-GR',
+                'stt_code' => 'el-GR',
+                'edge_voice' => 'el-GR-AthinaNeural'
+            ],
+            'en' => [
+                'tts_code' => 'en-US',
+                'stt_code' => 'en-US',
+                'edge_voice' => 'en-US-JennyNeural'
+            ],
+            'bg' => [
+                'tts_code' => 'bg-BG',
+                'stt_code' => 'bg-BG',
+                'edge_voice' => 'bg-BG-BorislavNeural'
+            ]
+        ];
+    }
+
+    /**
+     * Get sound file path for current language
+     */
+    private function getSoundFile($sound_name)
+    {
+        return "custom/{$sound_name}_v10_{$this->current_language}";
+    }
+
+    /**
+     * Get localized text for current language
+     */
+    private function getLocalizedText($key)
+    {
+        $texts = [
+            'anonymous_message' => [
+                'el' => 'Παρακαλούμε καλέστε από έναν αριθμό που δεν είναι ανώνυμος',
+                'en' => 'Please call from a number that is not anonymous',
+                'bg' => 'Моля, обадете се от номер, който не е анонимен'
+            ],
+            'greeting_with_name' => [
+                'el' => 'Γεια σας {name}. Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {address}? Πατήστε 1 για ναι ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.',
+                'en' => 'Hello {name}. Would you like to use the pickup address {address}? Press 1 for yes or 2 to enter a new pickup address.',
+                'bg' => 'Здравейте {name}. Искате ли да използвате адреса за вземане {address}? Натиснете 1 за да или 2, за да въведете нов адрес за вземане.'
+            ],
+            'confirmation_text' => [
+                'el' => 'Παρακαλώ επιβεβαιώστε. Όνομα: {name}. Παραλαβή: {pickup}. Προορισμός: {destination}',
+                'en' => 'Please confirm. Name: {name}. Pickup: {pickup}. Destination: {destination}',
+                'bg' => 'Моля потвърдете. Име: {name}. Вземане: {pickup}. Дестинация: {destination}'
+            ],
+            'reservation_confirmation_text' => [
+                'el' => 'Παρακαλώ επιβεβαιώστε. Όνομα: {name}. Παραλαβή: {pickup}. Προορισμός: {destination}. Ώρα ραντεβού: {time}',
+                'en' => 'Please confirm. Name: {name}. Pickup: {pickup}. Destination: {destination}. Reservation time: {time}',
+                'bg' => 'Моля потвърдете. Име: {name}. Вземане: {pickup}. Дестинация: {destination}. Час на резервацията: {time}'
+            ],
+            'reservation_time_confirmation' => [
+                'el' => 'Το ραντεβού είναι για {time}, πατήστε 0 για επιβεβαίωση ή 1 για να προσπαθήσετε ξανά',
+                'en' => 'The reservation is for {time}, press 0 to confirm or 1 to try again',
+                'bg' => 'Резервацията е за {time}, натиснете 0 за потвърждение или 1, за да опитате отново'
+            ],
+            'registration_error' => [
+                'el' => 'Κάτι πήγε στραβά με την καταχώρηση της διαδρομής σας',
+                'en' => 'Something went wrong with registering your route',
+                'bg' => 'Нещо се обърка с регистрирането на вашия маршрут'
+            ],
+            'automated_call_comment' => [
+                'el' => '[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]',
+                'en' => '[AUTOMATED CALL]',
+                'bg' => '[АВТОМАТИЗИРАНО ОБАЖДАНЕ]'
+            ],
+            'automated_reservation_comment' => [
+                'el' => '[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΡΑΤΗΣΗ - {time}]',
+                'en' => '[AUTOMATED RESERVATION - {time}]',
+                'bg' => '[АВТОМАТИЗИРАНА РЕЗЕРВАЦИЯ - {time}]'
+            ]
+        ];
+
+        if (isset($texts[$key][$this->current_language])) {
+            return $texts[$key][$this->current_language];
+        }
+        
+        if (isset($texts[$key]['el'])) {
+            return $texts[$key]['el'];
+        }
+        
+        return $key;
     }
 
     /**
@@ -209,7 +296,7 @@ class AGICallHandler
     private function redirectToOperator()
     {
         $this->logMessage("Redirecting to operator: {$this->phone_to_call}");
-        $this->agiCommand("EXEC Dial \"{$this->phone_to_call},20\"");
+        $this->agiCommand("EXEC \"Dial\" \"{$this->phone_to_call},20\"");
         $this->agiCommand('HANGUP');
     }
 
@@ -290,13 +377,17 @@ class AGICallHandler
 
         $audio_content = base64_encode(file_get_contents($wav_file));
 
+        $lang_config = $this->getLanguageConfig();
+        $language_code = isset($lang_config[$this->current_language]) ? 
+            $lang_config[$this->current_language]['stt_code'] : 'el-GR';
+
         $url = "https://speech.googleapis.com/v1/speech:recognize?key={$this->api_key}";
         $headers = ["Content-Type: application/json"];
         $body = [
             "config" => [
                 "encoding" => "LINEAR16",
                 "sampleRateHertz" => 8000,
-                "languageCode" => "el-GR",
+                "languageCode" => $language_code,
                 "profanityFilter" => false
             ],
             "audio" => ["content" => $audio_content]
@@ -342,11 +433,15 @@ class AGICallHandler
      */
     private function callGoogleTTS($text, $output_file)
     {
+        $lang_config = $this->getLanguageConfig();
+        $language_code = isset($lang_config[$this->current_language]) ? 
+            $lang_config[$this->current_language]['tts_code'] : 'el-GR';
+
         $url = "https://texttospeech.googleapis.com/v1/text:synthesize?key={$this->api_key}";
         $headers = ["Content-Type: application/json"];
         $data = [
             "input" => ["text" => $text],
-            "voice" => ["languageCode" => "el-GR"],
+            "voice" => ["languageCode" => $language_code],
             "audioConfig" => [
                 "audioEncoding" => "MP3",
                 "speakingRate" => 1.0,
@@ -393,12 +488,16 @@ class AGICallHandler
      */
     private function callEdgeTTS($text, $output_file)
     {
+        $lang_config = $this->getLanguageConfig();
+        $edge_voice = isset($lang_config[$this->current_language]) ? 
+            $lang_config[$this->current_language]['edge_voice'] : 'el-GR-AthinaNeural';
+
         $wav_file = $output_file . '.wav';
 
         $escaped_text = escapeshellarg($text);
         $escaped_output = escapeshellarg($wav_file);
 
-        $cmd = "edge-tts --voice el-GR-AthinaNeural --text {$escaped_text} --write-media {$escaped_output} 2>/dev/null";
+        $cmd = "edge-tts --voice {$edge_voice} --text {$escaped_text} --write-media {$escaped_output} 2>/dev/null";
         $this->logMessage("Edge TTS command: {$cmd}");
 
         exec($cmd, $output, $return_code);
@@ -526,7 +625,7 @@ class AGICallHandler
             "destLatitude" => isset($this->dest_location['latLng']['lat']) ? $this->dest_location['latLng']['lat'] : 0,
             "destLongitude" => isset($this->dest_location['latLng']['lng']) ? $this->dest_location['latLng']['lng'] : 0,
             "taxisNo" => 1,
-            "comments" => $this->is_reservation ? "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΡΑΤΗΣΗ - {$this->reservation_result}]" : "[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]",
+            "comments" => $this->is_reservation ? str_replace('{time}', $this->reservation_result, $this->getLocalizedText('automated_reservation_comment')) : $this->getLocalizedText('automated_call_comment'),
             "referencePath" => $this->filebase,
             "daysValid" => $this->days_valid
         ];
@@ -556,7 +655,7 @@ class AGICallHandler
 
         if ($http_code !== 200 || !$response) {
             $this->logMessage("Registration API failed - HTTP: {$http_code}");
-            return ["callOperator" => true, "msg" => "Κάτι πήγε στραβά με την καταχώρηση της διαδρομής σας"];
+            return ["callOperator" => true, "msg" => $this->getLocalizedText('registration_error')];
         }
 
         $decoded_response = json_decode($response, true);
@@ -566,7 +665,7 @@ class AGICallHandler
         $data = json_decode($response, true);
         if (!$data) {
             $this->logMessage("Registration API - Invalid JSON response");
-            return ["callOperator" => true, "msg" => "Κάτι πήγε στραβά με την καταχώρηση της διαδρομής σας"];
+            return ["callOperator" => true, "msg" => $this->getLocalizedText('registration_error')];
         }
 
         $result_data = isset($data['result']) ? $data['result'] : [];
@@ -576,7 +675,7 @@ class AGICallHandler
         $this->logMessage("Registration API result - Code: {$result_code}, Message: {$msg}");
 
         if (empty($msg)) {
-            $msg = "Κάτι πήγε στραβά με την καταχώρηση της διαδρομής σας";
+            $msg = $this->getLocalizedText('registration_error');
         }
 
         $call_operator = ($result_code !== 0);
@@ -590,7 +689,7 @@ class AGICallHandler
      */
     private function readDTMF($prompt_file, $digits = 1, $timeout = 10)
     {
-        $response = $this->agiCommand("EXEC Read \"USER_CHOICE,{$prompt_file},{$digits},,1,{$timeout}\"");
+        $response = $this->agiCommand("EXEC \"Read\" \"USER_CHOICE,{$prompt_file},{$digits},,1,{$timeout}\"");
         $choice_response = $this->agiCommand("GET VARIABLE USER_CHOICE");
 
         if (preg_match('/200 result=1 \((.+)\)/', $choice_response, $matches)) {
@@ -609,7 +708,7 @@ class AGICallHandler
 
             if ($this->isAnonymousCaller()) {
                 $this->logMessage("Anonymous caller detected");
-                $this->agiCommand('EXEC Playback "custom/anonymous-v2"');
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('anonymous') . '"');
                 $this->redirectToOperator();
                 return;
             }
@@ -617,8 +716,17 @@ class AGICallHandler
             $this->saveJson("phone", $this->caller_num);
 
             $this->logMessage("Playing welcome message");
-            $user_choice = $this->readDTMF($this->welcome_playback, 1, 3);
+            $user_choice = $this->readDTMF($this->getSoundFile('welcome_iqtaxi'), 1, 5);
             $this->logMessage("User choice: {$user_choice}");
+
+            if ($user_choice == "9") {
+                $this->logMessage("User selected language change to English");
+                $this->current_language = 'en';
+                $this->saveJson("language", $this->current_language);
+                
+                $user_choice = $this->readDTMF($this->getSoundFile('welcome_iqtaxi'), 1, 5);
+                $this->logMessage("User choice after language change: {$user_choice}");
+            }
 
             if ($user_choice == "3") {
                 $this->logMessage("User selected operator");
@@ -658,7 +766,7 @@ class AGICallHandler
                 $this->logMessage("Found existing user data: name={$user_data['name']}, pickup={$user_data['pickup']}");
                 $this->name_result = $user_data['name'];
 
-                $confirmation_text = "Γεια σας {$user_data['name']}. Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {$user_data['pickup']}? Πατήστε 1 για ναι ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.";
+                $confirmation_text = str_replace(['{name}', '{address}'], [$user_data['name'], $user_data['pickup']], $this->getLocalizedText('greeting_with_name'));
 
                 $confirm_file = "{$this->filebase}/pickup_confirm";
                 $this->logMessage("Generating TTS for pickup address confirmation");
@@ -737,7 +845,7 @@ class AGICallHandler
 
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->logMessage("Name attempt {$try}/{$this->max_retries}");
-            $this->agiCommand('EXEC Playback "custom/give-name-v2"');
+            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('name') . '"');
 
             $recording_file = "{$this->filebase}/recordings/name_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
@@ -758,7 +866,7 @@ class AGICallHandler
             }
 
             if ($try < $this->max_retries) {
-                $this->agiCommand('EXEC Playback "custom/invalid-v2"');
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
             }
         }
 
@@ -775,7 +883,7 @@ class AGICallHandler
 
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->logMessage("Pickup attempt {$try}/{$this->max_retries}");
-            $this->agiCommand('EXEC Playback "custom/give-pickup-address-v2"');
+            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('pick_up') . '"');
 
             $recording_file = "{$this->filebase}/recordings/pickup_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
@@ -803,7 +911,7 @@ class AGICallHandler
             }
 
             if ($try < $this->max_retries) {
-                $this->agiCommand('EXEC Playback "custom/invalid-v2"');
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
             }
         }
 
@@ -820,7 +928,7 @@ class AGICallHandler
 
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->logMessage("Destination attempt {$try}/{$this->max_retries}");
-            $this->agiCommand('EXEC Playback "custom/give-dest-address-v2"');
+            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('drop_off') . '"');
 
             $recording_file = "{$this->filebase}/recordings/dest_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
@@ -848,7 +956,7 @@ class AGICallHandler
             }
 
             if ($try < $this->max_retries) {
-                $this->agiCommand('EXEC Playback "custom/invalid-v2"');
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
             }
         }
 
@@ -864,7 +972,7 @@ class AGICallHandler
         for ($try = 1; $try <= 3; $try++) {
             $this->logMessage("Confirmation attempt {$try}/3");
 
-            $confirm_text = "Παρακαλώ επιβεβαιώστε. Όνομα: {$this->name_result}. Παραλαβή: {$this->pickup_result}. Προορισμός: {$this->dest_result}";
+            $confirm_text = str_replace(['{name}', '{pickup}', '{destination}'], [$this->name_result, $this->pickup_result, $this->dest_result], $this->getLocalizedText('confirmation_text'));
             $confirm_file = "{$this->filebase}/confirm";
 
             $this->startMusicOnHold();
@@ -878,7 +986,7 @@ class AGICallHandler
             }
 
             $this->logMessage("Waiting for user confirmation");
-            $choice = $this->readDTMF("custom/options-v2", 1, 10);
+            $choice = $this->readDTMF($this->getSoundFile('options'), 1, 10);
             $this->logMessage("User choice: {$choice}");
 
             if ($choice == "0") {
@@ -934,7 +1042,7 @@ class AGICallHandler
                     return;
                 }
             } else {
-                $this->agiCommand('EXEC Playback "custom/invalid-v2"');
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
             }
         }
 
@@ -968,7 +1076,7 @@ class AGICallHandler
             $this->logMessage("Found existing user data: name={$user_data['name']}, pickup={$user_data['pickup']}");
             $this->name_result = $user_data['name'];
 
-            $confirmation_text = "Γεια σας {$user_data['name']}. Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {$user_data['pickup']}? Πατήστε 1 για ναι ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.";
+            $confirmation_text = str_replace(['{name}', '{address}'], [$user_data['name'], $user_data['pickup']], $this->getLocalizedText('greeting_with_name'));
 
             $confirm_file = "{$this->filebase}/pickup_confirm";
             $this->logMessage("Generating TTS for pickup address confirmation");
@@ -1067,7 +1175,7 @@ class AGICallHandler
                     $this->reservation_result = $parsed_date['formattedBestMatch'];
                     $this->reservation_timestamp = $parsed_date['bestMatchUnixTimestamp'];
 
-                    $confirmation_text = "Το ραντεβού είναι για {$this->reservation_result}, πατήστε 0 για επιβεβαίωση ή 1 για να προσπαθήσετε ξανά";
+                    $confirmation_text = str_replace('{time}', $this->reservation_result, $this->getLocalizedText('reservation_time_confirmation'));
                     $confirm_file = "{$this->filebase}/confirmdate";
 
                     $this->startMusicOnHold();
@@ -1091,7 +1199,7 @@ class AGICallHandler
             }
 
             if ($try < $this->max_retries) {
-                $this->agiCommand('EXEC Playback "custom/invalid-v2"');
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
             }
         }
 
@@ -1150,7 +1258,7 @@ class AGICallHandler
         for ($try = 1; $try <= 3; $try++) {
             $this->logMessage("Reservation confirmation attempt {$try}/3");
 
-            $confirm_text = "Παρακαλώ επιβεβαιώστε. Όνομα: {$this->name_result}. Παραλαβή: {$this->pickup_result}. Προορισμός: {$this->dest_result}. Ώρα ραντεβού: {$this->reservation_result}";
+            $confirm_text = str_replace(['{name}', '{pickup}', '{destination}', '{time}'], [$this->name_result, $this->pickup_result, $this->dest_result, $this->reservation_result], $this->getLocalizedText('reservation_confirmation_text'));
             $confirm_file = "{$this->filebase}/confirm_reservation";
 
             $this->startMusicOnHold();
@@ -1164,7 +1272,7 @@ class AGICallHandler
             }
 
             $this->logMessage("Waiting for user confirmation");
-            $choice = $this->readDTMF("custom/options-v2", 1, 10);
+            $choice = $this->readDTMF($this->getSoundFile('options'), 1, 10);
             $this->logMessage("User choice: {$choice}");
 
             if ($choice == "0") {
@@ -1220,7 +1328,7 @@ class AGICallHandler
                     return;
                 }
             } else {
-                $this->agiCommand('EXEC Playback "custom/invalid-v2"');
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
             }
         }
 
@@ -1229,13 +1337,11 @@ class AGICallHandler
     }
 }
 
-echo "Initializing AGICallHandler";
+
 // Initialize and run the call handler
 try {
     $call_handler = new AGICallHandler();
-    echo "calling runCallFlow";
     $call_handler->runCallFlow();
-    echo "completed runCallFlow";
 } catch (Exception $e) {
     error_log("Fatal error: " . $e->getMessage());
     echo "HANGUP\n";

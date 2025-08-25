@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "C:\\Users\\billy\\Documents\\phpAgi\\server",
+      "C:\\Users\\billy\\Documents\\phpAgi"
+    ],
+    "allow": [
+      "Bash(php -l:*)"
+    ]
+  }
+}
