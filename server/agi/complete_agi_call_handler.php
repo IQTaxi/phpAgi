@@ -83,7 +83,7 @@ class AGICallHandler
      */
     private function setupFilePaths()
     {
-        $this->filebase = "/tmp/auto_register_call/{$this->current_exten}/{$this->caller_num}/{$this->uniqueid}";
+        $this->filebase = "/var/auto_register_call/{$this->current_exten}/{$this->caller_num}/{$this->uniqueid}";
         $this->log_prefix = "[{$this->uniqueid}]";
 
         $recordings_dir = $this->filebase . "/recordings";
@@ -220,7 +220,7 @@ class AGICallHandler
     {
         $timestamp = date('Y-m-d H:i:s');
         $log_entry = "$timestamp - {$this->log_prefix} $message\n";
-        error_log($log_entry, 3, "/tmp/asterisk_calls.log");
+        error_log($log_entry, 3, "/var/log/auto_register_call/asterisk_calls.log");
         if (!empty($this->filebase)) {
             error_log($log_entry, 3, "{$this->filebase}/log.txt");
         }
@@ -630,6 +630,14 @@ class AGICallHandler
             "daysValid" => $this->days_valid
         ];
 
+        $callback_mode = isset($this->config[$this->extension]['callbackMode']) ? $this->config[$this->extension]['callbackMode'] : 1;
+        if ($callback_mode == 2) {
+            $callback_url = isset($this->config[$this->extension]['callbackUrl']) ? $this->config[$this->extension]['callbackUrl'] : '';
+            if (!empty($callback_url)) {
+                $payload["callBackURL"] = $callback_url . "?path=" . urlencode($this->filebase);
+            }
+        }
+
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
@@ -995,19 +1003,25 @@ class AGICallHandler
                 $result = $this->registerCall();
                 $this->stopMusicOnHold();
 
-                if (!empty($result['msg'])) {
-                    $register_file = "{$this->filebase}/register";
-                    $this->logMessage("Generating TTS for message: {$result['msg']}");
-                    $this->startMusicOnHold();
-                    $tts_success = $this->callTTS($result['msg'], $register_file);
-                    $this->stopMusicOnHold();
+                $callback_mode = isset($this->config[$this->extension]['callbackMode']) ? $this->config[$this->extension]['callbackMode'] : 1;
+                
+                if ($callback_mode == 2) {
+                    $this->monitorStatusUpdates();
+                } else {
+                    if (!empty($result['msg'])) {
+                        $register_file = "{$this->filebase}/register";
+                        $this->logMessage("Generating TTS for message: {$result['msg']}");
+                        $this->startMusicOnHold();
+                        $tts_success = $this->callTTS($result['msg'], $register_file);
+                        $this->stopMusicOnHold();
 
-                    if ($tts_success) {
-                        $this->logMessage("Playing TTS message to caller");
-                        $this->agiCommand("EXEC Playback \"{$register_file}\"");
-                    } else {
-                        $this->logMessage("TTS generation failed, playing fallback message");
-                        $this->agiCommand('EXEC Playback "custom/register-call-conf"');
+                        if ($tts_success) {
+                            $this->logMessage("Playing TTS message to caller");
+                            $this->agiCommand("EXEC Playback \"{$register_file}\"");
+                        } else {
+                            $this->logMessage("TTS generation failed, playing fallback message");
+                            $this->agiCommand('EXEC Playback "custom/register-call-conf"');
+                        }
                     }
                 }
 
@@ -1334,6 +1348,238 @@ class AGICallHandler
 
         $this->logMessage("Too many invalid reservation confirmation attempts");
         $this->redirectToOperator();
+    }
+
+    /**
+     * Monitor status updates from register_info.json and play TTS announcements
+     */
+    private function monitorStatusUpdates()
+    {
+        $this->logMessage("Callback mode enabled - starting status monitoring");
+        $register_info_file = $this->filebase . "/register_info.json";
+        $repeat_times = isset($this->config[$this->extension]['repeatTimes']) ? $this->config[$this->extension]['repeatTimes'] : 10;
+        
+        $last_status = null;
+        $last_car_no = null;
+        $last_time = null;
+        $status_file = "{$this->filebase}/status_update";
+        $has_announced = false;
+        
+        for ($i = 0; $i < $repeat_times; $i++) {
+            $this->logMessage("Status check attempt " . ($i + 1) . "/{$repeat_times}");
+            
+            if (file_exists($register_info_file)) {
+                $register_info = json_decode(file_get_contents($register_info_file), true);
+                
+                if ($register_info && isset($register_info['status'])) {
+                    $current_status = $register_info['status'];
+                    $current_car_no = isset($register_info['carNo']) ? trim($register_info['carNo']) : '';
+                    $current_time = isset($register_info['time']) ? intval($register_info['time']) : 0;
+                    
+                    if ($current_status == 20) {
+                        $this->logMessage("No taxi found (status 20)");
+                        $no_taxi_message = $this->getLocalizedStatusMessage('no_taxi_found');
+                        
+                        $this->logMessage("Generating TTS for no taxi: {$no_taxi_message}");
+                        $this->startMusicOnHold();
+                        $tts_success = $this->callTTS($no_taxi_message, $status_file);
+                        $this->stopMusicOnHold();
+                        
+                        if ($tts_success) {
+                            $this->logMessage("Playing no taxi message to caller");
+                            $this->agiCommand("EXEC Playback \"{$status_file}\"");
+                        }
+                        break;
+                    }
+                    
+                    if ($current_status == 10 && !empty($current_car_no) && !$has_announced) {
+                        $this->logMessage("Driver accepted with car: {$current_car_no}");
+                        $accepted_message = $this->getLocalizedStatusMessage('driver_accepted', $current_car_no);
+                        
+                        $this->logMessage("Generating TTS for acceptance: {$accepted_message}");
+                        $this->startMusicOnHold();
+                        $tts_success = $this->callTTS($accepted_message, $status_file);
+                        $this->stopMusicOnHold();
+                        
+                        if ($tts_success) {
+                            $this->logMessage("Playing driver accepted message to caller");
+                            $this->agiCommand("EXEC Playback \"{$status_file}\"");
+                            $has_announced = true;
+                        }
+                        
+                        $last_status = $current_status;
+                        $last_car_no = $current_car_no;
+                        $last_time = $current_time;
+                        continue;
+                    }
+                    
+                    if ($has_announced && ($current_status != $last_status || $current_car_no != $last_car_no || $current_time != $last_time)) {
+                        $this->logMessage("Status update: {$current_status}, CarNo: {$current_car_no}, Time: {$current_time}");
+                        
+                        $status_message = $this->getLocalizedStatusMessage('status_update', $current_car_no, $current_status, $current_time);
+                        
+                        $this->logMessage("Generating TTS for status update: {$status_message}");
+                        $this->startMusicOnHold();
+                        $tts_success = $this->callTTS($status_message, $status_file);
+                        $this->stopMusicOnHold();
+                        
+                        if ($tts_success) {
+                            $this->logMessage("Playing status update to caller");
+                            $this->agiCommand("EXEC Playback \"{$status_file}\"");
+                        }
+                        
+                        $last_status = $current_status;
+                        $last_car_no = $current_car_no;
+                        $last_time = $current_time;
+                        
+                        if (in_array($current_status, [30, 31, 32, 100])) {
+                            $this->logMessage("Final status reached: {$current_status}");
+                            break;
+                        }
+                    } else if ($has_announced && file_exists($status_file . '.wav')) {
+                        $this->logMessage("No status change, replaying last message");
+                        $this->agiCommand("EXEC Playback \"{$status_file}\"");
+                    }
+                    
+                    if (!$has_announced && $current_status == -1) {
+                        $searching_message = $this->getLocalizedStatusMessage('searching');
+                        
+                        $this->logMessage("Generating TTS for searching: {$searching_message}");
+                        $this->startMusicOnHold();
+                        $tts_success = $this->callTTS($searching_message, $status_file);
+                        $this->stopMusicOnHold();
+                        
+                        if ($tts_success) {
+                            $this->logMessage("Playing searching message to caller");
+                            $this->agiCommand("EXEC Playback \"{$status_file}\"");
+                        }
+                    }
+                } else {
+                    $this->logMessage("Invalid register_info.json format");
+                }
+            } else {
+                $this->logMessage("register_info.json not found, waiting...");
+            }
+            
+            if ($i < $repeat_times - 1) {
+                $this->agiCommand('EXEC Wait "3"');
+            }
+        }
+        
+        $this->logMessage("Status monitoring completed");
+    }
+
+    /**
+     * Get localized status message for TTS
+     */
+    private function getLocalizedStatusMessage($type, $car_no = '', $status = null, $time = 0)
+    {
+        $status_names = [
+            'el' => [
+                -1 => 'αναζητούμε ταξί για εσάς',
+                1 => 'έρχεται προς εσάς',
+                2 => 'έχει φτάσει στη διεύθυνσή σας',
+                3 => 'σας παραλαμβάνει',
+                8 => 'σας παραδίδει στον προορισμό',
+                10 => 'δέχτηκε την κλήση σας',
+                20 => 'δεν βρέθηκε διαθέσιμο ταξί',
+                30 => 'η κλήση ακυρώθηκε από τον επιβάτη',
+                31 => 'η κλήση ακυρώθηκε από τον οδηγό',
+                32 => 'η κλήση ακυρώθηκε από το σύστημα',
+                40 => 'καταγράφηκε η πληρωμή',
+                50 => 'καταγράφηκε ο χρόνος του οδηγού',
+                60 => 'αναμένουμε απάντηση από τον οδηγό',
+                70 => 'ο οδηγός απάντησε',
+                80 => 'τροποποιήθηκε η κράτηση',
+                100 => 'η διαδρομή ολοκληρώθηκε',
+                101 => 'νέο μήνυμα',
+                255 => 'βρίσκεται στη θέση σας'
+            ],
+            'en' => [
+                -1 => 'we are searching for a taxi for you',
+                1 => 'is coming to you',
+                2 => 'has arrived at your address',
+                3 => 'is picking you up',
+                8 => 'is dropping you off at your destination',
+                10 => 'accepted your call',
+                20 => 'no available taxi was found',
+                30 => 'the call was cancelled by the passenger',
+                31 => 'the call was cancelled by the driver',
+                32 => 'the call was cancelled by the system',
+                40 => 'payment was registered',
+                50 => 'driver time was registered',
+                60 => 'waiting for driver response',
+                70 => 'driver responded',
+                80 => 'reservation was modified',
+                100 => 'the trip was completed',
+                101 => 'new message',
+                255 => 'is at your location'
+            ],
+            'bg' => [
+                -1 => 'търсим такси за вас',
+                1 => 'идва при вас',
+                2 => 'пристигна на вашия адрес',
+                3 => 'ви взема',
+                8 => 'ви оставя на дестинацията',
+                10 => 'прие вашето повикване',
+                20 => 'не беше намерено налично такси',
+                30 => 'повикването беше отменено от пътника',
+                31 => 'повикването беше отменено от шофьора',
+                32 => 'повикването беше отменено от системата',
+                40 => 'плащането беше регистрирано',
+                50 => 'времето на шофьора беше регистрирано',
+                60 => 'чакаме отговор от шофьора',
+                70 => 'шофьорът отговори',
+                80 => 'резервацията беше променена',
+                100 => 'пътуването приключи',
+                101 => 'ново съобщение',
+                255 => 'е на вашето местоположение'
+            ]
+        ];
+        
+        $lang_status = isset($status_names[$this->current_language]) ? $status_names[$this->current_language] : $status_names['el'];
+        
+        switch ($type) {
+            case 'searching':
+                return $lang_status[-1];
+                
+            case 'no_taxi_found':
+                return $lang_status[20];
+                
+            case 'driver_accepted':
+                if ($this->current_language == 'en') {
+                    return "Taxi number {$car_no} " . $lang_status[10];
+                } else if ($this->current_language == 'bg') {
+                    return "Такси номер {$car_no} " . $lang_status[10];
+                } else {
+                    return "Το ταξί με αριθμό {$car_no} " . $lang_status[10];
+                }
+                
+            case 'status_update':
+                $status_text = isset($lang_status[$status]) ? $lang_status[$status] : 'άγνωστη κατάσταση';
+                
+                if ($this->current_language == 'en') {
+                    $message = "Taxi {$car_no} {$status_text}";
+                    if ($time > 0) {
+                        $message .= " in {$time} minutes";
+                    }
+                } else if ($this->current_language == 'bg') {
+                    $message = "Такси {$car_no} {$status_text}";
+                    if ($time > 0) {
+                        $message .= " за {$time} минути";
+                    }
+                } else {
+                    $message = "Το ταξί {$car_no} {$status_text}";
+                    if ($time > 0) {
+                        $message .= " σε {$time} λεπτά";
+                    }
+                }
+                
+                return $message;
+                
+            default:
+                return '';
+        }
     }
 }
 

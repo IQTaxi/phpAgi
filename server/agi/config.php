@@ -1,4 +1,8 @@
 <?php
+// callbackMode configuration:
+// 1 = Normal mode: reads API response message and plays TTS, then closes call
+// 2 = Callback mode: sends callBackURL to server, waits for register_info.json, 
+//     reads status and carNo from file, announces via TTS
 
 class AGICallHandlerConfig
 {
@@ -12,7 +16,9 @@ class AGICallHandlerConfig
         "welcomePlayback" => "custom/welcome-v2",
         "tts" => "google",
         "daysValid" => 7,
-        "defaultLanguage" => "el"
+        "defaultLanguage" => "el",
+        "callbackMode" => 1,
+        "callbackUrl" => "http://192.168.1.100/callback.php"
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -23,7 +29,9 @@ class AGICallHandlerConfig
         "welcomePlayback" => "custom/welcome-v3",
         "tts" => "google",
         "daysValid" => 7,
-        "defaultLanguage" => "el"
+        "defaultLanguage" => "el",
+        "callbackMode" => 1,
+        "callbackUrl" => "http://192.168.1.100/callback.php"
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -34,7 +42,9 @@ class AGICallHandlerConfig
         "welcomePlayback" => "custom/welcome-v3",
         "tts" => "edge-tts",
         "daysValid" => 30,
-        "defaultLanguage" => "el"
+        "defaultLanguage" => "el",
+        "callbackMode" => 2,
+        "callbackUrl" => "http://79.129.41.206/callback.php"
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -45,7 +55,9 @@ class AGICallHandlerConfig
         "welcomePlayback" => "custom/welcome-kosmos-2",
         "tts" => "edge-tts",
         "daysValid" => 30,
-        "defaultLanguage" => "el"
+        "defaultLanguage" => "el",
+        "callbackMode" => 2,
+        "callbackUrl" => "https://18300.fortiddns.com/callback.php"
     ],
     "5001" => [
                 "name" => "iqtaxi.com",
@@ -56,7 +68,10 @@ class AGICallHandlerConfig
                 "welcomePlayback" => "custom/welcome-v3",
                 "tts" => "google",
                 "daysValid" => 7,
-                "defaultLanguage" => "el"
+                "defaultLanguage" => "el",
+                "callbackMode" => 1,
+                "callbackUrl" => "http://192.168.1.100/callback.php",
+                "repeatTimes" => 10
     ]
 ];
 }

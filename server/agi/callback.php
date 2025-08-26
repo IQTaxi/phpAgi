@@ -51,7 +51,7 @@ if (!is_dir($registerInfoDir)) {
     mkdir($registerInfoDir, 0777, true);
 }
 
-file_put_contents($registerInfoFile, json_encode($data, JSON_PRETTY_PRINT));
+file_put_contents($registerInfoFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
 http_response_code(200);
 echo json_encode(['success' => true]);
