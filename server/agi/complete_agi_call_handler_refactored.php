@@ -1133,7 +1133,10 @@ class AGICallHandler
             // Wait and retry to check if register_info.json exists
             for ($i = 0; $i < $repeat_times; $i++) {
                 $this->logMessage("Waiting for register_info.json - attempt " . ($i + 1) . "/{$repeat_times}");
+                
+                $this->startMusicOnHold();
                 $this->agiCommand('EXEC Wait "3"');
+                $this->stopMusicOnHold();
                 
                 if (file_exists($register_info_file)) {
                     $this->logMessage("register_info.json found, starting status monitoring");
@@ -1143,6 +1146,10 @@ class AGICallHandler
                 if ($i == $repeat_times - 1) {
                     $this->logMessage("register_info.json not found after {$repeat_times} attempts");
                     return;
+                } else {
+                    // Play waiting message again before next attempt
+                    $this->logMessage("Still waiting, playing waiting sound again");
+                    $this->agiCommand('EXEC Playback "' . $this->getSoundFile('waiting_register') . '"');
                 }
             }
         }
