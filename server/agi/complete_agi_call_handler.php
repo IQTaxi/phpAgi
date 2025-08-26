@@ -588,9 +588,30 @@ class AGICallHandler
         if (!$data || $data['status'] !== 'OK' || empty($data['results'])) return null;
 
         $result = $data['results'][0];
+        $location_type = $result['geometry']['location_type'];
+        
+        // Validate location type based on pickup/dropoff and config
+        if ($is_pickup) {
+            // Pickup locations ALWAYS require precise location types
+            if (!in_array($location_type, ['ROOFTOP', 'RANGE_INTERPOLATED'])) {
+                $this->logMessage("Pickup location rejected - type: {$location_type}, address: {$result['formatted_address']}");
+                return null;
+            }
+        } else {
+            // Dropoff location validation based on config
+            $strict_dropoff = isset($this->config[$this->extension]['strictDropoffLocation']) ? 
+                $this->config[$this->extension]['strictDropoffLocation'] : false;
+                
+            if ($strict_dropoff && !in_array($location_type, ['ROOFTOP', 'RANGE_INTERPOLATED'])) {
+                $this->logMessage("Dropoff location rejected (strict mode) - type: {$location_type}, address: {$result['formatted_address']}");
+                return null;
+            }
+        }
+        
+        $this->logMessage("Location accepted - type: {$location_type}, address: {$result['formatted_address']}");
         return [
             "address" => $result['formatted_address'],
-            "location_type" => $result['geometry']['location_type'],
+            "location_type" => $location_type,
             "latLng" => [
                 "lat" => $result['geometry']['location']['lat'],
                 "lng" => $result['geometry']['location']['lng']
