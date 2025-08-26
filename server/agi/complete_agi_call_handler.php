@@ -1006,6 +1006,29 @@ class AGICallHandler
                 $callback_mode = isset($this->config[$this->extension]['callbackMode']) ? $this->config[$this->extension]['callbackMode'] : 1;
                 
                 if ($callback_mode == 2) {
+                    $register_info_file = $this->filebase . "/register_info.json";
+                    $repeat_times = isset($this->config[$this->extension]['repeatTimes']) ? $this->config[$this->extension]['repeatTimes'] : 10;
+                    
+                    if (!file_exists($register_info_file)) {
+                        $this->logMessage("Playing waiting for registration sound");
+                        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('waiting_register') . '"');
+                        
+                        // Wait and retry to check if register_info.json exists
+                        for ($i = 0; $i < $repeat_times; $i++) {
+                            $this->logMessage("Waiting for register_info.json - attempt " . ($i + 1) . "/{$repeat_times}");
+                            $this->agiCommand('EXEC Wait "3"');
+                            
+                            if (file_exists($register_info_file)) {
+                                $this->logMessage("register_info.json found, starting status monitoring");
+                                break;
+                            }
+                            
+                            if ($i == $repeat_times - 1) {
+                                $this->logMessage("register_info.json not found after {$repeat_times} attempts");
+                                return;
+                            }
+                        }
+                    }
                     $this->monitorStatusUpdates();
                 } else {
                     if (!empty($result['msg'])) {
@@ -1493,7 +1516,7 @@ class AGICallHandler
                 80 => 'τροποποιήθηκε η κράτηση',
                 100 => 'η διαδρομή ολοκληρώθηκε',
                 101 => 'νέο μήνυμα',
-                255 => 'βρίσκεται στη θέση σας'
+                255 => 'είναι καθ\' οδόν'
             ],
             'en' => [
                 -1 => 'we are searching for a taxi for you',
@@ -1513,7 +1536,7 @@ class AGICallHandler
                 80 => 'reservation was modified',
                 100 => 'the trip was completed',
                 101 => 'new message',
-                255 => 'is at your location'
+                255 => 'is on the way'
             ],
             'bg' => [
                 -1 => 'търсим такси за вас',
@@ -1533,7 +1556,7 @@ class AGICallHandler
                 80 => 'резервацията беше променена',
                 100 => 'пътуването приключи',
                 101 => 'ново съобщение',
-                255 => 'е на вашето местоположение'
+                255 => 'е в движение'
             ]
         ];
         
