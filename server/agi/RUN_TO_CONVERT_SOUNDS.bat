@@ -30,34 +30,49 @@ if not exist "sounds_wav" mkdir "sounds_wav"
 echo Created sounds_wav directory
 echo.
 
-REM Convert main sounds folder
-echo Converting main sounds folder...
+REM Initialize counter
+set /a total_count=0
+
+REM Convert files in main sounds folder (if any)
 set /a main_count=0
 for %%f in (sounds\*.mp3) do (
     set /a main_count+=1
-    echo   Converting: %%~nxf
+    set /a total_count+=1
+    echo Converting: %%~nxf
     ffmpeg -y -i "%%f" -ar 8000 -ac 1 -acodec pcm_s16le "sounds_wav\%%~nf.wav" >nul 2>&1
 )
-echo   Converted %main_count% files from main folder
-echo.
 
-REM Convert iqtaxi subfolder if exists
-set /a sub_count=0
-if exist "sounds\iqtaxi" (
-    echo Converting iqtaxi subfolder...
-    if not exist "sounds_wav\iqtaxi" mkdir "sounds_wav\iqtaxi"
-    for %%f in (sounds\iqtaxi\*.mp3) do (
-        set /a sub_count+=1
-        echo   Converting: iqtaxi\%%~nxf
-        ffmpeg -y -i "%%f" -ar 8000 -ac 1 -acodec pcm_s16le "sounds_wav\iqtaxi\%%~nf.wav" >nul 2>&1
-    )
-    echo   Converted %sub_count% files from iqtaxi folder
+if %main_count% gtr 0 (
+    echo   Converted %main_count% files from main folder
+    echo.
 ) else (
-    echo No iqtaxi subfolder found
+    echo No MP3 files found in main sounds folder
+    echo.
 )
 
-echo.
-set /a total_count=%main_count%+%sub_count%
+REM Dynamically find all subfolders in sounds directory and convert their MP3 files
+for /d %%D in (sounds\*) do (
+    set "subfolder=%%~nxD"
+    set /a sub_count=0
+    
+    REM Check if this subfolder has MP3 files
+    for %%f in ("%%D\*.mp3") do (
+        if !sub_count! equ 0 (
+            echo Converting !subfolder! subfolder...
+            if not exist "sounds_wav\!subfolder!" mkdir "sounds_wav\!subfolder!"
+        )
+        set /a sub_count+=1
+        set /a total_count+=1
+        echo   Converting: !subfolder!\%%~nxf
+        ffmpeg -y -i "%%f" -ar 8000 -ac 1 -acodec pcm_s16le "sounds_wav\!subfolder!\%%~nf.wav" >nul 2>&1
+    )
+    
+    if !sub_count! gtr 0 (
+        echo   Converted !sub_count! files from !subfolder! folder
+        echo.
+    )
+)
+
 echo ===============================================
 echo        CONVERSION COMPLETED!
 echo ===============================================
