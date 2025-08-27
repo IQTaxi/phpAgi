@@ -1,11 +1,16 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(php -l:*)",
+      "Read(/C:\\c\\Windows/**)",
+      "Bash(powershell:*)",
+      "Bash(python:*)",
+      "Read(/C:\\/**)"
+    ],
     "additionalDirectories": [
       "C:\\Users\\billy\\Documents\\phpAgi\\server",
-      "C:\\Users\\billy\\Documents\\phpAgi"
-    ],
-    "allow": [
-      "Bash(php -l:*)"
+      "C:\\Users\\billy\\Documents\\phpAgi",
+      "C:\\c\\Users\\billy\\Documents\\phpAgi\\server"
     ]
   }
 }

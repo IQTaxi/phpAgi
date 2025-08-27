@@ -155,11 +155,41 @@ class AGICallHandler
     }
 
     /**
-     * Get sound file path for current language
+     * Get sound file path for current language with fallback to iqtaxi
+     * Supports both WAV and MP3 formats (WAV preferred)
      */
     private function getSoundFile($sound_name)
     {
-        return "custom/{$sound_name}_v10_{$this->current_language}";
+        $sound_path = $this->config[$this->extension]['soundPath'] ?? '/var/sounds/iqtaxi';
+        $primary_file = "{$sound_path}/{$sound_name}_{$this->current_language}";
+        
+        // Check if primary file exists (WAV preferred, then MP3)
+        $file_exists = $this->checkSoundFileExists($primary_file);
+        
+        if ($file_exists || $sound_path === '/var/sounds/iqtaxi') {
+            return $primary_file;
+        } else {
+            $fallback_file = "/var/sounds/iqtaxi/{$sound_name}_{$this->current_language}";
+            $this->logMessage("Sound file not found at {$primary_file}, using fallback: {$fallback_file}");
+            return $fallback_file;
+        }
+    }
+
+    /**
+     * Check if sound file exists in supported formats (WAV preferred, then MP3)
+     */
+    private function checkSoundFileExists($file_path)
+    {
+        // Check WAV first (preferred format), then MP3
+        $formats = ['.wav', '.mp3'];
+        
+        foreach ($formats as $format) {
+            if (file_exists($file_path . $format)) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     /**
@@ -1170,7 +1200,8 @@ class AGICallHandler
                 $this->agiCommand("EXEC Playback \"{$register_file}\"");
             } else {
                 $this->logMessage("TTS generation failed, playing fallback message");
-                $this->agiCommand('EXEC Playback "custom/register-call-conf"');
+                $sound_path = $this->config[$this->extension]['soundPath'] ?? '/var/sounds/iqtaxi';
+                $this->agiCommand('EXEC Playback "' . $sound_path . '/register-call-conf_' . $this->current_language . '"');
             }
         }
     }
@@ -1335,7 +1366,7 @@ class AGICallHandler
         $this->stopMusicOnHold();
 
         if ($tts_success) {
-            $this->agiCommand("EXEC Playbook \"{$confirm_file}\"");
+            $this->agiCommand("EXEC Playback \"{$confirm_file}\"");
             return true;
         } else {
             $this->logMessage("TTS failed, proceeding without confirmation audio");
@@ -1362,7 +1393,8 @@ class AGICallHandler
                 $this->agiCommand("EXEC Playback \"{$register_file}\"");
             } else {
                 $this->logMessage("TTS generation failed, playing fallback message");
-                $this->agiCommand('EXEC Playback "custom/register-call-conf"');
+                $sound_path = $this->config[$this->extension]['soundPath'] ?? '/var/sounds/iqtaxi';
+                $this->agiCommand('EXEC Playback "' . $sound_path . '/register-call-conf_' . $this->current_language . '"');
             }
         }
 
@@ -1652,7 +1684,7 @@ class AGICallHandler
     private function getInitialUserChoice()
     {
         $this->logMessage("Playing welcome message");
-        $user_choice = $this->readDTMF($this->getSoundFile('welcome_iqtaxi'), 1, 5);
+        $user_choice = $this->readDTMF($this->getSoundFile('welcome'), 1, 5);
         $this->logMessage("User choice: {$user_choice}");
 
         if ($user_choice == "9") {
@@ -1660,7 +1692,7 @@ class AGICallHandler
             $this->current_language = 'en';
             $this->saveJson("language", $this->current_language);
             
-            $user_choice = $this->readDTMF($this->getSoundFile('welcome_iqtaxi'), 1, 5);
+            $user_choice = $this->readDTMF($this->getSoundFile('welcome'), 1, 5);
             $this->logMessage("User choice after language change: {$user_choice}");
         }
 
