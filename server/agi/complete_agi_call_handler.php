@@ -52,13 +52,19 @@ class AGICallHandler
     private $reservation_result = '';
     private $reservation_timestamp = '';
     private $is_reservation = false;
-    
-    // Enhanced analytics tracking
+
+    // === ANALYTICS PROPERTIES ===
     private $analytics_data = [];
+    private $call_start_time;
+    private $step_start_time;
+    private $current_step = 'initialization';
+    private $stt_calls = 0;
+    private $tts_calls = 0;
+    private $stt_total_time = 0;
+    private $tts_total_time = 0;
+    private $attempt_counts = [];
     private $analytics_url = 'http://127.0.0.1/agi_analytics.php';
     private $start_time;
-    private $current_step = 'initialization';
-    private $step_start_time;
     private $db_connection = null;
 
     // === INITIALIZATION ===
@@ -133,7 +139,7 @@ class AGICallHandler
         if (!isset($this->config[$this->extension])) {
             $this->logMessage("Extension {$this->extension} not found in config");
             $this->redirectToOperator();
-            exit;
+            exit(0); // Exit with success code after transferring to operator
         }
     }
     
@@ -672,10 +678,51 @@ class AGICallHandler
     {
         $timestamp = date('Y-m-d H:i:s');
         $log_entry = "$timestamp - {$this->log_prefix} $message\n";
+        
+        // Always log to main asterisk calls log
         error_log($log_entry, 3, "/var/log/auto_register_call/asterisk_calls.log");
-        if (!empty($this->filebase)) {
+        
+        // Only log non-analytics messages to individual call log
+        if (!empty($this->filebase) && !$this->isAnalyticsMessage($message)) {
             error_log($log_entry, 3, "{$this->filebase}/log.txt");
         }
+    }
+    
+    /**
+     * Check if message is analytics-related
+     */
+    private function isAnalyticsMessage($message)
+    {
+        $analytics_keywords = [
+            'ANALYTICS:',
+            'STEP:',
+            'Channel status response:',
+            'Analytics DB connection',
+            'sendAnalyticsData',
+            'updateAnalyticsRecord',
+            'createAnalyticsRecord',
+            'finalizeCall',
+            'trackStep',
+            'trackAttempt',
+            'trackSTTCall',
+            'trackTTSCall',
+            'DB analytics',
+            'ANALYTICS CURL',
+            'ANALYTICS Warning',
+            'ANALYTICS Response',
+            'ANALYTICS Exception',
+            'HTTP:', // HTTP response codes from analytics
+            'Response time:', // Analytics timing info
+            'Successfully sent data to analytics'
+        ];
+        
+        foreach ($analytics_keywords as $keyword) {
+            if (strpos($message, $keyword) !== false) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     /**
@@ -889,6 +936,9 @@ class AGICallHandler
         $result = json_decode($response, true);
         if (!$result || !isset($result['audioContent'])) return false;
 
+        $processingTime = (microtime(true) - $startTime) * 1000;
+        $this->trackTTSCall('google', $processingTime);
+
         return $this->processAudioFile($result['audioContent'], $output_file);
     }
 
@@ -902,14 +952,27 @@ class AGICallHandler
         $lang_config = $this->getLanguageConfig();
         $edge_voice = $lang_config[$this->current_language]['edge_voice'] ?? 'el-GR-AthinaNeural';
 
+        $temp_file = $output_file . '_temp.wav';
         $wav_file = $output_file . '.wav';
         $escaped_text = escapeshellarg($text);
+        $escaped_temp = escapeshellarg($temp_file);
         $escaped_output = escapeshellarg($wav_file);
 
-        $cmd = "edge-tts --voice {$edge_voice} --text {$escaped_text} --write-media {$escaped_output} 2>/dev/null";
+        $cmd = "edge-tts --voice {$edge_voice} --text {$escaped_text} --write-media {$escaped_temp} 2>/dev/null";
         $this->logMessage("Edge TTS command: {$cmd}");
 
         exec($cmd, $output, $return_code);
+        
+        // Convert to Asterisk-compatible format
+        if ($return_code === 0 && file_exists($temp_file)) {
+            $convert_cmd = "ffmpeg -y -i {$escaped_temp} -ac 1 -ar 8000 -acodec pcm_s16le {$escaped_output} 2>/dev/null";
+            $this->logMessage("Audio conversion command: {$convert_cmd}");
+            exec($convert_cmd, $convert_output, $convert_return);
+            $this->logMessage("Audio conversion return code: {$convert_return}");
+            
+            unlink($temp_file);
+            $return_code = $convert_return;
+        }
         
         $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
         $this->trackTTSCall('edge', $processingTime);
@@ -946,11 +1009,19 @@ class AGICallHandler
         file_put_contents($mp3_file, $audio_data);
 
         $wav_file = $output_file . '.wav';
-        $cmd = "ffmpeg -y -i \"$mp3_file\" -ac 1 -ar 8000 \"$wav_file\" 2>/dev/null";
-        exec($cmd);
+        // Convert to Asterisk-compatible format: mono, 8kHz, 16-bit PCM
+        $cmd = "ffmpeg -y -i \"$mp3_file\" -ac 1 -ar 8000 -acodec pcm_s16le \"$wav_file\" 2>/dev/null";
+        $this->logMessage("Audio conversion command: {$cmd}");
+        exec($cmd, $output, $return_code);
+        $this->logMessage("Audio conversion return code: {$return_code}");
 
         unlink($mp3_file);
-        return file_exists($wav_file) && filesize($wav_file) > 100;
+        
+        $file_exists = file_exists($wav_file);
+        $file_size = $file_exists ? filesize($wav_file) : 0;
+        $this->logMessage("Audio file exists: " . ($file_exists ? 'yes' : 'no') . ", size: {$file_size} bytes");
+        
+        return $file_exists && $file_size > 100;
     }
 
     private function convertAudioFile($wav_file)
@@ -1041,6 +1112,9 @@ class AGICallHandler
                 $transcript .= $alt['transcript'] . ' ';
             }
         }
+
+        $processingTime = (microtime(true) - $startTime) * 1000;
+        $this->trackSTTCall($processingTime);
 
         return trim($transcript);
     }
@@ -1376,6 +1450,7 @@ class AGICallHandler
             $this->trackAttempt('pickup');
             $this->logMessage("Pickup attempt {$try}/{$this->max_retries}");
             $this->agiCommand('EXEC Playback "' . $this->getSoundFile('pick_up') . '"');
+
 
             $recording_file = "{$this->filebase}/recordings/pickup_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
@@ -1786,12 +1861,24 @@ class AGICallHandler
 
         $confirm_file = "{$this->filebase}/pickup_confirm";
         $this->logMessage("Generating TTS for pickup address confirmation");
+        $this->logMessage("TTS text: {$confirmation_text}");
+        $this->logMessage("TTS output file: {$confirm_file}");
+        
         $this->startMusicOnHold();
         $tts_success = $this->callTTS($confirmation_text, $confirm_file);
+        $this->logMessage("TTS generation completed, success: " . ($tts_success ? 'true' : 'false'));
         $this->stopMusicOnHold();
 
         if ($tts_success) {
             $this->logMessage("Playing pickup address confirmation");
+            
+            // Check if audio file exists and is valid
+            $audio_file = $confirm_file . '.wav';
+            if (!file_exists($audio_file) || filesize($audio_file) < 100) {
+                $this->logMessage("TTS audio file invalid or missing, assuming user wants new address");
+                return false;
+            }
+            
             $choice = $this->readDTMF($confirm_file, 1, 10);
             $this->logMessage("User pickup address choice: {$choice}");
 
@@ -2135,11 +2222,16 @@ class AGICallHandler
     private function checkHangup()
     {
         $response = $this->agiCommand('CHANNEL STATUS');
-        if (strpos($response, '200 result=6') !== false || strpos($response, '200 result=0') !== false) {
-            $this->logMessage("Hangup detected");
+        $this->logMessage("Channel status response: {$response}");
+        
+        // Only consider it a hangup if we get result=6 (down/hangup)
+        // result=0 can happen during normal operation, so don't treat it as hangup
+        if (strpos($response, '200 result=6') !== false) {
+            $this->logMessage("Hangup detected (channel down)");
             $this->setCallOutcome('hangup', 'User hung up');
             $this->finalizeCall();
-            return true;
+            // Exit immediately when hangup is detected
+            exit(0);
         }
         return false;
     }
@@ -2163,6 +2255,7 @@ class AGICallHandler
             $this->logMessage("Starting call processing for {$this->caller_num}");
 
             if ($this->isAnonymousCaller()) {
+                $this->setCallOutcome('anonymous_blocked', 'Anonymous caller blocked');
                 $this->handleAnonymousCaller();
                 return;
             }
@@ -2170,6 +2263,7 @@ class AGICallHandler
             $this->saveJson("phone", $this->caller_num);
 
             $user_choice = $this->getInitialUserChoice();
+            $this->setInitialChoice($user_choice);
             if ($user_choice === '') {
                 $this->logMessage("No selection received (likely hangup), ending call");
                 $this->setCallOutcome('hangup', 'No DTMF selection');
@@ -2200,8 +2294,11 @@ class AGICallHandler
                 return;
             }
 
+            $this->logMessage("Processing choice '1' - setting call type to immediate");
             $this->setCallType('immediate');
+            $this->logMessage("About to call handleImmediateCall()");
             $this->handleImmediateCall();
+            $this->logMessage("handleImmediateCall() completed");
             
         } catch (Exception $e) {
             $this->logMessage("Error in call flow: " . $e->getMessage());
@@ -2298,10 +2395,19 @@ class AGICallHandler
                 "address" => $user_data['pickup'],
                 "latLng" => $user_data['latLng']
             ];
+            // Update analytics with confirmed default address
+            $this->setUserInfo($this->name_result, true);
+            $this->setPickupAddress(
+                $this->pickup_result,
+                $user_data['latLng']['lat'] ?? null,
+                $user_data['latLng']['lng'] ?? null
+            );
             $this->saveJson("name", $this->name_result);
             $this->saveJson("pickup", $this->pickup_result);
             $this->saveJson("pickupLocation", $this->pickup_location);
         } else {
+            // User rejected default address
+            $this->setUserInfo($this->name_result, false);
             $this->saveJson("name", $this->name_result);
         }
     }
@@ -2324,10 +2430,21 @@ class AGICallHandler
 
 // Initialize and run the call handler
 try {
+    error_log("AGI: Starting main execution");
     $call_handler = new AGICallHandler();
+    error_log("AGI: Call handler created, starting runCallFlow");
     $call_handler->runCallFlow();
+    error_log("AGI: runCallFlow completed successfully, exiting with code 0");
+    exit(0); // Exit successfully after call flow completes
 } catch (Exception $e) {
     error_log("Fatal error in AGI Call Handler: " . $e->getMessage());
+    error_log("AGI: Stack trace: " . $e->getTraceAsString());
     echo "HANGUP\n";
+    exit(1); // Exit with error code on exception
+} catch (Error $e) {
+    error_log("Fatal PHP error in AGI Call Handler: " . $e->getMessage());
+    error_log("AGI: Stack trace: " . $e->getTraceAsString());
+    echo "HANGUP\n";
+    exit(1); // Exit with error code on PHP error
 }
 ?>

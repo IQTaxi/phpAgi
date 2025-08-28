@@ -36,6 +36,7 @@ class AGIAnalytics {
     public function __construct() {
         $this->loadEnvConfig();
         $this->connectDatabase();
+        $this->createTableIfNeeded();
         $this->createIndexesIfNeeded();
     }
     
@@ -85,6 +86,83 @@ class AGIAnalytics {
     }
     
     /**
+     * Create the table if it doesn't exist
+     */
+    private function createTableIfNeeded() {
+        $sql = "CREATE TABLE IF NOT EXISTS `{$this->table}` (
+            `id` INT(11) AUTO_INCREMENT PRIMARY KEY,
+            `call_id` VARCHAR(255) UNIQUE,
+            `unique_id` VARCHAR(255),
+            `phone_number` VARCHAR(50),
+            `extension` VARCHAR(20),
+            `call_start_time` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `call_end_time` TIMESTAMP NULL,
+            `call_duration` INT(11) DEFAULT 0,
+            `call_outcome` ENUM('success','operator_transfer','hangup','error','anonymous_blocked','user_blocked','in_progress') DEFAULT 'success',
+            `call_type` ENUM('immediate','reservation','operator') DEFAULT 'immediate',
+            `is_reservation` TINYINT(1) DEFAULT 0,
+            `reservation_time` TIMESTAMP NULL,
+            `language_used` VARCHAR(5) DEFAULT 'el',
+            `language_changed` TINYINT(1) DEFAULT 0,
+            `initial_choice` VARCHAR(5),
+            `confirmation_attempts` INT(11) DEFAULT 0,
+            `total_retries` INT(11) DEFAULT 0,
+            `name_attempts` INT(11) DEFAULT 0,
+            `pickup_attempts` INT(11) DEFAULT 0,
+            `destination_attempts` INT(11) DEFAULT 0,
+            `reservation_attempts` INT(11) DEFAULT 0,
+            `confirmed_default_address` TINYINT(1) DEFAULT 0,
+            `pickup_address` TEXT,
+            `pickup_lat` DECIMAL(10, 8),
+            `pickup_lng` DECIMAL(11, 8),
+            `destination_address` TEXT,
+            `destination_lat` DECIMAL(10, 8),
+            `destination_lng` DECIMAL(11, 8),
+            `google_tts_calls` INT(11) DEFAULT 0,
+            `google_stt_calls` INT(11) DEFAULT 0,
+            `edge_tts_calls` INT(11) DEFAULT 0,
+            `geocoding_api_calls` INT(11) DEFAULT 0,
+            `user_api_calls` INT(11) DEFAULT 0,
+            `registration_api_calls` INT(11) DEFAULT 0,
+            `date_parsing_api_calls` INT(11) DEFAULT 0,
+            `tts_processing_time` INT(11) DEFAULT 0,
+            `stt_processing_time` INT(11) DEFAULT 0,
+            `geocoding_processing_time` INT(11) DEFAULT 0,
+            `total_processing_time` INT(11) DEFAULT 0,
+            `successful_registration` TINYINT(1) DEFAULT 0,
+            `operator_transfer_reason` TEXT,
+            `error_messages` TEXT,
+            `recording_path` TEXT,
+            `log_file_path` TEXT,
+            `progress_json_path` TEXT,
+            `tts_provider` ENUM('google','edge-tts') DEFAULT 'google',
+            `callback_mode` INT(11) DEFAULT 1,
+            `days_valid` INT(11) DEFAULT 7,
+            `user_name` VARCHAR(255),
+            `registration_result` TEXT,
+            `api_response_time` INT(11) DEFAULT 0,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_call_id (call_id),
+            INDEX idx_phone_number (phone_number),
+            INDEX idx_extension (extension),
+            INDEX idx_call_start_time (call_start_time),
+            INDEX idx_call_outcome (call_outcome),
+            INDEX idx_call_type (call_type),
+            INDEX idx_created_at (created_at),
+            INDEX idx_pickup_coords (pickup_lat, pickup_lng)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+        
+        try {
+            $this->db->exec($sql);
+            error_log("Analytics: Table {$this->table} created or verified successfully");
+        } catch (PDOException $e) {
+            error_log("Analytics: Failed to create table {$this->table}: " . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
      * Create additional indexes for better performance
      */
     private function createIndexesIfNeeded() {
@@ -121,9 +199,23 @@ class AGIAnalytics {
         $endpoint = $_GET['endpoint'] ?? '';
         $action = $_GET['action'] ?? '';
         
-        // Handle CSV export
+        // Handle export
         if ($action === 'export') {
-            $this->exportCSV();
+            $format = $_GET['format'] ?? 'csv';
+            switch ($format) {
+                case 'csv':
+                    $this->exportCSV();
+                    break;
+                case 'pdf':
+                    $this->exportPDF();
+                    break;
+                case 'print':
+                    $this->exportPrint();
+                    break;
+                default:
+                    $this->exportCSV();
+                    break;
+            }
             return;
         }
         
@@ -210,6 +302,12 @@ class AGIAnalytics {
             case 'realtime':
                 $this->apiGetRealtimeStats();
                 break;
+            case 'locations':
+                $this->apiGetLocations();
+                break;
+            case 'server_time':
+                $this->apiGetServerTime();
+                break;
             case 'recordings':
                 $this->apiGetRecordings();
                 break;
@@ -228,6 +326,14 @@ class AGIAnalytics {
         
         $where = [];
         $params = [];
+        
+        // Handle general search field
+        if (!empty($_GET['search'])) {
+            $searchTerm = $_GET['search'];
+            $where[] = '(phone_number LIKE ? OR call_id LIKE ? OR unique_id LIKE ? OR user_name LIKE ? OR pickup_address LIKE ? OR destination_address LIKE ?)';
+            $searchPattern = "%{$searchTerm}%";
+            $params = array_merge($params, [$searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern]);
+        }
         
         // Advanced filtering
         $filters = [
@@ -405,15 +511,21 @@ class AGIAnalytics {
      * Get dashboard data for main page
      */
     private function apiGetDashboard() {
-        $dashboard = [
-            'realtime_stats' => $this->getRealtimeStats(),
-            'recent_calls' => $this->getRecentCalls(),
-            'today_summary' => $this->getTodaySummary(),
-            'active_calls' => $this->getActiveCalls(),
-            'system_health' => $this->getSystemHealth()
-        ];
-        
-        $this->sendResponse($dashboard);
+        try {
+            $dashboard = [
+                'realtime_stats' => $this->getRealtimeStats(),
+                'recent_calls' => $this->getRecentCalls(),
+                'today_summary' => $this->getTodaySummary(),
+                'active_calls' => $this->getActiveCalls(),
+                'system_health' => $this->getSystemHealth()
+            ];
+            
+            $this->sendResponse($dashboard);
+        } catch (Exception $e) {
+            error_log("Dashboard API Error: " . $e->getMessage());
+            error_log("Dashboard API Trace: " . $e->getTraceAsString());
+            $this->sendErrorResponse('Dashboard data error: ' . $e->getMessage(), 500);
+        }
     }
     
     /**
@@ -444,7 +556,7 @@ class AGIAnalytics {
         $hours = array_column($hourlyData, 'hour');
         $fullData = [];
         for ($h = 0; $h < 24; $h++) {
-            $found = array_filter($hourlyData, fn($item) => $item['hour'] == $h);
+            $found = array_filter($hourlyData, function($item) use ($h) { return $item['hour'] == $h; });
             if ($found) {
                 $fullData[] = reset($found);
             } else {
@@ -707,6 +819,16 @@ class AGIAnalytics {
             ($call['user_api_calls'] ?? 0) + 
             ($call['registration_api_calls'] ?? 0);
         
+        // Calculate live duration for in-progress calls using server time
+        if ($call['call_outcome'] === 'in_progress' && !empty($call['call_start_time'])) {
+            $startTime = strtotime($call['call_start_time']);
+            $currentTime = time(); // Server time
+            $call['call_duration'] = $currentTime - $startTime; // Override with live duration
+            $call['is_live'] = true; // Flag to indicate this is a live call
+        } else {
+            $call['is_live'] = false;
+        }
+        
         // Format timestamps
         $call['call_start_time_formatted'] = $this->formatTimestamp($call['call_start_time']);
         $call['call_end_time_formatted'] = $this->formatTimestamp($call['call_end_time']);
@@ -901,6 +1023,82 @@ class AGIAnalytics {
         return $stmt->fetch();
     }
     
+    /**
+     * Get current server time
+     */
+    private function apiGetServerTime() {
+        try {
+            $sql = "SELECT NOW() as server_time";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute();
+            $result = $stmt->fetch();
+            
+            $this->sendResponse([
+                'server_time' => $result['server_time'],
+                'timestamp' => strtotime($result['server_time']) * 1000 // JavaScript timestamp
+            ]);
+        } catch (Exception $e) {
+            error_log("Server Time API Error: " . $e->getMessage());
+            $this->sendErrorResponse('Failed to get server time: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get locations for heatmap
+     */
+    private function apiGetLocations() {
+        $minutes = intval($_GET['minutes'] ?? 30);
+        $dateFrom = date('Y-m-d H:i:s', strtotime("-{$minutes} minutes"));
+        
+        $sql = "SELECT 
+                    pickup_address,
+                    pickup_lat,
+                    pickup_lng,
+                    destination_address,
+                    destination_lat,
+                    destination_lng,
+                    call_outcome,
+                    call_start_time
+                FROM {$this->table}
+                WHERE call_start_time >= ?
+                    AND (pickup_lat IS NOT NULL OR destination_lat IS NOT NULL)
+                ORDER BY call_start_time DESC";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$dateFrom]);
+        $locations = [];
+        
+        while ($row = $stmt->fetch()) {
+            if ($row['pickup_lat'] && $row['pickup_lng']) {
+                $locations[] = [
+                    'lat' => floatval($row['pickup_lat']),
+                    'lng' => floatval($row['pickup_lng']),
+                    'type' => 'pickup',
+                    'address' => $row['pickup_address'],
+                    'outcome' => $row['call_outcome'],
+                    'time' => $row['call_start_time']
+                ];
+            }
+            if ($row['destination_lat'] && $row['destination_lng']) {
+                $locations[] = [
+                    'lat' => floatval($row['destination_lat']),
+                    'lng' => floatval($row['destination_lng']),
+                    'type' => 'destination',
+                    'address' => $row['destination_address'],
+                    'outcome' => $row['call_outcome'],
+                    'time' => $row['call_start_time']
+                ];
+            }
+        }
+        
+        $this->sendResponse([
+            'locations' => $locations,
+            'count' => count($locations),
+            'period_minutes' => $minutes,
+            'from' => $dateFrom
+        ]);
+    }
+    
     private function getGeographicAnalytics($dateFrom, $dateTo) {
         $sql = "SELECT 
                     pickup_address,
@@ -958,55 +1156,128 @@ class AGIAnalytics {
     // ===== DASHBOARD HELPER METHODS =====
     
     private function getRealtimeStats() {
-        return [
-            'active_calls' => $this->getActiveCalls(),
-            'calls_last_hour' => $this->getCallsLastHour(),
-            'success_rate_today' => $this->getTodaySuccessRate(),
-            'avg_duration_today' => $this->getTodayAvgDuration()
-        ];
+        try {
+            return [
+                'active_calls' => $this->getActiveCalls(),
+                'calls_last_hour' => $this->getCallsLastHour(),
+                'success_rate_today' => $this->getTodaySuccessRate(),
+                'avg_duration_today' => $this->getTodayAvgDuration()
+            ];
+        } catch (Exception $e) {
+            error_log("getRealtimeStats Error: " . $e->getMessage());
+            return [
+                'active_calls' => 0,
+                'calls_last_hour' => 0,
+                'success_rate_today' => 0,
+                'avg_duration_today' => 0
+            ];
+        }
     }
     
     private function getRecentCalls($limit = 20) {
-        $sql = "SELECT * FROM {$this->table} ORDER BY call_start_time DESC LIMIT ?";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$limit]);
-        $calls = $stmt->fetchAll();
-        
-        foreach ($calls as &$call) {
-            $call = $this->enhanceCallData($call);
+        try {
+            $sql = "SELECT * FROM {$this->table} ORDER BY call_start_time DESC LIMIT ?";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$limit]);
+            $calls = $stmt->fetchAll();
+            
+            if (!$calls) {
+                return [];
+            }
+            
+            foreach ($calls as &$call) {
+                $call = $this->enhanceCallData($call);
+            }
+            
+            return $calls;
+        } catch (Exception $e) {
+            error_log("getRecentCalls Error: " . $e->getMessage());
+            return [];
         }
-        
-        return $calls;
     }
     
     private function getTodaySummary() {
-        $sql = "SELECT 
-                    COUNT(*) as total_calls,
-                    COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
-                    AVG(call_duration) as avg_duration,
-                    SUM(google_tts_calls + edge_tts_calls) as tts_usage,
-                    COUNT(DISTINCT phone_number) as unique_callers
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) = CURDATE()";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute();
-        return $stmt->fetch();
+        try {
+            $sql = "SELECT 
+                        COUNT(*) as total_calls,
+                        COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
+                        AVG(call_duration) as avg_duration,
+                        SUM(google_tts_calls + edge_tts_calls) as tts_usage,
+                        COUNT(DISTINCT phone_number) as unique_callers
+                    FROM {$this->table} 
+                    WHERE DATE(call_start_time) = CURDATE()";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute();
+            $result = $stmt->fetch();
+            
+            // Return default values if no data
+            if (!$result) {
+                return [
+                    'total_calls' => 0,
+                    'successful_calls' => 0,
+                    'avg_duration' => 0,
+                    'tts_usage' => 0,
+                    'unique_callers' => 0
+                ];
+            }
+            
+            return $result;
+        } catch (Exception $e) {
+            error_log("getTodaySummary Error: " . $e->getMessage());
+            return [
+                'total_calls' => 0,
+                'successful_calls' => 0,
+                'avg_duration' => 0,
+                'tts_usage' => 0,
+                'unique_callers' => 0
+            ];
+        }
     }
     
     private function getActiveCalls() {
-        $sql = "SELECT COUNT(*) FROM {$this->table} WHERE call_outcome = 'in_progress'";
-        return intval($this->db->query($sql)->fetchColumn());
+        try {
+            $sql = "SELECT COUNT(*) FROM {$this->table} WHERE call_outcome = 'in_progress'";
+            $result = $this->db->query($sql);
+            if ($result === false) {
+                error_log("getActiveCalls query failed: " . implode(" ", $this->db->errorInfo()));
+                return 0;
+            }
+            return intval($result->fetchColumn() ?: 0);
+        } catch (Exception $e) {
+            error_log("getActiveCalls Error: " . $e->getMessage());
+            return 0;
+        }
     }
     
     private function getTodayCallCount() {
-        $sql = "SELECT COUNT(*) FROM {$this->table} WHERE DATE(call_start_time) = CURDATE()";
-        return intval($this->db->query($sql)->fetchColumn());
+        try {
+            $sql = "SELECT COUNT(*) FROM {$this->table} WHERE DATE(call_start_time) = CURDATE()";
+            $result = $this->db->query($sql);
+            if ($result === false) {
+                error_log("getTodayCallCount query failed: " . implode(" ", $this->db->errorInfo()));
+                return 0;
+            }
+            return intval($result->fetchColumn() ?: 0);
+        } catch (Exception $e) {
+            error_log("getTodayCallCount Error: " . $e->getMessage());
+            return 0;
+        }
     }
     
     private function getCurrentHourCallCount() {
-        $sql = "SELECT COUNT(*) FROM {$this->table} WHERE call_start_time >= DATE_SUB(NOW(), INTERVAL 1 HOUR)";
-        return intval($this->db->query($sql)->fetchColumn());
+        try {
+            $sql = "SELECT COUNT(*) FROM {$this->table} WHERE call_start_time >= DATE_SUB(NOW(), INTERVAL 1 HOUR)";
+            $result = $this->db->query($sql);
+            if ($result === false) {
+                error_log("getCurrentHourCallCount query failed: " . implode(" ", $this->db->errorInfo()));
+                return 0;
+            }
+            return intval($result->fetchColumn() ?: 0);
+        } catch (Exception $e) {
+            error_log("getCurrentHourCallCount Error: " . $e->getMessage());
+            return 0;
+        }
     }
     
     private function getCallsLastHour() {
@@ -1014,21 +1285,54 @@ class AGIAnalytics {
     }
     
     private function getTodaySuccessRate() {
-        $sql = "SELECT 
-                    COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) * 100.0 / COUNT(*) as success_rate
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) = CURDATE()";
-        return round(floatval($this->db->query($sql)->fetchColumn()), 2);
+        try {
+            $sql = "SELECT 
+                        COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) as success_rate
+                    FROM {$this->table} 
+                    WHERE DATE(call_start_time) = CURDATE()";
+            $result = $this->db->query($sql);
+            if ($result === false) {
+                error_log("getTodaySuccessRate query failed: " . implode(" ", $this->db->errorInfo()));
+                return 0;
+            }
+            $value = $result->fetchColumn();
+            return round(floatval($value ?: 0), 2);
+        } catch (Exception $e) {
+            error_log("getTodaySuccessRate Error: " . $e->getMessage());
+            return 0;
+        }
     }
     
     private function getTodayAvgDuration() {
-        $sql = "SELECT AVG(call_duration) FROM {$this->table} WHERE DATE(call_start_time) = CURDATE()";
-        return round(floatval($this->db->query($sql)->fetchColumn()), 2);
+        try {
+            $sql = "SELECT AVG(call_duration) FROM {$this->table} WHERE DATE(call_start_time) = CURDATE()";
+            $result = $this->db->query($sql);
+            if ($result === false) {
+                error_log("getTodayAvgDuration query failed: " . implode(" ", $this->db->errorInfo()));
+                return 0;
+            }
+            $value = $result->fetchColumn();
+            return round(floatval($value ?: 0), 2);
+        } catch (Exception $e) {
+            error_log("getTodayAvgDuration Error: " . $e->getMessage());
+            return 0;
+        }
     }
     
     private function getAverageResponseTime() {
-        $sql = "SELECT AVG(api_response_time) FROM {$this->table} WHERE DATE(call_start_time) = CURDATE() AND api_response_time > 0";
-        return round(floatval($this->db->query($sql)->fetchColumn()), 2);
+        try {
+            $sql = "SELECT AVG(api_response_time) FROM {$this->table} WHERE DATE(call_start_time) = CURDATE() AND api_response_time > 0";
+            $result = $this->db->query($sql);
+            if ($result === false) {
+                error_log("getAverageResponseTime query failed: " . implode(" ", $this->db->errorInfo()));
+                return 0;
+            }
+            $value = $result->fetchColumn();
+            return round(floatval($value ?: 0), 2);
+        } catch (Exception $e) {
+            error_log("getAverageResponseTime Error: " . $e->getMessage());
+            return 0;
+        }
     }
     
     private function getSystemHealth() {
@@ -1041,16 +1345,37 @@ class AGIAnalytics {
     }
     
     private function getLastCallTime() {
-        $sql = "SELECT MAX(call_start_time) FROM {$this->table}";
-        return $this->db->query($sql)->fetchColumn();
+        try {
+            $sql = "SELECT MAX(call_start_time) FROM {$this->table}";
+            $result = $this->db->query($sql);
+            if ($result === false) {
+                error_log("getLastCallTime query failed: " . implode(" ", $this->db->errorInfo()));
+                return null;
+            }
+            return $result->fetchColumn() ?: null;
+        } catch (Exception $e) {
+            error_log("getLastCallTime Error: " . $e->getMessage());
+            return null;
+        }
     }
     
     private function getTodayErrorRate() {
-        $sql = "SELECT 
-                    COUNT(CASE WHEN call_outcome = 'error' THEN 1 END) * 100.0 / COUNT(*) as error_rate
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) = CURDATE()";
-        return round(floatval($this->db->query($sql)->fetchColumn()), 2);
+        try {
+            $sql = "SELECT 
+                        COUNT(CASE WHEN call_outcome = 'error' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) as error_rate
+                    FROM {$this->table} 
+                    WHERE DATE(call_start_time) = CURDATE()";
+            $result = $this->db->query($sql);
+            if ($result === false) {
+                error_log("getTodayErrorRate query failed: " . implode(" ", $this->db->errorInfo()));
+                return 0;
+            }
+            $value = $result->fetchColumn();
+            return round(floatval($value ?: 0), 2);
+        } catch (Exception $e) {
+            error_log("getTodayErrorRate Error: " . $e->getMessage());
+            return 0;
+        }
     }
     
     // ===== FILE HANDLING METHODS =====
@@ -1090,10 +1415,41 @@ class AGIAnalytics {
         
         $parsedLog = [];
         foreach ($logLines as $line) {
+            if (empty($line)) continue;
+            
+            // Extract timestamp and clean the message
+            $timestamp = $this->extractTimestamp($line);
+            $level = $this->extractLogLevel($line);
+            $cleanMessage = $line;
+            
+            // Remove timestamp from message if found
+            if ($timestamp) {
+                $cleanMessage = preg_replace('/^\[?\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\]?\s*/', '', $line);
+            }
+            
+            // Categorize message type
+            $category = 'general';
+            if (strpos($line, 'TTS') !== false || strpos($line, 'Playing') !== false) {
+                $category = 'tts';
+            } elseif (strpos($line, 'API') !== false || strpos($line, 'Registration') !== false) {
+                $category = 'api';
+            } elseif (strpos($line, 'User') !== false || strpos($line, 'choice') !== false || strpos($line, 'DTMF') !== false) {
+                $category = 'user_input';
+            } elseif (strpos($line, 'Error') !== false || strpos($line, 'Failed') !== false) {
+                $category = 'error';
+                $level = 'error';
+            } elseif (strpos($line, 'Redirecting') !== false || strpos($line, 'operator') !== false) {
+                $category = 'operator';
+            } elseif (strpos($line, 'pickup') !== false || strpos($line, 'destination') !== false || strpos($line, 'address') !== false) {
+                $category = 'location';
+            }
+            
             $parsedLog[] = [
-                'timestamp' => $this->extractTimestamp($line),
-                'level' => $this->extractLogLevel($line),
-                'message' => $line
+                'timestamp' => $timestamp,
+                'level' => $level,
+                'category' => $category,
+                'message' => $cleanMessage,
+                'original' => $line
             ];
         }
         
@@ -1160,6 +1516,9 @@ class AGIAnalytics {
         
         $output = fopen('php://output', 'w');
         
+        // Add UTF-8 BOM for proper encoding in Excel
+        fputs($output, "\xEF\xBB\xBF");
+        
         // CSV Headers
         $headers = [
             'ID', 'Call ID', 'Unique ID', 'Phone Number', 'Extension', 'Call Start Time', 'Call End Time', 
@@ -1206,6 +1565,11 @@ class AGIAnalytics {
         $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
         $sql = "SELECT * FROM {$this->table} WHERE {$whereClause} ORDER BY call_start_time DESC";
         
+        // Add limit if specified
+        if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
+            $sql .= " LIMIT " . intval($_GET['limit']);
+        }
+        
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         
@@ -1235,6 +1599,436 @@ class AGIAnalytics {
         
         fclose($output);
         exit;
+    }
+    
+    // ===== PDF EXPORT =====
+    
+    private function exportPDF() {
+        // Get data using same filters as CSV
+        $data = $this->getExportData();
+        
+        header('Content-Type: text/html; charset=utf-8');
+        
+        ?>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Call Analytics Report - <?= date('Y-m-d H:i:s') ?></title>
+            <style>
+                @media print {
+                    body { margin: 0; padding: 20px; }
+                    .no-print { display: none !important; }
+                    .download-info { display: none !important; }
+                }
+                body { 
+                    font-family: Arial, sans-serif; 
+                    margin: 0; 
+                    padding: 20px; 
+                    background: white; 
+                    color: #000;
+                }
+                .download-info {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    text-align: center;
+                    margin-bottom: 30px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                }
+                .download-info h3 {
+                    margin: 0 0 10px 0;
+                    font-size: 20px;
+                }
+                .download-info p {
+                    margin: 10px 0;
+                    opacity: 0.9;
+                }
+                .btn {
+                    padding: 12px 24px;
+                    margin: 5px;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    text-decoration: none;
+                    display: inline-block;
+                    font-size: 14px;
+                    transition: all 0.3s ease;
+                }
+                .btn-primary { 
+                    background: #fff; 
+                    color: #667eea; 
+                    box-shadow: 0 2px 8px rgba(255,255,255,0.3);
+                }
+                .btn-secondary { 
+                    background: rgba(255,255,255,0.2); 
+                    color: white; 
+                    border: 1px solid rgba(255,255,255,0.3);
+                }
+                .btn:hover { 
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                }
+                .header { 
+                    text-align: center; 
+                    margin-bottom: 30px; 
+                    border-bottom: 3px solid #2563eb;
+                    padding-bottom: 20px;
+                }
+                .header h1 { 
+                    color: #2563eb; 
+                    margin: 0; 
+                    font-size: 28px;
+                }
+                .header p { 
+                    color: #666; 
+                    margin: 5px 0; 
+                    font-size: 14px;
+                }
+                .stats { 
+                    display: flex; 
+                    gap: 20px; 
+                    margin: 20px 0; 
+                    justify-content: center;
+                    flex-wrap: wrap;
+                }
+                .stat-card { 
+                    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                    padding: 15px; 
+                    border-radius: 8px; 
+                    text-align: center; 
+                    min-width: 120px;
+                    border: 1px solid #e5e7eb;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                .stat-number { 
+                    font-size: 24px; 
+                    font-weight: bold; 
+                    color: #2563eb; 
+                }
+                .stat-label { 
+                    color: #666; 
+                    font-size: 12px; 
+                    text-transform: uppercase; 
+                    margin-top: 5px;
+                    font-weight: 600;
+                }
+                table { 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    margin-top: 20px; 
+                    font-size: 11px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                }
+                th, td { 
+                    border: 1px solid #ddd; 
+                    padding: 8px; 
+                    text-align: left; 
+                }
+                th { 
+                    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                    font-weight: bold; 
+                    font-size: 10px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                tr:nth-child(even) { 
+                    background-color: #f9f9f9; 
+                }
+                tr:hover {
+                    background-color: #f0f9ff;
+                }
+                .success { color: #10b981; font-weight: bold; }
+                .failed { color: #ef4444; font-weight: bold; }
+                .warning { color: #f59e0b; font-weight: bold; }
+                
+                .footer {
+                    margin-top: 30px; 
+                    text-align: center; 
+                    font-size: 12px; 
+                    color: #666;
+                    border-top: 1px solid #e5e7eb;
+                    padding-top: 20px;
+                }
+            </style>
+            <script>
+                window.onload = function() {
+                    // Auto-trigger print dialog for PDF generation after a short delay
+                    setTimeout(function() {
+                        window.print();
+                    }, 1000);
+                }
+            </script>
+        </head>
+        <body>
+            <div class="download-info no-print">
+                <h3>📄 PDF Download Instructions</h3>
+                <p>Your browser's print dialog will open automatically. To save as PDF:</p>
+                <p><strong>1.</strong> Choose "Save as PDF" or "Microsoft Print to PDF" as destination<br>
+                   <strong>2.</strong> Click "Save" and choose your download location</p>
+                <button class="btn btn-primary" onclick="window.print()">🖨️ Open Print Dialog</button>
+                <button class="btn btn-secondary" onclick="window.close()">✕ Close Window</button>
+            </div>
+            
+            <div class="header">
+                <h1>📊 Call Analytics Report</h1>
+                <p>Generated on <?= date('F j, Y \a\t g:i A') ?></p>
+                <?php if (!empty($_GET['date_from']) || !empty($_GET['date_to'])): ?>
+                <p>Period: 
+                    <?= !empty($_GET['date_from']) ? date('M j, Y', strtotime($_GET['date_from'])) : 'Beginning' ?>
+                    - 
+                    <?= !empty($_GET['date_to']) ? date('M j, Y', strtotime($_GET['date_to'])) : 'Present' ?>
+                </p>
+                <?php endif; ?>
+                <?php if (!empty($_GET['limit']) && $_GET['limit'] !== 'all'): ?>
+                <p><small>Limited to <?= intval($_GET['limit']) ?> most recent records</small></p>
+                <?php endif; ?>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number"><?= count($data) ?></div>
+                    <div class="stat-label">Total Calls</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number success"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'successful_registration'; })) ?></div>
+                    <div class="stat-label">Successful</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number failed"><?= count(array_filter($data, function($r) { return in_array($r['call_outcome'], ['hangup', 'error']); })) ?></div>
+                    <div class="stat-label">Failed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number warning"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'operator_transfer'; })) ?></div>
+                    <div class="stat-label">Transferred</div>
+                </div>
+            </div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date/Time</th>
+                        <th>Phone</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                        <th>Pickup Location</th>
+                        <th>Destination</th>
+                        <th>Lang</th>
+                        <th>API Calls</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($data)): ?>
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 20px; color: #666; font-style: italic;">
+                            No data found for the selected criteria
+                        </td>
+                    </tr>
+                    <?php else: ?>
+                    <?php foreach($data as $row): ?>
+                    <tr>
+                        <td><?= date('M j, g:i A', strtotime($row['call_start_time'])) ?></td>
+                        <td><?= htmlspecialchars($row['phone_number']) ?></td>
+                        <td><?= $this->formatDuration($row['call_duration']) ?></td>
+                        <td class="<?= $this->getOutcomeClass($row['call_outcome']) ?>">
+                            <?= ucwords(str_replace('_', ' ', $row['call_outcome'])) ?>
+                        </td>
+                        <td><?= htmlspecialchars(mb_substr($row['pickup_address'] ?? 'N/A', 0, 25) . (mb_strlen($row['pickup_address'] ?? '') > 25 ? '...' : '')) ?></td>
+                        <td><?= htmlspecialchars(mb_substr($row['destination_address'] ?? 'N/A', 0, 25) . (mb_strlen($row['destination_address'] ?? '') > 25 ? '...' : '')) ?></td>
+                        <td><?= strtoupper($row['language_used'] ?? 'EN') ?></td>
+                        <td style="font-size: 9px;">
+                            TTS: <?= ($row['google_tts_calls'] ?? 0) + ($row['edge_tts_calls'] ?? 0) ?><br>
+                            STT: <?= $row['google_stt_calls'] ?? 0 ?><br>
+                            GEO: <?= $row['geocoding_api_calls'] ?? 0 ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+            
+            <div class="footer">
+                <p>📞 Call Analytics System Report | Generated: <?= date('Y-m-d H:i:s') ?> | Total Records: <?= count($data) ?></p>
+            </div>
+        </body>
+        </html>
+        <?php
+        exit;
+    }
+    
+    // ===== PRINT EXPORT =====
+    
+    private function exportPrint() {
+        // Same as PDF but without auto-print
+        $data = $this->getExportData();
+        
+        header('Content-Type: text/html; charset=utf-8');
+        
+        ?>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Call Analytics Report - <?= date('Y-m-d H:i:s') ?></title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .header { text-align: center; margin-bottom: 30px; }
+                .header h1 { color: #2563eb; margin: 0; }
+                .header p { color: #666; margin: 5px 0; }
+                .stats { display: flex; gap: 20px; margin: 20px 0; justify-content: center; }
+                .stat-card { background: #f8fafc; padding: 15px; border-radius: 8px; text-align: center; min-width: 120px; }
+                .stat-number { font-size: 24px; font-weight: bold; color: #2563eb; }
+                .stat-label { color: #666; font-size: 12px; text-transform: uppercase; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f8fafc; font-weight: bold; }
+                tr:nth-child(even) { background-color: #f9f9f9; }
+                .success { color: #10b981; font-weight: bold; }
+                .failed { color: #ef4444; font-weight: bold; }
+                .warning { color: #f59e0b; font-weight: bold; }
+                .print-controls { margin: 20px 0; text-align: center; }
+                .btn { padding: 12px 24px; margin: 0 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+                .btn-primary { background: #2563eb; color: white; }
+                .btn-secondary { background: #6b7280; color: white; }
+                .btn:hover { opacity: 0.9; }
+                @media print {
+                    .print-controls { display: none; }
+                    body { margin: 0; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="print-controls">
+                <button class="btn btn-primary" onclick="window.print()">🖨️ Print Report</button>
+                <button class="btn btn-secondary" onclick="window.close()">✕ Close Window</button>
+            </div>
+            
+            <div class="header">
+                <h1>📊 Call Analytics Report</h1>
+                <p>Generated on <?= date('F j, Y \a\t g:i A') ?></p>
+                <?php if (!empty($_GET['date_from']) || !empty($_GET['date_to'])): ?>
+                <p>Period: 
+                    <?= !empty($_GET['date_from']) ? date('M j, Y', strtotime($_GET['date_from'])) : 'Beginning' ?>
+                    - 
+                    <?= !empty($_GET['date_to']) ? date('M j, Y', strtotime($_GET['date_to'])) : 'Present' ?>
+                </p>
+                <?php endif; ?>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number"><?= count($data) ?></div>
+                    <div class="stat-label">Total Calls</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number success"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'successful_registration'; })) ?></div>
+                    <div class="stat-label">Successful</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number failed"><?= count(array_filter($data, function($r) { return in_array($r['call_outcome'], ['hangup', 'error']); })) ?></div>
+                    <div class="stat-label">Failed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number warning"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'operator_transfer'; })) ?></div>
+                    <div class="stat-label">Transferred</div>
+                </div>
+            </div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date/Time</th>
+                        <th>Phone Number</th>
+                        <th>Duration</th>
+                        <th>Outcome</th>
+                        <th>Pickup Address</th>
+                        <th>Destination Address</th>
+                        <th>Language</th>
+                        <th>API Calls</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach($data as $row): ?>
+                    <tr>
+                        <td><?= date('M j, g:i A', strtotime($row['call_start_time'])) ?></td>
+                        <td><?= htmlspecialchars($row['phone_number']) ?></td>
+                        <td><?= $this->formatDuration($row['call_duration']) ?></td>
+                        <td class="<?= $this->getOutcomeClass($row['call_outcome']) ?>">
+                            <?= ucwords(str_replace('_', ' ', $row['call_outcome'])) ?>
+                        </td>
+                        <td><?= htmlspecialchars($row['pickup_address'] ?? 'N/A') ?></td>
+                        <td><?= htmlspecialchars($row['destination_address'] ?? 'N/A') ?></td>
+                        <td><?= strtoupper($row['language_used'] ?? 'EN') ?></td>
+                        <td style="font-size: 11px;">
+                            TTS: <?= ($row['google_tts_calls'] ?? 0) + ($row['edge_tts_calls'] ?? 0) ?><br>
+                            STT: <?= $row['google_stt_calls'] ?? 0 ?><br>
+                            GEO: <?= $row['geocoding_api_calls'] ?? 0 ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </body>
+        </html>
+        <?php
+        exit;
+    }
+    
+    // Helper method to get export data (reused by both PDF and print)
+    private function getExportData() {
+        $where = [];
+        $params = [];
+        
+        if (!empty($_GET['date_from'])) {
+            $where[] = 'DATE(call_start_time) >= ?';
+            $params[] = $_GET['date_from'];
+        }
+        if (!empty($_GET['date_to'])) {
+            $where[] = 'DATE(call_start_time) <= ?';
+            $params[] = $_GET['date_to'];
+        }
+        if (!empty($_GET['phone'])) {
+            $where[] = 'phone_number LIKE ?';
+            $params[] = '%' . $_GET['phone'] . '%';
+        }
+        if (!empty($_GET['extension'])) {
+            $where[] = 'extension = ?';
+            $params[] = $_GET['extension'];
+        }
+        if (!empty($_GET['outcome'])) {
+            $where[] = 'call_outcome = ?';
+            $params[] = $_GET['outcome'];
+        }
+        
+        $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
+        $sql = "SELECT * FROM {$this->table} WHERE {$whereClause} ORDER BY call_start_time DESC";
+        
+        // Add limit if specified
+        if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
+            $sql .= " LIMIT " . intval($_GET['limit']);
+        }
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        
+        return $stmt->fetchAll();
+    }
+    
+    // Helper method to get CSS class for outcome
+    private function getOutcomeClass($outcome) {
+        switch ($outcome) {
+            case 'successful_registration':
+                return 'success';
+            case 'hangup':
+            case 'error':
+                return 'failed';
+            case 'operator_transfer':
+                return 'warning';
+            default:
+                return '';
+        }
     }
     
     // ===== AUDIO SERVING =====
@@ -1294,10 +2088,19 @@ class AGIAnalytics {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AGI Analytics Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMiI+PHBhdGggZD0iTTMgM3YxOGwxOC0xOEgzeiIvPjxwYXRoIGQ9Im0xMCAxMCA0IDQiLz48L3N2Zz4K" type="image/svg+xml">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Load leaflet heat plugin after leaflet is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/leaflet.heat/dist/leaflet-heat.js';
+            document.head.appendChild(script);
+        });
+    </script>
     <style>
         * {
             margin: 0;
@@ -1327,22 +2130,138 @@ class AGIAnalytics {
             color: var(--gray-900);
         }
         
+        .filter-toggle {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 9999;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.25rem;
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            transition: all 0.3s ease;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .filter-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+        
+        .filter-toggle i {
+            font-size: 1rem;
+        }
+        
+        .filter-modal-content {
+            max-width: 800px;
+            width: 90vw;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .form-row .form-group {
+            margin-bottom: 0;
+        }
+        
+        .modal-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2rem;
+            background: #f8f9fa;
+            border-top: 1px solid var(--gray-200);
+            margin: 0 -2rem -2rem -2rem;
+            border-radius: 0 0 1rem 1rem;
+        }
+        
+        .modal-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
         .app-container {
             display: flex;
             min-height: 100vh;
         }
         
         .sidebar {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
             width: 280px;
             background: white;
             border-right: 1px solid var(--gray-200);
             padding: 2rem;
             overflow-y: auto;
+            z-index: 9997;
+            box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+        
+        .sidebar.active {
+            display: block;
+            transform: translateX(0);
+        }
+        
+        .sidebar-toggle {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 9999;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9998;
+        }
+        
+        .sidebar-backdrop.active {
+            display: block;
         }
         
         .logo {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 0.75rem;
             margin-bottom: 2rem;
             font-size: 1.5rem;
@@ -1416,6 +2335,17 @@ class AGIAnalytics {
         .btn-group {
             display: flex;
             gap: 0.5rem;
+            flex-direction: column;
+        }
+        
+        .filter-status {
+            padding: 0.25rem 0;
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .filter-status i {
+            color: #28a745;
         }
         
         .main-content {
@@ -1425,16 +2355,209 @@ class AGIAnalytics {
         }
         
         .header {
-            display: flex;
-            justify-content: between;
-            align-items: center;
-            margin-bottom: 2rem;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
         
-        .header h1 {
-            font-size: 2rem;
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .header-left {
+            flex: 1;
+            min-width: 250px;
+        }
+        
+        .dashboard-title {
+            font-size: 2.5rem;
             font-weight: 700;
-            color: var(--gray-900);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .dashboard-title i {
+            color: rgba(255, 255, 255, 0.9);
+            flex-shrink: 0;
+        }
+        
+        .dashboard-subtitle {
+            font-size: 1.1rem;
+            margin: 0.5rem 0 0 0;
+            opacity: 0.9;
+            font-weight: 300;
+            line-height: 1.4;
+        }
+        
+        .header-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 1rem;
+            flex-shrink: 0;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        
+        .header-actions-mobile {
+            display: none;
+            position: relative;
+        }
+        
+        .mobile-menu-toggle {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .mobile-menu-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+        
+        .mobile-menu-dropdown {
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            right: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            padding: 0.75rem;
+            min-width: 200px;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+        }
+        
+        .mobile-menu-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        
+        .mobile-menu-dropdown .btn {
+            width: 100%;
+            margin-bottom: 0.75rem;
+            justify-content: flex-start;
+            text-align: left;
+            color: #374151;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .mobile-menu-dropdown .btn:last-child {
+            margin-bottom: 0;
+        }
+        
+        .mobile-menu-dropdown .btn:hover {
+            background: #f3f4f6;
+            transform: translateY(-1px);
+        }
+        
+        /* Responsive behavior */
+        @media (max-width: 768px) {
+            .header-content {
+                align-items: center;
+            }
+            
+            .dashboard-title {
+                font-size: 2rem;
+                gap: 0.5rem;
+            }
+            
+            .dashboard-subtitle {
+                font-size: 1rem;
+            }
+            
+            .header-actions {
+                display: none;
+            }
+            
+            .header-actions-mobile {
+                display: block;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .header-content {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1.5rem;
+            }
+            
+            .header-right {
+                width: 100%;
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+            }
+            
+            .dashboard-title {
+                font-size: 1.75rem;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+                text-align: left;
+            }
+            
+            .dashboard-title i {
+                font-size: 1.5rem;
+            }
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+            animation: pulse 2s infinite;
+        }
+        
+        .status-text {
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
         
         .stats-grid {
@@ -1446,10 +2569,34 @@ class AGIAnalytics {
         
         .stat-card {
             background: white;
-            padding: 1.5rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             border: 1px solid var(--gray-200);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .stat-card:hover::before {
+            opacity: 1;
         }
         
         .stat-card-header {
@@ -1466,13 +2613,15 @@ class AGIAnalytics {
         }
         
         .stat-card-icon {
-            width: 2rem;
-            height: 2rem;
+            width: 3rem;
+            height: 3rem;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 0.5rem;
-            font-size: 1rem;
+            border-radius: 0.75rem;
+            font-size: 1.25rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
         }
         
         .icon-primary {
@@ -1496,15 +2645,35 @@ class AGIAnalytics {
         }
         
         .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
+            font-size: 2.5rem;
+            font-weight: 800;
             color: var(--gray-900);
-            margin-bottom: 0.5rem;
+            margin: 1rem 0 0.5rem 0;
+            line-height: 1;
+            background: linear-gradient(135deg, var(--gray-900), var(--gray-600));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         
         .stat-change {
             font-size: 0.875rem;
-            font-weight: 500;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .change-positive {
+            color: var(--success);
+        }
+        
+        .change-negative {
+            color: var(--danger);
+        }
+        
+        .change-neutral {
+            color: var(--gray-500);
         }
         
         .change-positive {
@@ -1524,13 +2693,37 @@ class AGIAnalytics {
         
         .chart-container {
             background: white;
-            padding: 1.5rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             border: 1px solid var(--gray-200);
-            height: 400px;
+            height: 450px;
             display: flex;
             flex-direction: column;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .chart-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .chart-container:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .chart-container:hover::before {
+            opacity: 1;
         }
         
         .chart-canvas-container {
@@ -1556,25 +2749,49 @@ class AGIAnalytics {
         }
         
         .chart-title {
-            font-size: 1.125rem;
-            font-weight: 600;
+            font-size: 1.25rem;
+            font-weight: 700;
             color: var(--gray-900);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .chart-title i {
+            color: var(--primary);
         }
         
         .calls-table-container {
             background: white;
-            border-radius: 0.75rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             border: 1px solid var(--gray-200);
             overflow: hidden;
+            margin-top: 2rem;
         }
         
         .table-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--gray-200);
+            padding: 2rem;
+            border-bottom: 2px solid var(--gray-100);
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        }
+        
+        .table-header h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .table-header h3 i {
+            color: #1e3a8a;
         }
         
         .table-title {
@@ -1594,34 +2811,54 @@ class AGIAnalytics {
         
         .table th,
         .table td {
-            padding: 1rem;
+            padding: 1.25rem;
             text-align: left;
             border-bottom: 1px solid var(--gray-200);
+            vertical-align: middle;
         }
         
         .table th {
-            background: var(--gray-50);
-            font-weight: 600;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            font-weight: 700;
             color: var(--gray-900);
             font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
         
         .table td {
-            font-size: 0.875rem;
+            font-size: 0.925rem;
             color: var(--gray-800);
+            line-height: 1.5;
+        }
+        
+        .table tbody tr {
+            transition: all 0.2s ease;
         }
         
         .table tbody tr:hover {
-            background: var(--gray-50);
+            background: #f8fafc;
+            transform: translateX(2px);
+            box-shadow: inset 3px 0 0 #1e3a8a;
+        }
+        
+        .table tbody tr:nth-child(even) {
+            background: rgba(248, 250, 252, 0.5);
         }
         
         .badge {
             display: inline-flex;
             align-items: center;
-            padding: 0.25rem 0.75rem;
+            padding: 0.375rem 0.875rem;
             border-radius: 9999px;
             font-size: 0.75rem;
-            font-weight: 500;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
         }
         
         .badge-success {
@@ -1657,6 +2894,37 @@ class AGIAnalytics {
             color: var(--gray-600);
         }
         
+        .location-info {
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+        
+        .location-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.25rem;
+            gap: 0.25rem;
+        }
+        
+        .location-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .location-label {
+            font-weight: 600;
+            color: var(--gray-600);
+            min-width: 30px;
+        }
+        
+        .location-address {
+            color: var(--gray-800);
+        }
+        
+        .no-location {
+            color: var(--gray-400);
+            font-style: italic;
+        }
+        
         .modal {
             display: none;
             position: fixed;
@@ -1665,7 +2933,7 @@ class AGIAnalytics {
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
+            z-index: 10000;
         }
         
         .modal.show {
@@ -1771,6 +3039,350 @@ class AGIAnalytics {
             100% { transform: rotate(360deg); }
         }
         
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .live-duration {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes flashGreen {
+            0% { background-color: transparent; transform: scale(1); }
+            50% { background-color: rgba(16, 185, 129, 0.3); transform: scale(1.05); }
+            100% { background-color: transparent; transform: scale(1); }
+        }
+        
+        @keyframes plusOne {
+            0% { opacity: 0; transform: translateY(0) scale(0.8); }
+            30% { opacity: 1; transform: translateY(-20px) scale(1.2); color: #10b981; }
+            100% { opacity: 0; transform: translateY(-40px) scale(0.8); }
+        }
+        
+        .flash-update {
+            animation: flashGreen 1s ease-in-out;
+        }
+        
+        .plus-one {
+            position: absolute;
+            top: 50%;
+            right: 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            pointer-events: none;
+            animation: plusOne 2s ease-out;
+            z-index: 10;
+        }
+        
+        .stat-card {
+            position: relative;
+            overflow: visible;
+        }
+        
+        #locationHeatmap {
+            min-height: 400px;
+            border-radius: 0.5rem;
+        }
+        
+        #heatmapContainer {
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .heatmap-container {
+            position: relative;
+        }
+        
+        .heatmap-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .heatmap-controls select {
+            min-width: 150px;
+        }
+        
+        .heatmap-fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10000;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.3);
+        }
+        
+        .heatmap-fullscreen .chart-header {
+            padding: 1.5rem 2rem;
+            border-bottom: 2px solid #e2e8f0;
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .heatmap-fullscreen .chart-title {
+            color: white;
+            font-size: 1.5rem;
+        }
+        
+        .heatmap-fullscreen .chart-title i {
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .heatmap-fullscreen .heatmap-controls {
+            gap: 1.5rem;
+        }
+        
+        .heatmap-fullscreen .heatmap-stats {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .heatmap-fullscreen .heatmap-stats .stat-item {
+            color: white;
+        }
+        
+        .heatmap-fullscreen .heatmap-fullscreen-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .heatmap-fullscreen .heatmap-fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .heatmap-fullscreen .heatmap-wrapper {
+            flex: 1;
+            height: calc(100vh - 120px) !important;
+            margin: 2rem;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        
+        .fullscreen-close-btn {
+            position: absolute;
+            top: 1.5rem;
+            right: 2rem;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            z-index: 10001;
+        }
+        
+        .fullscreen-close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.1);
+        }
+        
+        .fullscreen-close-btn i {
+            font-size: 1.1rem;
+        }
+        
+        .heatmap-fullscreen .heatmap-fullscreen-btn i {
+            transform: rotate(45deg);
+        }
+        
+        /* Add hint for fullscreen */
+        .heatmap-fullscreen::before {
+            content: 'Press ESC or click × to exit';
+            position: absolute;
+            top: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            pointer-events: none;
+            animation: fadeInOut 4s ease-in-out;
+        }
+        
+        @keyframes fadeInOut {
+            0%, 20% { opacity: 1; }
+            80%, 100% { opacity: 0; }
+        }
+        
+        .heatmap-stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.9rem;
+            align-items: center;
+            position: relative;
+        }
+        
+        .heatmap-fullscreen-btn {
+            background: transparent;
+            border: 1px solid #ddd;
+            color: #6c757d;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin-left: auto;
+            transition: all 0.2s;
+        }
+        
+        .heatmap-fullscreen-btn:hover {
+            background: #f8f9fa;
+            color: #495057;
+            border-color: #adb5bd;
+        }
+        
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            color: var(--gray-600);
+        }
+        
+        .heatmap-wrapper {
+            position: relative;
+            height: 400px;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .heatmap-state {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            z-index: 10;
+        }
+        
+        .loading-spinner {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+        
+        .spinner-ring {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--gray-200);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .empty-icon {
+            font-size: 4rem;
+            color: var(--gray-300);
+            margin-bottom: 1rem;
+            opacity: 0.7;
+        }
+        
+        .heatmap-state h4 {
+            color: var(--gray-700);
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        
+        .heatmap-state p {
+            color: var(--gray-500);
+            margin-bottom: 1rem;
+        }
+        
+        .empty-suggestions {
+            padding: 0.75rem 1rem;
+            background: var(--gray-50);
+            border-radius: 0.375rem;
+            border-left: 4px solid var(--info);
+        }
+        
+        .empty-suggestions small {
+            color: var(--gray-600);
+        }
+        
+        .heatmap-legend {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 12px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+            font-size: 0.8rem;
+            z-index: 1000;
+        }
+        
+        .legend-title {
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--gray-700);
+        }
+        
+        .legend-gradient {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .legend-bar {
+            width: 60px;
+            height: 8px;
+            background: linear-gradient(to right, #3b82f6, #06d6a0, #ffd23f, #f72585);
+            border-radius: 4px;
+        }
+        
+        .legend-low, .legend-high {
+            font-size: 0.7rem;
+            color: var(--gray-500);
+        }
+        
+        .text-success { color: var(--success) !important; }
+        .text-danger { color: var(--danger) !important; }
+        
+        .sidebar-close-btn {
+            background: none;
+            border: none;
+            color: var(--gray-500);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .sidebar-close-btn:hover {
+            background: var(--gray-100);
+            color: var(--gray-700);
+            transform: scale(1.1);
+        }
+        
         @media (max-width: 768px) {
             .app-container {
                 flex-direction: column;
@@ -1802,95 +3414,289 @@ class AGIAnalytics {
                 padding: 1rem;
             }
         }
+        
+        /* Export Modal Styles */
+        .export-options {
+            margin-bottom: 2rem;
+        }
+        
+        .export-option {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border: 2px solid var(--gray-200);
+            border-radius: 0.75rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .export-option:hover {
+            border-color: var(--primary-color);
+            background: var(--gray-50);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .export-option-icon {
+            font-size: 2rem;
+            margin-right: 1rem;
+            width: 60px;
+            text-align: center;
+        }
+        
+        .export-option[data-format="csv"] .export-option-icon {
+            color: #10B981;
+        }
+        
+        .export-option[data-format="pdf"] .export-option-icon {
+            color: #EF4444;
+        }
+        
+        .export-option[data-format="print"] .export-option-icon {
+            color: #8B5CF6;
+        }
+        
+        .export-option-content {
+            flex: 1;
+        }
+        
+        .export-option-content h4 {
+            margin: 0 0 0.25rem 0;
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--gray-900);
+        }
+        
+        .export-option-content p {
+            margin: 0 0 0.25rem 0;
+            color: var(--gray-600);
+        }
+        
+        .export-option-action {
+            font-size: 1.25rem;
+            color: var(--gray-400);
+        }
+        
+        .export-filters {
+            background: var(--gray-50);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--gray-200);
+        }
+        
+        .export-filters h5 {
+            margin: 0 0 1rem 0;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--gray-900);
+        }
+        
+        .date-range-inputs {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .date-range-inputs span {
+            color: var(--gray-600);
+            font-weight: 500;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        
+        .date-range-inputs input {
+            flex: 1;
+            min-width: 160px;
+            max-width: 200px;
+        }
+        
+        /* Mobile responsiveness for date inputs */
+        @media (max-width: 600px) {
+            .date-range-inputs {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 0.75rem;
+            }
+            
+            .date-range-inputs span {
+                text-align: center;
+                order: 1;
+            }
+            
+            .date-range-inputs input:first-of-type {
+                order: 0;
+            }
+            
+            .date-range-inputs input:last-of-type {
+                order: 2;
+            }
+            
+            .date-range-inputs input {
+                min-width: unset;
+                max-width: unset;
+                width: 100%;
+            }
+        }
+        
+        .export-filters label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+            font-weight: 500;
+            color: var(--gray-700);
+        }
+        
+        .export-filters label input[type="checkbox"] {
+            margin: 0;
+        }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Sidebar -->
-        <div class="sidebar">
-            <div class="logo">
-                <i class="fas fa-chart-line"></i>
-                AGI Analytics
+    <!-- Filter Toggle Button -->
+    <button id="filterToggle" class="filter-toggle">
+        <i class="fas fa-filter"></i>
+        <span>Filters</span>
+    </button>
+    
+    <!-- Filter Modal -->
+    <div class="modal" id="filterModal">
+        <div class="modal-content filter-modal-content">
+            <div class="modal-header">
+                <h3>
+                    <i class="fas fa-filter"></i>
+                    Advanced Filters
+                </h3>
+                <button class="modal-close" id="filterModalClose">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
             
-            <div class="search-section">
+            <div class="modal-body">
                 <form id="filterForm">
-                    <div class="form-group">
-                        <label class="form-label">Search</label>
-                        <input type="text" name="search" class="form-control" placeholder="Phone, Call ID, User...">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Search</label>
+                            <input type="text" name="search" class="form-control" placeholder="Phone, Call ID, User...">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Phone Number</label>
+                            <input type="text" name="phone" class="form-control" placeholder="Phone number">
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label class="form-label">Phone Number</label>
-                        <input type="text" name="phone" class="form-control" placeholder="Phone number">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Extension</label>
+                            <input type="text" name="extension" class="form-control" placeholder="Extension">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Call Type</label>
+                            <select name="call_type" class="form-control">
+                                <option value="">All Types</option>
+                                <option value="immediate">Immediate</option>
+                                <option value="reservation">Reservation</option>
+                                <option value="operator">Operator</option>
+                            </select>
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label class="form-label">Extension</label>
-                        <input type="text" name="extension" class="form-control" placeholder="Extension">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Outcome</label>
+                            <select name="outcome" class="form-control">
+                                <option value="">All Outcomes</option>
+                                <option value="success">Success</option>
+                                <option value="hangup">Hangup</option>
+                                <option value="operator_transfer">Operator Transfer</option>
+                                <option value="error">Error</option>
+                                <option value="in_progress">In Progress</option>
+                            </select>
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label class="form-label">Call Type</label>
-                        <select name="call_type" class="form-control">
-                            <option value="">All Types</option>
-                            <option value="immediate">Immediate</option>
-                            <option value="reservation">Reservation</option>
-                            <option value="operator">Operator</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Outcome</label>
-                        <select name="outcome" class="form-control">
-                            <option value="">All Outcomes</option>
-                            <option value="success">Success</option>
-                            <option value="hangup">Hangup</option>
-                            <option value="operator_transfer">Operator Transfer</option>
-                            <option value="error">Error</option>
-                            <option value="in_progress">In Progress</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Date From</label>
-                        <input type="date" name="date_from" class="form-control">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Date To</label>
-                        <input type="date" name="date_to" class="form-control">
-                    </div>
-                    
-                    <div class="btn-group">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-search"></i> Apply Filters
-                        </button>
-                        <button type="button" id="clearFilters" class="btn btn-secondary">
-                            <i class="fas fa-times"></i> Clear
-                        </button>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Date From</label>
+                            <input type="date" name="date_from" class="form-control">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Date To</label>
+                            <input type="date" name="date_to" class="form-control">
+                        </div>
                     </div>
                 </form>
-                
-                <div style="margin-top: 1rem;">
-                    <button id="exportBtn" class="btn btn-secondary">
-                        <i class="fas fa-download"></i> Export CSV
+            </div>
+            
+            <div class="modal-footer">
+                <div class="filter-status">
+                    <small class="text-muted">
+                        <i class="fas fa-magic"></i> Auto-filtering enabled
+                    </small>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="clearFilters" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Clear All
+                    </button>
+                    <button type="submit" form="filterForm" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Apply Filters
                     </button>
                 </div>
             </div>
         </div>
+    </div>
+
+    <div class="app-container">
         
         <!-- Main Content -->
         <div class="main-content">
             <div class="header">
-                <h1>Analytics Dashboard</h1>
-                <div class="btn-group">
-                    <button id="refreshBtn" class="btn btn-secondary">
-                        <i class="fas fa-refresh"></i> Refresh
-                    </button>
-                    <button id="realtimeBtn" class="btn btn-primary">
-                        <i class="fas fa-play"></i> Real-time
-                    </button>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1 class="dashboard-title">
+                            <i class="fas fa-chart-line"></i>
+                            Analytics Dashboard
+                        </h1>
+                        <p class="dashboard-subtitle">Real-time call monitoring and analytics</p>
+                    </div>
+                    <div class="header-right">
+                        <div class="header-actions">
+                            <button id="exportBtn" class="btn btn-info">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                            <button id="refreshBtn" class="btn btn-secondary">
+                                <i class="fas fa-refresh"></i> Refresh
+                            </button>
+                            <button id="realtimeBtn" class="btn btn-danger">
+                                <i class="fas fa-stop"></i> Stop
+                            </button>
+                        </div>
+                        <div class="header-actions-mobile">
+                            <button class="mobile-menu-toggle" id="mobileMenuToggle">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <div class="mobile-menu-dropdown" id="mobileMenuDropdown">
+                                <button id="exportBtnMobile" class="btn btn-info">
+                                    <i class="fas fa-download"></i> Export
+                                </button>
+                                <button id="refreshBtnMobile" class="btn btn-secondary">
+                                    <i class="fas fa-refresh"></i> Refresh
+                                </button>
+                                <button id="realtimeBtnMobile" class="btn btn-danger">
+                                    <i class="fas fa-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                        <div class="connection-status">
+                            <span class="status-indicator online"></span>
+                            <span class="status-text">Live</span>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -1914,13 +3720,73 @@ class AGIAnalytics {
                     </div>
                 </div>
                 
-                <!-- Outcomes Pie Chart -->
-                <div class="chart-container">
+                <!-- Location Heatmap -->
+                <div class="chart-container heatmap-container">
                     <div class="chart-header">
-                        <h3 class="chart-title">Call Outcomes</h3>
+                        <h3 class="chart-title">
+                            <i class="fas fa-map-marked-alt"></i> Location Heatmap
+                        </h3>
+                        <div class="heatmap-controls">
+                            <select id="heatmapDuration" class="form-control">
+                                <option value="30">🕐 Last 30 minutes</option>
+                                <option value="60">🕐 Last 1 hour</option>
+                                <option value="180">🕒 Last 3 hours</option>
+                                <option value="360">🕕 Last 6 hours</option>
+                                <option value="720">🕙 Last 12 hours</option>
+                                <option value="1440">🌅 Last 24 hours</option>
+                            </select>
+                            <div id="heatmapStats" class="heatmap-stats">
+                                <span class="stat-item">
+                                    <i class="fas fa-map-pin text-success"></i>
+                                    <span id="pickupCount">0</span> Pickups
+                                </span>
+                                <span class="stat-item">
+                                    <i class="fas fa-flag-checkered text-danger"></i>
+                                    <span id="destinationCount">0</span> Destinations
+                                </span>
+                                <button id="heatmapFullscreen" class="heatmap-fullscreen-btn" title="Fullscreen">
+                                    <i class="fas fa-expand"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="chart-canvas-container">
-                        <canvas id="outcomesChart"></canvas>
+                    <div id="heatmapContainer" class="heatmap-wrapper">
+                        <!-- Loading State -->
+                        <div id="heatmapLoading" class="heatmap-state">
+                            <div class="loading-spinner">
+                                <div class="spinner-ring"></div>
+                            </div>
+                            <h4>Loading location data...</h4>
+                            <p>Fetching call locations from database</p>
+                        </div>
+                        
+                        <!-- Empty State -->
+                        <div id="heatmapEmpty" class="heatmap-state" style="display: none;">
+                            <div class="empty-icon">
+                                <i class="fas fa-map-marker-alt"></i>
+                            </div>
+                            <h4>No location data available</h4>
+                            <p>Waiting for calls with location data...</p>
+                            <div class="empty-suggestions">
+                                <small>
+                                    <i class="fas fa-info-circle"></i>
+                                    Try selecting a longer time period or check back later
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <!-- Map Container -->
+                        <div id="locationHeatmap" style="height: 100%; opacity: 0; transition: opacity 0.3s ease;"></div>
+                        
+                        <!-- Map Legend -->
+                        <div id="heatmapLegend" class="heatmap-legend" style="display: none;">
+                            <div class="legend-title">Activity Level</div>
+                            <div class="legend-gradient">
+                                <span class="legend-low">Low</span>
+                                <div class="legend-bar"></div>
+                                <span class="legend-high">High</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1977,6 +3843,97 @@ class AGIAnalytics {
         </div>
     </div>
     
+    <!-- Export Modal -->
+    <div class="modal" id="exportModal">
+        <div class="modal-content" style="width: 500px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-download"></i> Export Data</h3>
+                <button class="modal-close" id="exportModalClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="export-options">
+                    <div class="export-option" data-format="csv">
+                        <div class="export-option-icon">
+                            <i class="fas fa-file-csv"></i>
+                        </div>
+                        <div class="export-option-content">
+                            <h4>CSV Export</h4>
+                            <p>Download data as spreadsheet file (.csv)</p>
+                            <small class="text-muted">Best for data analysis and Excel</small>
+                        </div>
+                        <div class="export-option-action">
+                            <i class="fas fa-download"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="export-option" data-format="pdf">
+                        <div class="export-option-icon">
+                            <i class="fas fa-file-pdf"></i>
+                        </div>
+                        <div class="export-option-content">
+                            <h4>PDF Export</h4>
+                            <p>Generate formatted PDF report</p>
+                            <small class="text-muted">Best for presentations and reports</small>
+                        </div>
+                        <div class="export-option-action">
+                            <i class="fas fa-download"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="export-option" data-format="print">
+                        <div class="export-option-icon">
+                            <i class="fas fa-print"></i>
+                        </div>
+                        <div class="export-option-content">
+                            <h4>Print View</h4>
+                            <p>Open print-friendly format</p>
+                            <small class="text-muted">Best for immediate printing</small>
+                        </div>
+                        <div class="export-option-action">
+                            <i class="fas fa-print"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="export-filters">
+                    <h5><i class="fas fa-filter"></i> Export Options</h5>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Date Range</label>
+                            <div class="date-range-inputs">
+                                <input type="datetime-local" id="exportDateFrom" class="form-control">
+                                <span>to</span>
+                                <input type="datetime-local" id="exportDateTo" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="includeCurrentFilters" checked>
+                                Include current filters
+                            </label>
+                            <small class="text-muted">Apply currently active search filters to export</small>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Records Limit</label>
+                            <select id="exportLimit" class="form-control">
+                                <option value="100">Last 100 records</option>
+                                <option value="500">Last 500 records</option>
+                                <option value="1000">Last 1000 records</option>
+                                <option value="all" selected>All records</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <script>
         // Global variables
         let currentPage = 1;
@@ -1984,34 +3941,299 @@ class AGIAnalytics {
         let currentFilters = {};
         let realtimeInterval = null;
         let charts = {};
+        // Initialize global heatmap variables
+        window.heatmapInstance = null;
+        window.heatmapLayer = null;
+        
+        // Global functions
+        function showFilterStatus(message, className) {
+            const status = document.querySelector('.filter-status small');
+            if (status) {
+                status.innerHTML = '<i class="fas fa-magic"></i> ' + message;
+                status.className = 'text-muted ' + (className || '');
+                
+                // Clear any existing timeout
+                if (window.filterStatusTimeout) {
+                    clearTimeout(window.filterStatusTimeout);
+                }
+                
+                // Set new timeout to reset status
+                window.filterStatusTimeout = setTimeout(() => {
+                    status.innerHTML = '<i class="fas fa-magic"></i> Auto-filtering enabled';
+                    status.className = 'text-muted';
+                }, 2000);
+            }
+        }
         
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded');
             loadDashboard();
             setupEventListeners();
             loadDateOptions();
+            startLiveDurationUpdater();
+            
+            // Auto-filters are set up in setupEventListeners
         });
+        
+        // Time offset between client and server (in milliseconds)
+        let serverTimeOffset = 0;
+        let serverTimeSynced = false;
+        
+        // Initialize server time sync (with callback support)
+        function syncServerTime(callback) {
+            fetch('?endpoint=server_time')
+                .then(response => response.json())
+                .then(data => {
+                    serverTimeOffset = data.timestamp - Date.now();
+                    serverTimeSynced = true;
+                    console.log('Server time synced. Offset:', serverTimeOffset + 'ms');
+                    if (callback) callback();
+                })
+                .catch(error => {
+                    console.log('Failed to sync server time:', error);
+                    serverTimeOffset = 0; // Use client time as fallback
+                    serverTimeSynced = true; // Set to true even on failure to prevent blocking
+                    if (callback) callback();
+                });
+        }
+        
+        // Get current server time
+        function getServerTime() {
+            return Date.now() + serverTimeOffset;
+        }
+        
+        // Wait for server time sync before calculation
+        function getServerTimeSync(callback) {
+            if (serverTimeSynced) {
+                callback(getServerTime());
+            } else {
+                // Wait up to 2 seconds for sync, then fallback to client time
+                let attempts = 0;
+                const checkSync = setInterval(() => {
+                    attempts++;
+                    if (serverTimeSynced || attempts > 20) { // 20 * 100ms = 2s max wait
+                        clearInterval(checkSync);
+                        callback(getServerTime());
+                    }
+                }, 100);
+            }
+        }
+        
+        // Live duration updater for in-progress calls
+        function startLiveDurationUpdater() {
+            // Initial server time sync
+            syncServerTime();
+            
+            // Re-sync server time every 5 minutes to handle any drift
+            setInterval(syncServerTime, 5 * 60 * 1000);
+            
+            setInterval(function() {
+                var currentTime = getServerTime();
+                
+                // Just refresh the calls data every 5 seconds for live calls
+                // This ensures we get accurate server-calculated durations
+                if (document.querySelectorAll('.live-duration').length > 0) {
+                    // Only refresh if there are live calls
+                    loadCalls();
+                }
+                
+                // Update detail view if open
+                var detailDuration = document.querySelector('.live-duration-detail');
+                if (detailDuration) {
+                    var startTime = parseInt(detailDuration.getAttribute('data-start'));
+                    if (startTime) {
+                        var duration = Math.floor((currentTime - startTime) / 1000);
+                        detailDuration.innerHTML = formatDuration(duration, true);
+                        detailDuration.style.color = '#ef4444';
+                        detailDuration.style.fontWeight = 'bold';
+                    }
+                }
+            }, 5000); // Update every 5 seconds
+        }
         
         // Setup event listeners
         function setupEventListeners() {
+            // Filter modal toggle
+            document.getElementById('filterToggle').addEventListener('click', function() {
+                document.getElementById('filterModal').classList.add('show');
+            });
+            
+            // Filter modal close
+            document.getElementById('filterModalClose').addEventListener('click', function() {
+                document.getElementById('filterModal').classList.remove('show');
+            });
+            
+            // Close modal on backdrop click
+            document.getElementById('filterModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.classList.remove('show');
+                }
+            });
+            
+            // Export Modal Event Listeners
+            document.getElementById('exportModalClose').addEventListener('click', function() {
+                document.getElementById('exportModal').classList.remove('show');
+            });
+            
+            // Close export modal on backdrop click
+            document.getElementById('exportModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.classList.remove('show');
+                }
+            });
+            
+            // Export option click handlers
+            document.querySelectorAll('.export-option').forEach(function(option) {
+                option.addEventListener('click', function() {
+                    const format = this.getAttribute('data-format');
+                    performExport(format);
+                });
+            });
+            
+            // Heatmap duration change
+            document.getElementById('heatmapDuration').addEventListener('change', function() {
+                loadLocationHeatmap();
+            });
+            
+            // Heatmap fullscreen toggle
+            document.getElementById('heatmapFullscreen').addEventListener('click', function() {
+                var container = document.querySelector('.heatmap-container');
+                var icon = this.querySelector('i');
+                
+                if (container.classList.contains('heatmap-fullscreen')) {
+                    exitHeatmapFullscreen();
+                } else {
+                    enterHeatmapFullscreen();
+                }
+            });
+            
+            // Fullscreen helper functions
+            function enterHeatmapFullscreen() {
+                var container = document.querySelector('.heatmap-container');
+                var icon = document.querySelector('#heatmapFullscreen i');
+                
+                container.classList.add('heatmap-fullscreen');
+                icon.classList.remove('fa-expand');
+                icon.classList.add('fa-compress');
+                document.getElementById('heatmapFullscreen').title = 'Exit Fullscreen';
+                
+                // Add close button
+                var closeBtn = document.createElement('button');
+                closeBtn.className = 'fullscreen-close-btn';
+                closeBtn.id = 'fullscreenCloseBtn';
+                closeBtn.innerHTML = '<i class="fas fa-times"></i>';
+                closeBtn.title = 'Close Fullscreen';
+                closeBtn.onclick = exitHeatmapFullscreen;
+                container.appendChild(closeBtn);
+                
+                // Disable body scroll
+                document.body.style.overflow = 'hidden';
+                
+                // Re-initialize heatmap after fullscreen change
+                setTimeout(function() {
+                    if (window.heatmapInstance) {
+                        window.heatmapInstance.invalidateSize();
+                    }
+                }, 200);
+            }
+            
+            function exitHeatmapFullscreen() {
+                var container = document.querySelector('.heatmap-container');
+                var icon = document.querySelector('#heatmapFullscreen i');
+                
+                container.classList.remove('heatmap-fullscreen');
+                icon.classList.remove('fa-compress');
+                icon.classList.add('fa-expand');
+                document.getElementById('heatmapFullscreen').title = 'Fullscreen';
+                
+                // Remove close button
+                var closeBtn = document.getElementById('fullscreenCloseBtn');
+                if (closeBtn) {
+                    closeBtn.remove();
+                }
+                
+                // Re-enable body scroll
+                document.body.style.overflow = '';
+                
+                // Re-initialize heatmap after fullscreen change
+                setTimeout(function() {
+                    if (window.heatmapInstance) {
+                        window.heatmapInstance.invalidateSize();
+                    }
+                }, 200);
+            }
+            
+            // ESC key to exit fullscreen
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && document.querySelector('.heatmap-container.heatmap-fullscreen')) {
+                    exitHeatmapFullscreen();
+                }
+            });
+            
             // Filter form
             document.getElementById('filterForm').addEventListener('submit', function(e) {
                 e.preventDefault();
+                // Close modal
+                document.getElementById('filterModal').classList.remove('show');
+                // Apply filters
                 applyFilters();
             });
             
+            // Auto-apply filters on input change (with debounce)
+            let filterTimeout;
+            
+            function setupAutoFilters() {
+                console.log('Setting up auto-filters...');
+                const inputs = document.querySelectorAll('#filterForm input, #filterForm select');
+                console.log('Found filter inputs:', inputs.length);
+                
+                inputs.forEach((input, index) => {
+                    console.log(`Setting up listeners for input ${index}:`, input.name, input.type);
+                    
+                    input.addEventListener('input', function() {
+                        console.log('Input event on:', this.name, 'value:', this.value);
+                        showFilterStatus('Typing...', 'text-warning');
+                        clearTimeout(filterTimeout);
+                        filterTimeout = setTimeout(() => {
+                            showFilterStatus('Applying filters...', 'text-info');
+                            applyFilters();
+                        }, 500); // 500ms debounce
+                    });
+                    
+                    input.addEventListener('change', function() {
+                        console.log('Change event on:', this.name, 'value:', this.value);
+                        showFilterStatus('Applying filters...', 'text-info');
+                        clearTimeout(filterTimeout);
+                        applyFilters();
+                    });
+                });
+            }
+            
+            // Initialize auto-filters
+            setupAutoFilters();
+            
             // Clear filters
             document.getElementById('clearFilters').addEventListener('click', function() {
+                console.log('Clearing filters...');
                 document.getElementById('filterForm').reset();
                 currentFilters = {};
                 currentPage = 1;
+                
+                // Show feedback
+                showFilterStatus('Filters cleared!', 'text-success');
+                
+                // Close modal
+                document.getElementById('filterModal').classList.remove('show');
+                
+                // Reload calls
                 loadCalls();
                 updateURL();
             });
             
-            // Export button
+            // Export button - show modal
             document.getElementById('exportBtn').addEventListener('click', function() {
-                exportCSV();
+                showExportModal();
             });
             
             // Refresh button
@@ -2021,6 +4243,39 @@ class AGIAnalytics {
             
             // Real-time toggle
             document.getElementById('realtimeBtn').addEventListener('click', function() {
+                toggleRealtime();
+            });
+            
+            // Mobile Menu Toggle
+            document.getElementById('mobileMenuToggle').addEventListener('click', function(e) {
+                e.stopPropagation();
+                const dropdown = document.getElementById('mobileMenuDropdown');
+                dropdown.classList.toggle('show');
+            });
+            
+            // Close mobile menu when clicking outside
+            document.addEventListener('click', function(e) {
+                const dropdown = document.getElementById('mobileMenuDropdown');
+                const toggle = document.getElementById('mobileMenuToggle');
+                
+                if (!dropdown.contains(e.target) && !toggle.contains(e.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+            
+            // Mobile button event listeners (duplicate functionality)
+            document.getElementById('exportBtnMobile').addEventListener('click', function() {
+                document.getElementById('mobileMenuDropdown').classList.remove('show');
+                showExportModal();
+            });
+            
+            document.getElementById('refreshBtnMobile').addEventListener('click', function() {
+                document.getElementById('mobileMenuDropdown').classList.remove('show');
+                loadDashboard();
+            });
+            
+            document.getElementById('realtimeBtnMobile').addEventListener('click', function() {
+                document.getElementById('mobileMenuDropdown').classList.remove('show');
                 toggleRealtime();
             });
             
@@ -2050,8 +4305,13 @@ class AGIAnalytics {
             loadStats();
             loadCalls();
             loadHourlyChart();
-            loadOutcomesChart();
+            loadLocationHeatmap();
             hideLoading();
+            
+            // Auto-start real-time updates (as requested by user)
+            setTimeout(() => {
+                startRealtime();
+            }, 1000);
         }
         
         // Load statistics
@@ -2080,12 +4340,66 @@ class AGIAnalytics {
         }
         
         // Render statistics
+        // Track previous stats for change detection
+        let previousStats = {};
+        
+        // Show +1 animation for stat updates
+        function showStatIncrease(statElement, increase) {
+            if (increase > 0) {
+                // Flash the stat card
+                statElement.closest('.stat-card').classList.add('flash-update');
+                setTimeout(() => {
+                    statElement.closest('.stat-card').classList.remove('flash-update');
+                }, 1000);
+                
+                // Create +1 animation
+                const plusOne = document.createElement('div');
+                plusOne.className = 'plus-one';
+                plusOne.textContent = '+' + increase;
+                
+                const statCard = statElement.closest('.stat-card');
+                statCard.style.position = 'relative';
+                statCard.appendChild(plusOne);
+                
+                setTimeout(() => {
+                    if (statCard.contains(plusOne)) {
+                        statCard.removeChild(plusOne);
+                    }
+                }, 2000);
+            }
+        }
+        
         function renderStats(stats) {
             var statsGrid = document.getElementById('statsGrid');
             
             var totalCalls = stats.total_calls || 0;
             var successfulCalls = stats.successful_calls || 0;
             var successRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
+            
+            // Calculate changes
+            const totalCallsIncrease = previousStats.total_calls ? (totalCalls - previousStats.total_calls) : 0;
+            const successfulCallsIncrease = previousStats.successful_calls ? (successfulCalls - previousStats.successful_calls) : 0;
+            const uniqueCallersIncrease = previousStats.unique_callers ? ((stats.unique_callers || 0) - previousStats.unique_callers) : 0;
+            
+            // Show animation for increases
+            function showPlusAnimation(elementId, increase) {
+                if (increase > 0) {
+                    const element = document.getElementById(elementId);
+                    if (element) {
+                        const plusElement = document.createElement('div');
+                        plusElement.textContent = '+' + increase;
+                        plusElement.className = 'plus-one-animation';
+                        element.style.position = 'relative';
+                        element.appendChild(plusElement);
+                        
+                        setTimeout(() => {
+                            if (plusElement.parentNode) {
+                                plusElement.parentNode.removeChild(plusElement);
+                            }
+                        }, 2000);
+                    }
+                }
+            }
             
             statsGrid.innerHTML = 
                 '<div class="stat-card">' +
@@ -2095,7 +4409,7 @@ class AGIAnalytics {
                             '<i class="fas fa-phone"></i>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="stat-value">' + totalCalls.toLocaleString() + '</div>' +
+                    '<div class="stat-value" id="totalCallsStat">' + totalCalls.toLocaleString() + '</div>' +
                     '<div class="stat-change change-positive">' +
                         '<i class="fas fa-arrow-up"></i> Active' +
                     '</div>' +
@@ -2108,7 +4422,7 @@ class AGIAnalytics {
                             '<i class="fas fa-check-circle"></i>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="stat-value">' + successfulCalls.toLocaleString() + '</div>' +
+                    '<div class="stat-value" id="successfulCallsStat">' + successfulCalls.toLocaleString() + '</div>' +
                     '<div class="stat-change change-positive">' +
                         successRate + '% success rate' +
                     '</div>' +
@@ -2134,11 +4448,25 @@ class AGIAnalytics {
                             '<i class="fas fa-users"></i>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="stat-value">' + (stats.unique_callers || 0) + '</div>' +
+                    '<div class="stat-value" id="uniqueCallersStat">' + (stats.unique_callers || 0) + '</div>' +
                     '<div class="stat-change">' +
                         'Different numbers' +
                     '</div>' +
                 '</div>';
+            
+            // Show animations for increases (after a brief delay to let DOM update)
+            setTimeout(() => {
+                showPlusAnimation('totalCallsStat', totalCallsIncrease);
+                showPlusAnimation('successfulCallsStat', successfulCallsIncrease);
+                showPlusAnimation('uniqueCallersStat', uniqueCallersIncrease);
+            }, 100);
+            
+            // Store current stats for next comparison
+            previousStats = {
+                total_calls: totalCalls,
+                successful_calls: successfulCalls,
+                unique_callers: stats.unique_callers || 0
+            };
         }
         
         // Load calls table
@@ -2180,10 +4508,21 @@ class AGIAnalytics {
             }
             
             tbody.innerHTML = calls.map(function(call) {
+                // Use server-calculated duration (already correct for live calls)
+                var duration = call.call_duration;
+                var durationCell = '';
+                if (call.call_outcome === 'in_progress' && call.call_start_time) {
+                    var startTime = new Date(call.call_start_time).getTime();
+                    // Use server-calculated duration, but still mark for live updates
+                    durationCell = '<td class="live-duration" data-start="' + startTime + '" data-server-duration="' + duration + '">' + formatDuration(duration, true) + '</td>';
+                } else {
+                    durationCell = '<td>' + formatDuration(call.call_duration) + '</td>';
+                }
+                
                 return '<tr onclick="showCallDetail(\'' + (call.call_id || '') + '\')" style="cursor: pointer;">' +
                     '<td>' + (call.phone_number || 'N/A') + '</td>' +
                     '<td>' + formatDate(call.call_start_time) + '</td>' +
-                    '<td>' + formatDuration(call.call_duration) + '</td>' +
+                    durationCell +
                     '<td>' + renderStatusBadge(call.call_outcome) + '</td>' +
                     '<td>' + (call.is_reservation ? 'Reservation' : 'Immediate') + '</td>' +
                     '<td>' + truncate(call.user_name || 'N/A', 20) + '</td>' +
@@ -2216,12 +4555,33 @@ class AGIAnalytics {
         
         // Render location info
         function renderLocationInfo(call) {
+            var html = '';
+            
             if (call.pickup_address) {
-                var hasCoords = call.pickup_lat && call.pickup_lng;
-                var icon = hasCoords ? 'map-marker-alt' : 'map';
-                return '<i class="fas fa-' + icon + '"></i> ' + truncate(call.pickup_address, 25);
+                var hasPickupCoords = call.pickup_lat && call.pickup_lng;
+                var pickupIcon = hasPickupCoords ? 'map-marker-alt' : 'map-pin';
+                html += '<div class="location-item pickup-location">' +
+                       '<i class="fas fa-' + pickupIcon + ' text-success"></i> ' +
+                       '<span class="location-label">From:</span> ' +
+                       '<span class="location-address">' + truncate(call.pickup_address, 20) + '</span>' +
+                       '</div>';
             }
-            return '<span style="color: var(--gray-400);">No location</span>';
+            
+            if (call.destination_address) {
+                var hasDestCoords = call.destination_lat && call.destination_lng;
+                var destIcon = hasDestCoords ? 'flag-checkered' : 'flag';
+                html += '<div class="location-item destination-location">' +
+                       '<i class="fas fa-' + destIcon + ' text-danger"></i> ' +
+                       '<span class="location-label">To:</span> ' +
+                       '<span class="location-address">' + truncate(call.destination_address, 20) + '</span>' +
+                       '</div>';
+            }
+            
+            if (html === '') {
+                return '<span class="no-location"><i class="fas fa-map text-muted"></i> No location</span>';
+            }
+            
+            return '<div class="location-info">' + html + '</div>';
         }
         
         // Render API usage
@@ -2261,7 +4621,10 @@ class AGIAnalytics {
         function renderHourlyChart(hourlyData) {
             var ctx = document.getElementById('hourlyChart').getContext('2d');
             
-            if (charts.hourly) {
+            // Don't destroy existing chart, update it instead to prevent flashing
+            var shouldUpdate = charts.hourly && typeof charts.hourly.update === 'function';
+            
+            if (!shouldUpdate && charts.hourly) {
                 charts.hourly.destroy();
             }
             
@@ -2286,6 +4649,15 @@ class AGIAnalytics {
                 hourLabels.push(hourlyData[i].hour + ':00');
                 totalCallsData.push(hourlyData[i].total_calls || 0);
                 successfulCallsData.push(hourlyData[i].successful_calls || 0);
+            }
+            
+            // Update existing chart if possible to prevent flashing
+            if (shouldUpdate) {
+                charts.hourly.data.labels = hourLabels;
+                charts.hourly.data.datasets[0].data = totalCallsData;
+                charts.hourly.data.datasets[1].data = successfulCallsData;
+                charts.hourly.update('none'); // 'none' animation mode for smooth updates
+                return;
             }
             
             charts.hourly = new Chart(ctx, {
@@ -2350,9 +4722,40 @@ class AGIAnalytics {
             });
         }
         
-        // Load outcomes chart
-        function loadOutcomesChart() {
-            fetch('?endpoint=analytics')
+        // Start real-time updates
+        function startRealtime() {
+            var btn = document.getElementById('realtimeBtn');
+            if (!realtimeInterval) {
+                console.log('Starting real-time updates...');
+                realtimeInterval = setInterval(() => {
+                    console.log('Real-time update triggered');
+                    loadStats();
+                    if (currentPage === 1) {
+                        loadCalls();
+                    }
+                    loadHourlyChart(); // Also refresh the hourly chart
+                    loadLocationHeatmap();
+                }, 10000); // Update every 10 seconds
+                
+                btn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-danger');
+                
+                console.log('Real-time updates enabled');
+            }
+        }
+        
+        // Load location heatmap
+        function loadLocationHeatmap() {
+            var duration = document.getElementById('heatmapDuration').value || 30;
+            
+            // Don't show loading state on refresh to prevent flashing
+            // Only show loading on first load
+            if (!window.heatmapInstance) {
+                showHeatmapLoading();
+            }
+            
+            fetch('?endpoint=locations&minutes=' + duration)
                 .then(function(response) { 
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
@@ -2360,104 +4763,152 @@ class AGIAnalytics {
                     return response.json(); 
                 })
                 .then(function(data) { 
-                    var outcomes = data.outcomes || [];
-                    renderOutcomesChart(outcomes);
+                    renderLocationHeatmap(data);
                 })
                 .catch(function(error) { 
-                    console.error('Error loading outcomes chart:', error);
-                    // Render empty chart on error
-                    renderOutcomesChart([]);
+                    console.error('Error loading location data:', error);
+                    // Only show empty state if there's no existing heatmap
+                    if (!window.heatmapInstance) {
+                        showHeatmapEmpty();
+                    }
                 });
         }
         
-        // Render outcomes chart
-        function renderOutcomesChart(outcomes) {
-            var ctx = document.getElementById('outcomesChart').getContext('2d');
-            
-            if (charts.outcomes) {
-                charts.outcomes.destroy();
-            }
-            
-            var colors = [
-                'rgb(16, 185, 129)',  // success - green
-                'rgb(239, 68, 68)',   // hangup - red
-                'rgb(245, 158, 11)',  // operator_transfer - yellow
-                'rgb(6, 182, 212)',   // in_progress - cyan
-                'rgb(139, 69, 19)'    // error - brown
-            ];
-            
-            // Handle empty data
-            if (!outcomes || outcomes.length === 0) {
-                outcomes = [{
-                    call_outcome: 'no_data',
-                    count: 1
-                }];
-            }
-            
-            // Convert data for older browsers
-            var labels = [];
-            var dataValues = [];
-            var backgroundColors = [];
-            
-            for (var i = 0; i < outcomes.length; i++) {
-                var outcome = outcomes[i];
-                if (outcome.call_outcome === 'no_data') {
-                    labels.push('No Data Available');
-                    dataValues.push(1);
-                    backgroundColors.push('rgb(156, 163, 175)');
-                } else {
-                    labels.push(outcome.call_outcome.replace('_', ' ').toUpperCase());
-                    dataValues.push(outcome.count || 0);
-                    backgroundColors.push(colors[i % colors.length]);
-                }
-            }
-            
-            charts.outcomes = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        data: dataValues,
-                        backgroundColor: backgroundColors,
-                        borderWidth: 3,
-                        borderColor: '#fff',
-                        hoverBorderWidth: 4,
-                        hoverBorderColor: '#fff'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    cutout: '60%',
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                padding: 20,
-                                usePointStyle: true,
-                                font: {
-                                    size: 12
-                                }
-                            }
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                            titleColor: 'white',
-                            bodyColor: 'white',
-                            borderColor: 'rgba(0, 0, 0, 0.8)',
-                            borderWidth: 1,
-                            callbacks: {
-                                label: function(context) {
-                                    var total = context.dataset.data.reduce(function(a, b) { return a + b; }, 0);
-                                    var percentage = Math.round((context.parsed / total) * 100);
-                                    return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
-                                }
-                            }
-                        }
-                    }
-                }
-            });
+        // Show loading state
+        function showHeatmapLoading() {
+            document.getElementById('heatmapLoading').style.display = 'flex';
+            document.getElementById('heatmapEmpty').style.display = 'none';
+            document.getElementById('locationHeatmap').style.opacity = '0';
+            document.getElementById('heatmapLegend').style.display = 'none';
         }
+        
+        // Update location stats
+        function updateLocationStats(data) {
+            var pickupCount = 0;
+            var destinationCount = 0;
+            
+            if (data.locations) {
+                data.locations.forEach(function(loc) {
+                    if (loc.type === 'pickup') pickupCount++;
+                    else if (loc.type === 'destination') destinationCount++;
+                });
+            }
+            
+            document.getElementById('pickupCount').textContent = pickupCount;
+            document.getElementById('destinationCount').textContent = destinationCount;
+        }
+        
+        // Render location heatmap
+        function renderLocationHeatmap(data) {
+            var container = document.getElementById('locationHeatmap');
+            var loading = document.getElementById('heatmapLoading');
+            var empty = document.getElementById('heatmapEmpty');
+            var legend = document.getElementById('heatmapLegend');
+            
+            // Update stats
+            updateLocationStats(data);
+            
+            if (!data.locations || data.locations.length === 0) {
+                showHeatmapEmpty();
+                return;
+            }
+            
+            // Hide loading and empty states
+            loading.style.display = 'none';
+            empty.style.display = 'none';
+            
+                // Show map and legend smoothly
+            if (container.style.opacity !== '1') {
+                container.style.transition = 'opacity 0.3s ease';
+                container.style.opacity = '1';
+            }
+            legend.style.display = 'block';
+            
+            // Initialize map if not exists
+            if (!window.heatmapInstance) {
+                try {
+                    window.heatmapInstance = L.map('locationHeatmap').setView([37.9838, 23.7275], 11);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap contributors'
+                    }).addTo(window.heatmapInstance);
+                } catch (e) {
+                    console.error('Error initializing map:', e);
+                    showHeatmapEmpty();
+                    return;
+                }
+            }
+            
+            // Prepare heat data
+            var heatData = data.locations.map(function(loc) {
+                return [loc.lat, loc.lng, 0.5];
+            });
+            
+            // Update existing heat layer or create new one
+            if (typeof L !== 'undefined' && L.heatLayer && typeof L.heatLayer === 'function') {
+                if (window.heatmapLayer && window.heatmapLayer.setLatLngs) {
+                    // Update existing layer smoothly instead of removing/recreating
+                    window.heatmapLayer.setLatLngs(heatData);
+                } else {
+                    // Remove old layer if exists
+                    if (window.heatmapLayer) {
+                        window.heatmapInstance.removeLayer(window.heatmapLayer);
+                    }
+                    // Create new layer
+                    window.heatmapLayer = L.heatLayer(heatData, {
+                        radius: 25,
+                        blur: 15,
+                        maxZoom: 17,
+                        max: 1.0,
+                        gradient: {
+                            0.0: '#3b82f6',
+                            0.25: '#06d6a0',
+                            0.5: '#ffd23f',
+                            0.75: '#ff6b35',
+                            1.0: '#f72585'
+                        }
+                    }).addTo(window.heatmapInstance);
+                }
+            } else {
+                // Fallback to regular markers
+                window.heatmapLayer = L.layerGroup();
+                for (var i = 0; i < data.locations.length; i++) {
+                    var loc = data.locations[i];
+                    var color = loc.type === 'pickup' ? '#10b981' : '#ef4444';
+                    var marker = L.circleMarker([loc.lat, loc.lng], {
+                        radius: 8,
+                        fillColor: color,
+                        color: '#fff',
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    }).bindPopup('<strong>' + (loc.type === 'pickup' ? '📍 Pickup' : '🏁 Destination') + '</strong><br>' + loc.address);
+                    window.heatmapLayer.addLayer(marker);
+                }
+                window.heatmapLayer.addTo(window.heatmapInstance);
+            }
+            
+            // Fit bounds if we have locations
+            if (heatData.length > 0) {
+                var bounds = L.latLngBounds(heatData.map(function(point) {
+                    return [point[0], point[1]];
+                }));
+                window.heatmapInstance.fitBounds(bounds, { padding: [50, 50] });
+            }
+        }
+        
+        // Show empty heatmap message
+        function showHeatmapEmpty() {
+            document.getElementById('heatmapLoading').style.display = 'none';
+            document.getElementById('heatmapEmpty').style.display = 'flex';
+            document.getElementById('locationHeatmap').style.opacity = '0';
+            document.getElementById('heatmapLegend').style.display = 'none';
+            // Reset stats
+            updateLocationStats({locations: []});
+        }
+        
+        // Removed loadOutcomesChart - replaced with heatmap
+        
+        // Removed renderOutcomesChart - replaced with heatmap
         
         // Show call detail modal
         function showCallDetail(callId) {
@@ -2495,7 +4946,10 @@ class AGIAnalytics {
                 '</div>' +
                 '<div class="detail-item">' +
                     '<div class="detail-label">Duration</div>' +
-                    '<div class="detail-value">' + formatDuration(call.call_duration) + '</div>' +
+                    '<div class="detail-value" ' + 
+                        (call.call_outcome === 'in_progress' ? 'class="live-duration-detail" data-start="' + new Date(call.call_start_time).getTime() + '" data-server-duration="' + call.call_duration + '"' : '') + '>' + 
+                        formatDuration(call.call_duration, call.call_outcome === 'in_progress') + 
+                    '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
                     '<div class="detail-label">Status</div>' +
@@ -2555,18 +5009,51 @@ class AGIAnalytics {
                 }
             }
             
-            // Add call log section
+            // Add enhanced call log section
             if (call.call_log && call.call_log.length > 0) {
                 html += '<h4 style="margin: 1.5rem 0 1rem;">Call Log</h4>' +
-                       '<div style="background: var(--gray-50); padding: 1rem; border-radius: 0.5rem; max-height: 300px; overflow-y: auto;">' +
-                           '<pre style="font-size: 0.75rem; color: var(--gray-800); white-space: pre-wrap;">';
+                       '<div style="background: var(--gray-50); padding: 0; border-radius: 0.5rem; max-height: 500px; overflow-y: auto; border: 1px solid var(--gray-200);">';
                 
-                var logMessages = [];
+                // Group logs by category for better organization
+                var categoryColors = {
+                    'user_input': '#3b82f6',
+                    'tts': '#10b981',
+                    'api': '#f59e0b',
+                    'location': '#8b5cf6',
+                    'error': '#ef4444',
+                    'operator': '#ec4899',
+                    'general': '#6b7280'
+                };
+                
+                var categoryIcons = {
+                    'user_input': '👤',
+                    'tts': '🔊',
+                    'api': '🔌',
+                    'location': '📍',
+                    'error': '❌',
+                    'operator': '📞',
+                    'general': '📝'
+                };
+                
                 for (var i = 0; i < call.call_log.length; i++) {
-                    logMessages.push(call.call_log[i].message);
+                    var log = call.call_log[i];
+                    var category = log.category || 'general';
+                    var color = categoryColors[category] || '#6b7280';
+                    var icon = categoryIcons[category] || '📝';
+                    var timestamp = log.timestamp ? '<span style="color: #9ca3af; font-size: 0.7rem;">' + log.timestamp + '</span> ' : '';
+                    var bgColor = (i % 2 === 0) ? '#f9fafb' : '#ffffff';
+                    
+                    html += '<div style="padding: 0.5rem 1rem; border-bottom: 1px solid var(--gray-100); background: ' + bgColor + ';">' +
+                           '<div style="display: flex; align-items: flex-start; gap: 0.5rem;">' +
+                           '<span style="font-size: 1rem; min-width: 1.5rem;">' + icon + '</span>' +
+                           '<div style="flex: 1; min-width: 0;">' +
+                           timestamp +
+                           '<span style="color: ' + color + '; font-size: 0.8rem; line-height: 1.4; word-wrap: break-word;">' + 
+                           (log.message || log.original || '') + '</span>' +
+                           '</div></div></div>';
                 }
-                html += logMessages.join('\\n');
-                html += '</pre></div>';
+                
+                html += '</div>';
             }
             
             body.innerHTML = html;
@@ -2598,6 +5085,75 @@ class AGIAnalytics {
             document.getElementById('callDetailModal').classList.remove('show');
         }
         
+        // Export Modal Functions
+        function showExportModal() {
+            const modal = document.getElementById('exportModal');
+            modal.classList.add('show');
+            
+            // Set default date range to last 30 days
+            const now = new Date();
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(now.getDate() - 30);
+            
+            document.getElementById('exportDateTo').value = formatDateTimeLocal(now);
+            document.getElementById('exportDateFrom').value = formatDateTimeLocal(thirtyDaysAgo);
+        }
+        
+        function formatDateTimeLocal(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
+        
+        function performExport(format) {
+            // Get export options
+            const dateFrom = document.getElementById('exportDateFrom').value;
+            const dateTo = document.getElementById('exportDateTo').value;
+            const includeFilters = document.getElementById('includeCurrentFilters').checked;
+            const limit = document.getElementById('exportLimit').value;
+            
+            // Build parameters
+            const params = new URLSearchParams();
+            params.set('action', 'export');
+            params.set('format', format);
+            
+            if (dateFrom) {
+                params.set('date_from', dateFrom.split('T')[0]);
+            }
+            if (dateTo) {
+                params.set('date_to', dateTo.split('T')[0]);
+            }
+            if (limit !== 'all') {
+                params.set('limit', limit);
+            }
+            
+            // Include current filters if checked
+            if (includeFilters) {
+                for (const key in currentFilters) {
+                    if (currentFilters.hasOwnProperty(key)) {
+                        params.set(key, currentFilters[key]);
+                    }
+                }
+            }
+            
+            // Close modal
+            document.getElementById('exportModal').classList.remove('show');
+            
+            if (format === 'print') {
+                // Open in new window for printing
+                window.open('?' + params.toString(), '_blank');
+            } else if (format === 'csv') {
+                // Download CSV
+                window.location.href = '?' + params.toString();
+            } else if (format === 'pdf') {
+                // Generate PDF
+                window.open('?' + params.toString(), '_blank');
+            }
+        }
+        
         // Apply filters
         function applyFilters() {
             var form = document.getElementById('filterForm');
@@ -2615,23 +5171,17 @@ class AGIAnalytics {
                 entry = entries.next();
             }
             
+            console.log('Applying filters:', currentFilters);
+            
             currentPage = 1;
             loadCalls();
             updateURL();
-        }
-        
-        // Export CSV
-        function exportCSV() {
-            var params = new URLSearchParams();
-            params.set('action', 'export');
             
-            for (var key in currentFilters) {
-                if (currentFilters.hasOwnProperty(key)) {
-                    params.set(key, currentFilters[key]);
-                }
-            }
+            // Show success feedback
+            showFilterStatus('Filters applied!', 'text-success');
             
-            window.open('?' + params.toString(), '_blank');
+            // Close the modal
+            document.getElementById('filterModal').classList.remove('show');
         }
         
         // Toggle real-time updates
@@ -2645,16 +5195,7 @@ class AGIAnalytics {
                 btn.classList.remove('btn-danger');
                 btn.classList.add('btn-primary');
             } else {
-                realtimeInterval = setInterval(() => {
-                    loadStats();
-                    if (currentPage === 1) {
-                        loadCalls();
-                    }
-                }, 10000); // Update every 10 seconds
-                
-                btn.innerHTML = '<i class="fas fa-stop"></i> Stop';
-                btn.classList.remove('btn-primary');
-                btn.classList.add('btn-danger');
+                startRealtime();
             }
         }
         
@@ -2714,8 +5255,8 @@ class AGIAnalytics {
             return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         }
         
-        function formatDuration(seconds) {
-            if (!seconds || seconds === 0) return '0s';
+        function formatDuration(seconds, isLive) {
+            if (!seconds || seconds === 0) return isLive ? 'Starting...' : '0s';
             
             const mins = Math.floor(seconds / 60);
             const secs = seconds % 60;
