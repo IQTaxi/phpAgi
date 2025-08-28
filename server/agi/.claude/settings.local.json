@@ -5,7 +5,9 @@
       "Read(/C:\\c\\Windows/**)",
       "Bash(powershell:*)",
       "Bash(python:*)",
-      "Read(/C:\\/**)"
+      "Read(/C:\\/**)",
+      "Bash(grep:*)",
+      "Bash(php:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\billy\\Documents\\phpAgi\\server",

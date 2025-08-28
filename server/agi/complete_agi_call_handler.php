@@ -52,6 +52,14 @@ class AGICallHandler
     private $reservation_result = '';
     private $reservation_timestamp = '';
     private $is_reservation = false;
+    
+    // Enhanced analytics tracking
+    private $analytics_data = [];
+    private $analytics_url = 'http://127.0.0.1/agi_analytics.php';
+    private $start_time;
+    private $current_step = 'initialization';
+    private $step_start_time;
+    private $db_connection = null;
 
     // === INITIALIZATION ===
     
@@ -61,6 +69,7 @@ class AGICallHandler
         $this->setupFilePaths();
         $this->loadConfiguration();
         $this->checkExtensionExists();
+        $this->initializeAnalytics();
     }
 
     /**
@@ -127,6 +136,413 @@ class AGICallHandler
             exit;
         }
     }
+    
+    /**
+     * Initialize enhanced analytics tracking with real-time updates
+     */
+    private function initializeAnalytics()
+    {
+        $this->start_time = microtime(true);
+        $this->step_start_time = $this->start_time;
+        $this->setupDatabaseConnection();
+        $this->analytics_data = [
+            'call_id' => $this->uniqueid,
+            'unique_id' => $this->uniqueid,
+            'phone_number' => $this->caller_num,
+            'extension' => $this->extension,
+            'call_start_time' => date('Y-m-d H:i:s'),
+            'call_outcome' => 'in_progress',
+            'call_type' => 'immediate',
+            'is_reservation' => 0,
+            'language_used' => 'el',
+            'language_changed' => 0,
+            'tts_provider' => $this->tts_provider,
+            'callback_mode' => intval($this->config[$this->extension]['callbackMode'] ?? 1),
+            'days_valid' => intval($this->days_valid),
+            'recording_path' => $this->filebase,
+            'log_file_path' => $this->filebase . "/log.txt",
+            'progress_json_path' => $this->filebase . "/progress.json",
+            'google_tts_calls' => 0,
+            'google_stt_calls' => 0,
+            'edge_tts_calls' => 0,
+            'geocoding_api_calls' => 0,
+            'user_api_calls' => 0,
+            'registration_api_calls' => 0,
+            'date_parsing_api_calls' => 0,
+            'tts_processing_time' => 0,
+            'stt_processing_time' => 0,
+            'geocoding_processing_time' => 0,
+            'total_processing_time' => 0,
+            'confirmation_attempts' => 0,
+            'total_retries' => 0,
+            'name_attempts' => 0,
+            'pickup_attempts' => 0,
+            'destination_attempts' => 0,
+            'reservation_attempts' => 0,
+            'confirmed_default_address' => 0,
+            'successful_registration' => 0
+        ];
+        
+        // Insert initial record immediately and track pickup
+        $this->trackStep('call_start');
+        $this->createAnalyticsRecord();
+    }
+
+    // === ENHANCED ANALYTICS METHODS ===
+    
+    /**
+     * Setup direct database connection for real-time analytics
+     */
+    private function setupDatabaseConnection()
+    {
+        try {
+            $dsn = "mysql:host=127.0.0.1;port=3306;dbname=asterisk;charset=utf8mb4";
+            
+            // Try primary credentials first
+            try {
+                $this->db_connection = new PDO($dsn, 'freepbxuser', 'WXS/NCr0WnbY');
+            } catch (PDOException $e) {
+                // Fallback to root
+                $this->db_connection = new PDO($dsn, 'root', '');
+            }
+            
+            $this->db_connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $this->db_connection->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            
+            $this->logMessage("Analytics DB connection established");
+        } catch (PDOException $e) {
+            $this->logMessage("Analytics DB connection failed: " . $e->getMessage());
+            $this->db_connection = null;
+        }
+    }
+    
+    /**
+     * Track each step of the call flow with timestamps and duration
+     */
+    private function trackStep($step)
+    {
+        $now = microtime(true);
+        $step_duration = $now - $this->step_start_time;
+        
+        // Log step transition
+        $this->logMessage("STEP: {$this->current_step} -> {$step} (took " . round($step_duration * 1000) . "ms)");
+        
+        // Update analytics with step info (only valid fields)
+        // Note: current_step and last_step_time don't exist in database, so we skip them
+        
+        // Real-time database update if possible
+        $this->updateAnalyticsInDB();
+        
+        $this->current_step = $step;
+        $this->step_start_time = $now;
+    }
+    
+    /**
+     * Direct database update for real-time analytics
+     */
+    private function updateAnalyticsInDB()
+    {
+        if (!$this->db_connection) return;
+        
+        try {
+            $stmt = $this->db_connection->prepare(
+                "UPDATE automated_calls_analitycs SET 
+                call_outcome = ?, 
+                google_tts_calls = ?,
+                google_stt_calls = ?,
+                pickup_address = ?,
+                pickup_lat = ?,
+                pickup_lng = ?,
+                destination_address = ?,
+                destination_lat = ?,
+                destination_lng = ?,
+                call_end_time = ?
+                WHERE call_id = ?"
+            );
+            
+            $stmt->execute([
+                $this->analytics_data['call_outcome'] ?? 'in_progress',
+                $this->analytics_data['google_tts_calls'] ?? 0,
+                $this->analytics_data['google_stt_calls'] ?? 0,
+                $this->analytics_data['pickup_address'] ?? null,
+                $this->analytics_data['pickup_lat'] ?? null,
+                $this->analytics_data['pickup_lng'] ?? null,
+                $this->analytics_data['destination_address'] ?? null,
+                $this->analytics_data['destination_lat'] ?? null,
+                $this->analytics_data['destination_lng'] ?? null,
+                $this->analytics_data['call_end_time'] ?? null,
+                $this->analytics_data['call_id']
+            ]);
+            
+        } catch (PDOException $e) {
+            $this->logMessage("DB analytics update failed: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Get all step durations for JSON storage
+     */
+    private function getStepDurations()
+    {
+        $durations = [];
+        foreach ($this->analytics_data as $key => $value) {
+            if (strpos($key, 'step_duration_') === 0) {
+                $durations[$key] = $value;
+            }
+        }
+        return $durations;
+    }
+    
+    private function createAnalyticsRecord()
+    {
+        $this->logMessage("ANALYTICS: Creating initial record");
+        $this->sendAnalyticsData('call', 'POST');
+    }
+    
+    private function updateAnalyticsRecord()
+    {
+        $this->logMessage("ANALYTICS: Updating record");
+        $this->sendAnalyticsData('call', 'PUT');
+    }
+    
+    private function setCallType($type)
+    {
+        $this->trackStep('call_type_selected');
+        $this->analytics_data['call_type'] = $type;
+        if ($type === 'reservation') {
+            $this->analytics_data['is_reservation'] = 1;
+        }
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function setCallOutcome($outcome, $reason = '')
+    {
+        $this->trackStep('call_outcome_set');
+        $this->analytics_data['call_outcome'] = $outcome;
+        if (!empty($reason)) {
+            $this->analytics_data['operator_transfer_reason'] = $reason;
+        }
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function setLanguage($language, $changed = false)
+    {
+        $this->analytics_data['language_used'] = $language;
+        $this->analytics_data['language_changed'] = $changed ? 1 : 0;
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function setInitialChoice($choice)
+    {
+        $this->analytics_data['initial_choice'] = $choice;
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function setUserInfo($name = '', $confirmedDefaultAddress = false)
+    {
+        if (!empty($name)) {
+            $this->analytics_data['user_name'] = $name;
+        }
+        $this->analytics_data['confirmed_default_address'] = $confirmedDefaultAddress ? 1 : 0;
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function setPickupAddress($address, $lat = null, $lng = null)
+    {
+        $this->analytics_data['pickup_address'] = $address;
+        if ($lat !== null && $lng !== null) {
+            $this->analytics_data['pickup_lat'] = $lat;
+            $this->analytics_data['pickup_lng'] = $lng;
+        }
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function setDestinationAddress($address, $lat = null, $lng = null)
+    {
+        $this->analytics_data['destination_address'] = $address;
+        if ($lat !== null && $lng !== null) {
+            $this->analytics_data['destination_lat'] = $lat;
+            $this->analytics_data['destination_lng'] = $lng;
+        }
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function setReservationTime($timestamp)
+    {
+        $this->analytics_data['reservation_time'] = date('Y-m-d H:i:s', $timestamp);
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function trackTTSCall($provider = 'google', $processingTime = 0)
+    {
+        if ($provider === 'google') {
+            $this->analytics_data['google_tts_calls']++;
+        } else {
+            $this->analytics_data['edge_tts_calls']++;
+        }
+        $this->analytics_data['tts_processing_time'] += $processingTime;
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function trackSTTCall($processingTime = 0)
+    {
+        $this->analytics_data['google_stt_calls']++;
+        $this->analytics_data['stt_processing_time'] += $processingTime;
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function trackGeocodingCall($processingTime = 0)
+    {
+        $this->analytics_data['geocoding_api_calls']++;
+        $this->analytics_data['geocoding_processing_time'] += $processingTime;
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function trackUserAPICall()
+    {
+        $this->analytics_data['user_api_calls']++;
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function trackRegistrationAPICall($successful = false, $result = '', $responseTime = 0)
+    {
+        $this->analytics_data['registration_api_calls']++;
+        $this->analytics_data['successful_registration'] = $successful ? 1 : 0;
+        $this->analytics_data['registration_result'] = $result;
+        $this->analytics_data['api_response_time'] = intval($responseTime);
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function trackDateParsingAPICall()
+    {
+        $this->analytics_data['date_parsing_api_calls']++;
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function trackAttempt($type)
+    {
+        switch ($type) {
+            case 'confirmation':
+                $this->analytics_data['confirmation_attempts']++;
+                break;
+            case 'name':
+                $this->analytics_data['name_attempts']++;
+                $this->analytics_data['total_retries']++;
+                break;
+            case 'pickup':
+                $this->analytics_data['pickup_attempts']++;
+                $this->analytics_data['total_retries']++;
+                break;
+            case 'destination':
+                $this->analytics_data['destination_attempts']++;
+                $this->analytics_data['total_retries']++;
+                break;
+            case 'reservation':
+                $this->analytics_data['reservation_attempts']++;
+                $this->analytics_data['total_retries']++;
+                break;
+        }
+        $this->updateAnalyticsRecord();
+    }
+    
+    private function addErrorMessage($message)
+    {
+        $existing = $this->analytics_data['error_messages'] ?? '';
+        $this->analytics_data['error_messages'] = $existing . ($existing ? "\\n" : '') . $message;
+    }
+    
+    private function finalizeCall()
+    {
+        $this->logMessage("ANALYTICS: Starting finalizeCall()");
+        
+        // Calculate total call duration
+        $endTime = microtime(true);
+        $this->analytics_data['call_duration'] = round($endTime - $this->start_time);
+        $this->analytics_data['call_end_time'] = date('Y-m-d H:i:s');
+        
+        // Calculate total processing time
+        $this->analytics_data['total_processing_time'] = round(
+            $this->analytics_data['tts_processing_time'] + 
+            $this->analytics_data['stt_processing_time'] + 
+            $this->analytics_data['geocoding_processing_time']
+        );
+        
+        $this->logMessage("ANALYTICS: About to send data with call_id: " . $this->analytics_data['call_id']);
+        
+        // Send to analytics via HTTP
+        $this->sendAnalyticsData('call', 'PUT');
+        
+        $this->logMessage("ANALYTICS: finalizeCall() completed");
+    }
+    
+    private function sendAnalyticsData($endpoint = 'call', $method = 'POST')
+    {
+        $this->logMessage("ANALYTICS: Starting sendAnalyticsData() - Method: {$method}");
+        
+        try {
+            // Build URL with endpoint parameter for new analytics system
+            $url = $this->analytics_url . '?endpoint=' . urlencode($endpoint);
+            $this->logMessage("ANALYTICS: Sending to URL: " . $url);
+            
+            $json_data = json_encode($this->analytics_data, JSON_UNESCAPED_UNICODE);
+            $this->logMessage("ANALYTICS: JSON data length: " . strlen($json_data));
+            
+            $ch = curl_init();
+            $options = [
+                CURLOPT_URL => $url,
+                CURLOPT_POSTFIELDS => $json_data,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 5,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    'Content-Length: ' . strlen($json_data),
+                    'User-Agent: AGI-Call-Handler/1.0'
+                ]
+            ];
+            
+            if ($method === 'POST') {
+                $options[CURLOPT_POST] = true;
+            } elseif ($method === 'PUT') {
+                $options[CURLOPT_CUSTOMREQUEST] = 'PUT';
+            } elseif ($method === 'DELETE') {
+                $options[CURLOPT_CUSTOMREQUEST] = 'DELETE';
+                unset($options[CURLOPT_POSTFIELDS]);
+            }
+            
+            curl_setopt_array($ch, $options);
+            
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            $response_info = curl_getinfo($ch);
+            curl_close($ch);
+            
+            if ($curl_error) {
+                $this->logMessage("ANALYTICS CURL Error: {$curl_error}");
+                $this->addErrorMessage("Analytics communication failed: {$curl_error}");
+            } else {
+                $this->logMessage("ANALYTICS {$method} - HTTP: {$http_code}, Response time: {$response_info['total_time']}s");
+                $this->logMessage("ANALYTICS Response: " . substr($response, 0, 300));
+                
+                if ($http_code >= 200 && $http_code < 300) {
+                    $this->logMessage("ANALYTICS: Successfully sent data to analytics system");
+                } else {
+                    $this->logMessage("ANALYTICS Warning: HTTP {$http_code} - {$response}");
+                    $this->addErrorMessage("Analytics HTTP error: {$http_code}");
+                }
+            }
+        } catch (Exception $e) {
+            $this->logMessage("ANALYTICS Exception: " . $e->getMessage());
+            $this->addErrorMessage("Analytics exception: " . $e->getMessage());
+        }
+        
+        $this->logMessage("ANALYTICS: sendAnalyticsData() completed");
+    }
+    
+    
 
     // === LANGUAGE AND LOCALIZATION ===
 
@@ -331,7 +747,15 @@ class AGICallHandler
      */
     private function redirectToOperator()
     {
+        $this->trackStep('operator_transfer');
         $this->logMessage("Redirecting to operator: {$this->phone_to_call}");
+        
+        // Ensure call outcome is set if not already
+        if ($this->analytics_data['call_outcome'] === 'in_progress') {
+            $this->setCallOutcome('operator_transfer', 'Call transferred to operator');
+        }
+        
+        $this->finalizeCall();
         $this->agiCommand("EXEC \"Dial\" \"{$this->phone_to_call},20\"");
         $this->agiCommand('HANGUP');
     }
@@ -362,6 +786,8 @@ class AGICallHandler
      */
     private function getUserFromAPI($phone)
     {
+        $this->trackUserAPICall();
+        
         $url = rtrim($this->register_base_url, '/') . "/api/Calls/checkCallerID/{$phone}";
         $headers = [
             "Authorization: {$this->client_token}",
@@ -423,6 +849,8 @@ class AGICallHandler
      */
     private function callGoogleTTS($text, $output_file)
     {
+        $startTime = microtime(true);
+        
         $lang_config = $this->getLanguageConfig();
         $language_code = $lang_config[$this->current_language]['tts_code'] ?? 'el-GR';
 
@@ -452,6 +880,9 @@ class AGICallHandler
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
+        
+        $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
+        $this->trackTTSCall('google', $processingTime);
 
         if ($http_code !== 200 || !$response) return false;
 
@@ -466,6 +897,8 @@ class AGICallHandler
      */
     private function callEdgeTTS($text, $output_file)
     {
+        $startTime = microtime(true);
+        
         $lang_config = $this->getLanguageConfig();
         $edge_voice = $lang_config[$this->current_language]['edge_voice'] ?? 'el-GR-AthinaNeural';
 
@@ -477,6 +910,9 @@ class AGICallHandler
         $this->logMessage("Edge TTS command: {$cmd}");
 
         exec($cmd, $output, $return_code);
+        
+        $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
+        $this->trackTTSCall('edge', $processingTime);
 
         if ($return_code !== 0) {
             $this->logMessage("Edge TTS failed with return code: {$return_code}");
@@ -538,6 +974,8 @@ class AGICallHandler
      */
     private function callGoogleSTT($wav_file)
     {
+        $startTime = microtime(true);
+        
         $this->logMessage("STT: Checking file: {$wav_file}");
 
         if (!file_exists($wav_file)) {
@@ -582,6 +1020,9 @@ class AGICallHandler
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
+        
+        $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
+        $this->trackSTTCall($processingTime);
 
         if ($http_code !== 200 || !$response) {
             $this->logMessage("STT: HTTP error: {$http_code}");
@@ -616,6 +1057,8 @@ class AGICallHandler
             return $this->handleSpecialAddresses($address, $is_pickup);
         }
 
+        $startTime = microtime(true);
+
         $url = "https://maps.googleapis.com/maps/api/geocode/json";
         $params = http_build_query([
             "address" => $address,
@@ -633,6 +1076,9 @@ class AGICallHandler
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
+        
+        $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
+        $this->trackGeocodingCall($processingTime);
 
         if ($http_code !== 200 || !$response) return null;
 
@@ -711,6 +1157,8 @@ class AGICallHandler
      */
     private function registerCall()
     {
+        $startTime = microtime(true);
+        
         $url = rtrim($this->register_base_url, '/') . "/api/Calls/RegisterNoLogin";
         $headers = [
             "Authorization: {$this->client_token}",
@@ -737,8 +1185,16 @@ class AGICallHandler
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curl_error = curl_error($ch);
         curl_close($ch);
+        
+        $responseTime = round((microtime(true) - $startTime) * 1000); // Convert to milliseconds
 
-        return $this->processRegistrationResponse($response, $http_code, $curl_error);
+        $result = $this->processRegistrationResponse($response, $http_code, $curl_error);
+        
+        // Track registration API call
+        $successful = !$result['callOperator'];
+        $this->trackRegistrationAPICall($successful, $result['msg'], $responseTime);
+
+        return $result;
     }
 
     private function buildRegistrationPayload()
@@ -825,6 +1281,8 @@ class AGICallHandler
      */
     private function parseDateFromText($text)
     {
+        $this->trackDateParsingAPICall();
+        
         $url = "https://www.iqtaxi.com/DateRecognizers/api/Recognize/Date";
         $headers = ["Content-Type: application/json"];
         $body = [
@@ -870,9 +1328,11 @@ class AGICallHandler
      */
     private function collectName()
     {
+        $this->trackStep('collecting_name');
         $this->logMessage("Starting name collection");
 
         for ($try = 1; $try <= $this->max_retries; $try++) {
+            $this->trackAttempt('name');
             $this->logMessage("Name attempt {$try}/{$this->max_retries}");
             $this->agiCommand('EXEC Playback "' . $this->getSoundFile('name') . '"');
 
@@ -889,6 +1349,7 @@ class AGICallHandler
 
             if (!empty($name) && strlen(trim($name)) > 2) {
                 $this->name_result = trim($name);
+                $this->setUserInfo($this->name_result);
                 $this->saveJson("name", $this->name_result);
                 $this->logMessage("Name successfully captured: {$this->name_result}");
                 return true;
@@ -908,9 +1369,11 @@ class AGICallHandler
      */
     private function collectPickup()
     {
+        $this->trackStep('collecting_pickup');
         $this->logMessage("Starting pickup collection");
 
         for ($try = 1; $try <= $this->max_retries; $try++) {
+            $this->trackAttempt('pickup');
             $this->logMessage("Pickup attempt {$try}/{$this->max_retries}");
             $this->agiCommand('EXEC Playback "' . $this->getSoundFile('pick_up') . '"');
 
@@ -930,6 +1393,11 @@ class AGICallHandler
                 if ($location) {
                     $this->pickup_result = trim($pickup);
                     $this->pickup_location = $location;
+                    $this->setPickupAddress(
+                        $this->pickup_result,
+                        $location['latLng']['lat'] ?? null,
+                        $location['latLng']['lng'] ?? null
+                    );
                     $this->saveJson("pickup", $this->pickup_result);
                     $this->saveJson("pickupLocation", $this->pickup_location);
                     $this->logMessage("Pickup successfully captured: {$this->pickup_result}");
@@ -953,9 +1421,11 @@ class AGICallHandler
      */
     private function collectDestination()
     {
+        $this->trackStep('collecting_destination');
         $this->logMessage("Starting destination collection");
 
         for ($try = 1; $try <= $this->max_retries; $try++) {
+            $this->trackAttempt('destination');
             $this->logMessage("Destination attempt {$try}/{$this->max_retries}");
             $this->agiCommand('EXEC Playback "' . $this->getSoundFile('drop_off') . '"');
 
@@ -975,6 +1445,11 @@ class AGICallHandler
                 if ($location) {
                     $this->dest_result = trim($dest);
                     $this->dest_location = $location;
+                    $this->setDestinationAddress(
+                        $this->dest_result,
+                        $location['latLng']['lat'] ?? null,
+                        $location['latLng']['lng'] ?? null
+                    );
                     $this->saveJson("destination", $this->dest_result);
                     $this->saveJson("destinationLocation", $this->dest_location);
                     $this->logMessage("Destination successfully captured: {$this->dest_result}");
@@ -998,9 +1473,11 @@ class AGICallHandler
      */
     private function collectReservationTime()
     {
+        $this->trackStep('collecting_reservation_time');
         $this->logMessage("Starting reservation time collection");
 
         for ($try = 1; $try <= $this->max_retries; $try++) {
+            $this->trackAttempt('reservation');
             $this->logMessage("Reservation time attempt {$try}/{$this->max_retries}");
             $this->agiCommand('EXEC Playback "' . $this->getSoundFile('date_input') . '"');
 
@@ -1039,6 +1516,7 @@ class AGICallHandler
     {
         $this->reservation_result = $parsed_date['formattedBestMatch'];
         $this->reservation_timestamp = $parsed_date['bestMatchUnixTimestamp'];
+        $this->setReservationTime($this->reservation_timestamp);
 
         $confirmation_text = str_replace('{time}', $this->reservation_result, $this->getLocalizedText('reservation_time_confirmation'));
         $confirm_file = "{$this->filebase}/confirmdate";
@@ -1069,7 +1547,9 @@ class AGICallHandler
      */
     private function confirmAndRegister()
     {
+        $this->trackStep('confirming_data');
         for ($try = 1; $try <= 3; $try++) {
+            $this->trackAttempt('confirmation');
             $this->logMessage("Confirmation attempt {$try}/3");
 
             if ($this->generateAndPlayConfirmation()) {
@@ -1081,16 +1561,19 @@ class AGICallHandler
                     return;
                 } elseif ($choice == "1") {
                     if (!$this->collectName()) {
+                        $this->setCallOutcome('operator_transfer', 'Failed to collect name');
                         $this->redirectToOperator();
                         return;
                     }
                 } elseif ($choice == "2") {
                     if (!$this->collectPickup()) {
+                        $this->setCallOutcome('operator_transfer', 'Failed to collect pickup');
                         $this->redirectToOperator();
                         return;
                     }
                 } elseif ($choice == "3") {
                     if (!$this->collectDestination()) {
+                        $this->setCallOutcome('operator_transfer', 'Failed to collect destination');
                         $this->redirectToOperator();
                         return;
                     }
@@ -1101,6 +1584,7 @@ class AGICallHandler
         }
 
         $this->logMessage("Too many invalid confirmation attempts");
+        $this->setCallOutcome('operator_transfer', 'Too many invalid confirmation attempts');
         $this->redirectToOperator();
     }
 
@@ -1128,6 +1612,7 @@ class AGICallHandler
 
     private function processConfirmedCall()
     {
+        $this->trackStep('registering_call');
         $this->logMessage("User confirmed, registering call");
         $this->startMusicOnHold();
         $result = $this->registerCall();
@@ -1146,6 +1631,8 @@ class AGICallHandler
             $this->redirectToOperator();
         } else {
             $this->logMessage("Registration successful - ending call normally");
+            $this->setCallOutcome('success');
+            $this->finalizeCall();
             $this->agiCommand('EXEC Wait "1"');
             $this->agiCommand('HANGUP');
         }
@@ -1213,6 +1700,7 @@ class AGICallHandler
      */
     private function handleReservationFlow()
     {
+        $this->trackStep('reservation_flow');
         $this->is_reservation = true;
         $this->logMessage("Starting reservation flow");
 
@@ -1223,6 +1711,7 @@ class AGICallHandler
 
         if (isset($user_data['doNotServe']) && $user_data['doNotServe'] === '1') {
             $this->logMessage("User is blocked (doNotServe=1)");
+            $this->setCallOutcome('user_blocked', 'User is blocked (doNotServe=1)');
             $this->redirectToOperator();
             return;
         }
@@ -1257,10 +1746,17 @@ class AGICallHandler
                     "address" => $user_data['pickup'],
                     "latLng" => $user_data['latLng']
                 ];
+                $this->setUserInfo($this->name_result, true);
+                $this->setPickupAddress(
+                    $this->pickup_result,
+                    $user_data['latLng']['lat'] ?? null,
+                    $user_data['latLng']['lng'] ?? null
+                );
                 $this->saveJson("name", $this->name_result);
                 $this->saveJson("pickup", $this->pickup_result);
                 $this->saveJson("pickupLocation", $this->pickup_location);
             } else {
+                $this->setUserInfo($this->name_result, false);
                 $this->saveJson("name", $this->name_result);
             }
         } else {
@@ -1403,6 +1899,8 @@ class AGICallHandler
             $this->redirectToOperator();
         } else {
             $this->logMessage("Reservation registration successful - ending call normally");
+            $this->setCallOutcome('success');
+            $this->finalizeCall();
             $this->agiCommand('EXEC Wait "1"');
             $this->agiCommand('HANGUP');
         }
@@ -1632,10 +2130,35 @@ class AGICallHandler
     // === MAIN CALL FLOW ===
 
     /**
+     * Detect if caller hung up 
+     */
+    private function checkHangup()
+    {
+        $response = $this->agiCommand('CHANNEL STATUS');
+        if (strpos($response, '200 result=6') !== false || strpos($response, '200 result=0') !== false) {
+            $this->logMessage("Hangup detected");
+            $this->setCallOutcome('hangup', 'User hung up');
+            $this->finalizeCall();
+            return true;
+        }
+        return false;
+    }
+    
+    /**
      * Main call flow orchestration
      */
     public function runCallFlow()
     {
+        // Set up signal handler for hangups
+        if (function_exists('pcntl_signal')) {
+            pcntl_signal(SIGHUP, function($signo) {
+                $this->logMessage("Received SIGHUP - call was hung up");
+                $this->setCallOutcome('hangup', 'Call was hung up');
+                $this->finalizeCall();
+                exit(0);
+            });
+        }
+        
         try {
             $this->logMessage("Starting call processing for {$this->caller_num}");
 
@@ -1647,29 +2170,43 @@ class AGICallHandler
             $this->saveJson("phone", $this->caller_num);
 
             $user_choice = $this->getInitialUserChoice();
-            
+            if ($user_choice === '') {
+                $this->logMessage("No selection received (likely hangup), ending call");
+                $this->setCallOutcome('hangup', 'No DTMF selection');
+                $this->finalizeCall();
+                $this->agiCommand('HANGUP');
+                return;
+            }
+
             if ($user_choice == "3") {
                 $this->logMessage("User selected operator");
+                $this->setCallType('operator');
+                $this->setCallOutcome('operator_transfer', 'User selected operator');
                 $this->redirectToOperator();
                 return;
             }
 
             if ($user_choice == "2") {
                 $this->logMessage("Reservation selected");
+                $this->setCallType('reservation');
                 $this->handleReservationFlow();
                 return;
             }
 
             if ($user_choice != "1") {
                 $this->logMessage("Invalid or no selection, redirecting to operator");
+                $this->setCallOutcome('operator_transfer', 'Invalid or no selection');
                 $this->redirectToOperator();
                 return;
             }
 
+            $this->setCallType('immediate');
             $this->handleImmediateCall();
             
         } catch (Exception $e) {
             $this->logMessage("Error in call flow: " . $e->getMessage());
+            $this->setCallOutcome('error', $e->getMessage());
+            $this->addErrorMessage($e->getMessage());
             $this->redirectToOperator();
         }
     }
@@ -1677,6 +2214,7 @@ class AGICallHandler
     private function handleAnonymousCaller()
     {
         $this->logMessage("Anonymous caller detected");
+        $this->setCallOutcome('anonymous_blocked', 'Anonymous caller blocked');
         $this->agiCommand('EXEC Playback "' . $this->getSoundFile('anonymous') . '"');
         $this->redirectToOperator();
     }
@@ -1690,17 +2228,22 @@ class AGICallHandler
         if ($user_choice == "9") {
             $this->logMessage("User selected language change to English");
             $this->current_language = 'en';
+            $this->setLanguage('en', true);
             $this->saveJson("language", $this->current_language);
             
             $user_choice = $this->readDTMF($this->getSoundFile('welcome'), 1, 5);
             $this->logMessage("User choice after language change: {$user_choice}");
+        } else {
+            $this->setLanguage($this->current_language, false);
         }
 
+        $this->setInitialChoice($user_choice);
         return $user_choice;
     }
 
     private function handleImmediateCall()
     {
+        $this->trackStep('immediate_call_flow');
         $this->logMessage("ASAP call selected");
 
         $this->logMessage("Getting user data from API");
@@ -1710,6 +2253,7 @@ class AGICallHandler
 
         if (isset($user_data['doNotServe']) && $user_data['doNotServe'] === '1') {
             $this->logMessage("User is blocked (doNotServe=1)");
+            $this->setCallOutcome('user_blocked', 'User is blocked (doNotServe=1)');
             $this->redirectToOperator();
             return;
         }
@@ -1783,7 +2327,7 @@ try {
     $call_handler = new AGICallHandler();
     $call_handler->runCallFlow();
 } catch (Exception $e) {
-    error_log("Fatal error: " . $e->getMessage());
+    error_log("Fatal error in AGI Call Handler: " . $e->getMessage());
     echo "HANGUP\n";
 }
 ?>
