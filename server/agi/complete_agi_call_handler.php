@@ -1408,25 +1408,51 @@ class AGICallHandler
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->trackAttempt('name');
             $this->logMessage("Name attempt {$try}/{$this->max_retries}");
-            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('name') . '"');
+            
+            // Check channel status before attempting any operation
+            $status_result = $this->agiCommand('CHANNEL STATUS');
+            $this->logMessage("Channel status before name: {$status_result}");
+            if (strpos($status_result, '6') !== false) { // Channel is up
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('name') . '"');
+            } else {
+                $this->logMessage("Channel is not up, aborting name collection");
+                return false;
+            }
 
             $recording_file = "{$this->filebase}/recordings/name_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
             $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
             $this->logMessage("Record result: {$record_result}");
+            
+            // Check if recording failed due to dead channel
+            if (strpos($record_result, 'dead channel') !== false || strpos($record_result, '511') !== false) {
+                $this->logMessage("Recording failed due to dead channel, aborting name collection");
+                return false;
+            }
+            
+            // Check if recording file was created
+            $wav_file = $recording_file . ".wav";
+            if (file_exists($wav_file)) {
+                $file_size = filesize($wav_file);
+                $this->logMessage("Recording file created: {$wav_file} ({$file_size} bytes)");
+            } else {
+                $this->logMessage("Recording file NOT created: {$wav_file}");
+            }
 
             $this->startMusicOnHold();
             $name = $this->callGoogleSTT($recording_file . ".wav");
             $this->stopMusicOnHold();
 
-            $this->logMessage("STT result for name: {$name}");
+            $this->logMessage("STT result for name: '{$name}' (length: " . strlen(trim($name)) . ")");
 
-            if (!empty($name) && strlen(trim($name)) > 2) {
+            if (!empty($name) && strlen(trim($name)) > 1) {
                 $this->name_result = trim($name);
                 $this->setUserInfo($this->name_result);
                 $this->saveJson("name", $this->name_result);
                 $this->logMessage("Name successfully captured: {$this->name_result}");
                 return true;
+            } else {
+                $this->logMessage("Name rejected - empty or too short");
             }
 
             if ($try < $this->max_retries) {
@@ -1449,13 +1475,27 @@ class AGICallHandler
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->trackAttempt('pickup');
             $this->logMessage("Pickup attempt {$try}/{$this->max_retries}");
-            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('pick_up') . '"');
-
+            
+            // Check channel status before attempting any operation
+            $status_result = $this->agiCommand('CHANNEL STATUS');
+            $this->logMessage("Channel status before pickup: {$status_result}");
+            if (strpos($status_result, '6') !== false) { // Channel is up
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('pick_up') . '"');
+            } else {
+                $this->logMessage("Channel is not up, aborting pickup collection");
+                return false;
+            }
 
             $recording_file = "{$this->filebase}/recordings/pickup_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
             $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
             $this->logMessage("Record result: {$record_result}");
+            
+            // Check if recording failed due to dead channel
+            if (strpos($record_result, 'dead channel') !== false || strpos($record_result, '511') !== false) {
+                $this->logMessage("Recording failed due to dead channel, aborting pickup collection");
+                return false;
+            }
 
             $this->startMusicOnHold();
             $pickup = $this->callGoogleSTT($recording_file . ".wav");
@@ -1502,12 +1542,27 @@ class AGICallHandler
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->trackAttempt('destination');
             $this->logMessage("Destination attempt {$try}/{$this->max_retries}");
-            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('drop_off') . '"');
+            
+            // Check channel status before attempting any operation
+            $status_result = $this->agiCommand('CHANNEL STATUS');
+            $this->logMessage("Channel status before destination: {$status_result}");
+            if (strpos($status_result, '6') !== false) { // Channel is up
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('drop_off') . '"');
+            } else {
+                $this->logMessage("Channel is not up, aborting destination collection");
+                return false;
+            }
 
             $recording_file = "{$this->filebase}/recordings/dest_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
             $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
             $this->logMessage("Record result: {$record_result}");
+            
+            // Check if recording failed due to dead channel
+            if (strpos($record_result, 'dead channel') !== false || strpos($record_result, '511') !== false) {
+                $this->logMessage("Recording failed due to dead channel, aborting destination collection");
+                return false;
+            }
 
             $this->startMusicOnHold();
             $dest = $this->callGoogleSTT($recording_file . ".wav");
@@ -1554,12 +1609,27 @@ class AGICallHandler
         for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->trackAttempt('reservation');
             $this->logMessage("Reservation time attempt {$try}/{$this->max_retries}");
-            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('date_input') . '"');
+            
+            // Check channel status before attempting any operation
+            $status_result = $this->agiCommand('CHANNEL STATUS');
+            $this->logMessage("Channel status before reservation: {$status_result}");
+            if (strpos($status_result, '6') !== false) { // Channel is up
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('date_input') . '"');
+            } else {
+                $this->logMessage("Channel is not up, aborting reservation collection");
+                return false;
+            }
 
             $recording_file = "{$this->filebase}/recordings/reservation_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
             $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
             $this->logMessage("Record result: {$record_result}");
+            
+            // Check if recording failed due to dead channel
+            if (strpos($record_result, 'dead channel') !== false || strpos($record_result, '511') !== false) {
+                $this->logMessage("Recording failed due to dead channel, aborting reservation collection");
+                return false;
+            }
 
             $this->startMusicOnHold();
             $reservation_speech = $this->callGoogleSTT($recording_file . ".wav");

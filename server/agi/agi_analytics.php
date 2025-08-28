@@ -652,6 +652,15 @@ class AGIAnalytics {
             case 'call':
                 $this->apiCreateCall($data);
                 break;
+            case 'delete_call':
+                $this->apiDeleteCall($data);
+                break;
+            case 'edit_call':
+                $this->apiEditCall($data);
+                break;
+            case 'debug_edit':
+                $this->apiDebugEdit($data);
+                break;
             default:
                 $this->sendErrorResponse('Endpoint not found', 404);
         }
@@ -779,9 +788,10 @@ class AGIAnalytics {
     /**
      * Delete call record
      */
-    private function apiDeleteCall() {
-        $id = $_GET['id'] ?? '';
-        $callId = $_GET['call_id'] ?? '';
+    private function apiDeleteCall($data = null) {
+        // Handle both GET and POST requests
+        $id = $data['id'] ?? $_GET['id'] ?? '';
+        $callId = $data['call_id'] ?? $_GET['call_id'] ?? '';
         
         if (empty($id) && empty($callId)) {
             $this->sendErrorResponse('ID or call_id required', 400);
@@ -800,6 +810,109 @@ class AGIAnalytics {
             error_log("Analytics: Delete call error: " . $e->getMessage());
             $this->sendErrorResponse('Failed to delete call record: ' . $e->getMessage(), 500);
         }
+    }
+
+    private function apiEditCall($data) {
+        // Check database connection
+        if (!$this->db) {
+            error_log("Analytics: No database connection in apiEditCall");
+            $this->sendErrorResponse('Database connection failed', 500);
+            return;
+        }
+        
+        $id = $data['id'] ?? '';
+        $callId = $data['call_id'] ?? '';
+        
+        if (empty($id) && empty($callId)) {
+            $this->sendErrorResponse('ID or call_id required', 400);
+            return;
+        }
+        
+        // Build the update query dynamically based on provided fields
+        $fields = [];
+        $values = [];
+        $allowedFields = [
+            'phone_number', 'extension', 'call_type', 'initial_choice', 'call_outcome',
+            'name', 'pickup_address', 'pickup_lat', 'pickup_lng', 
+            'destination_address', 'dest_lat', 'dest_lng', 'reservation_time'
+        ];
+        
+        // Map frontend field names to database column names
+        $fieldMap = [
+            'name' => 'user_name',                    // Frontend 'name' maps to DB 'user_name'
+            'dest_lat' => 'destination_lat',          // Frontend 'dest_lat' maps to DB 'destination_lat'
+            'dest_lng' => 'destination_lng',          // Frontend 'dest_lng' maps to DB 'destination_lng'
+            'pickup_address' => 'pickup_address',     // These are correct
+            'destination_address' => 'destination_address',
+            'pickup_lat' => 'pickup_lat', 
+            'pickup_lng' => 'pickup_lng'
+        ];
+        
+        foreach ($allowedFields as $field) {
+            if (isset($data[$field])) {
+                // Use mapped field name if available, otherwise use original
+                $dbField = $fieldMap[$field] ?? $field;
+                $fields[] = "$dbField = ?";
+                $values[] = $data[$field];
+            }
+        }
+        
+        if (empty($fields)) {
+            $this->sendErrorResponse('No valid fields to update', 400);
+            return;
+        }
+        
+        // Add updated timestamp (if column exists)
+        try {
+            $checkCol = $this->db->query("SHOW COLUMNS FROM {$this->table} LIKE 'updated_at'");
+            if ($checkCol && $checkCol->rowCount() > 0) {
+                $fields[] = "updated_at = NOW()";
+            }
+        } catch (Exception $e) {
+            // Column check failed, skip adding updated_at
+            error_log("Analytics: Could not check for updated_at column: " . $e->getMessage());
+        }
+        
+        // Add the WHERE condition
+        $values[] = !empty($id) ? $id : $callId;
+        $whereField = !empty($id) ? "id" : "call_id";
+        
+        $sql = "UPDATE {$this->table} SET " . implode(', ', $fields) . " WHERE $whereField = ?";
+        
+        // Debug logging (can be removed in production)
+        error_log("Analytics: Update SQL: " . $sql);
+        error_log("Analytics: Update values: " . json_encode($values));
+        
+        try {
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($values);
+            $affected = $stmt->rowCount();
+            
+            if ($affected > 0) {
+                $this->sendResponse(['success' => true, 'updated_rows' => $affected, 'message' => 'Call record updated successfully']);
+            } else {
+                $this->sendErrorResponse('No call found with the provided ID', 404);
+            }
+        } catch (PDOException $e) {
+            error_log("Analytics: Update call error: " . $e->getMessage());
+            error_log("Analytics: SQL that failed: " . $sql);
+            error_log("Analytics: Values that failed: " . json_encode($values));
+            $this->sendErrorResponse('Failed to update call record: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function apiDebugEdit($data) {
+        error_log("Analytics: Debug edit data: " . json_encode($data));
+        error_log("Analytics: Database connection status: " . ($this->db ? 'Connected' : 'Not connected'));
+        error_log("Analytics: Table name: " . $this->table);
+        
+        $this->sendResponse([
+            'success' => true, 
+            'debug' => true,
+            'data_received' => $data,
+            'db_connected' => $this->db ? true : false,
+            'table' => $this->table
+        ]);
     }
     
     // ===== DATA PROCESSING METHODS =====
@@ -1391,13 +1504,16 @@ class AGIAnalytics {
         foreach ($patterns as $pattern) {
             $files = glob($recordingPath . '/' . $pattern);
             foreach ($files as $file) {
+                $filename = basename($file);
                 $recordings[] = [
-                    'filename' => basename($file),
+                    'filename' => $filename,
                     'path' => $file,
                     'size' => filesize($file),
                     'duration' => $this->getAudioDuration($file),
                     'created' => date('Y-m-d H:i:s', filemtime($file)),
-                    'url' => $this->getAudioURL($file)
+                    'url' => $this->getAudioURL($file),
+                    'type' => $this->getRecordingType($filename),
+                    'attempt' => $this->getRecordingAttempt($filename)
                 ];
             }
         }
@@ -1464,15 +1580,51 @@ class AGIAnalytics {
     }
     
     private function getAudioDuration($filePath) {
-        // This would require ffmpeg or similar tool to get actual duration
-        // For now, return file size as approximate indicator
-        return round(filesize($filePath) / 16000); // Rough estimate
+        // Try to get actual duration using ffprobe if available
+        $duration = 0;
+        if (function_exists('shell_exec')) {
+            $cmd = "ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"$filePath\" 2>/dev/null";
+            $result = shell_exec($cmd);
+            if ($result && is_numeric(trim($result))) {
+                $duration = (float)trim($result);
+            }
+        }
+        
+        // Fallback to file size estimation if ffprobe not available
+        if ($duration == 0) {
+            // Estimate based on 16kHz 16-bit mono WAV (32KB per second)
+            $duration = max(1, round(filesize($filePath) / 32000));
+        }
+        
+        return $duration;
     }
     
     private function getAudioURL($filePath) {
         // Generate URL for audio playback
         $relativePath = str_replace($_SERVER['DOCUMENT_ROOT'], '', $filePath);
         return $relativePath;
+    }
+    
+    private function getRecordingType($filename) {
+        $lower = strtolower($filename);
+        
+        if (strpos($lower, 'confirm') !== false) return 'confirmation';
+        if (strpos($lower, 'name') !== false) return 'name';
+        if (strpos($lower, 'pickup') !== false) return 'pickup';
+        if (strpos($lower, 'dest') !== false) return 'destination';
+        if (strpos($lower, 'reservation') !== false || strpos($lower, 'date') !== false) return 'reservation';
+        if (strpos($lower, 'welcome') !== false || strpos($lower, 'greeting') !== false) return 'welcome';
+        if (strpos($lower, 'dtmf') !== false || strpos($lower, 'choice') !== false) return 'dtmf';
+        
+        return 'other';
+    }
+    
+    private function getRecordingAttempt($filename) {
+        // Extract attempt number from filename (e.g., "name_2.wav" -> 2)
+        if (preg_match('/_(\d+)\./', $filename, $matches)) {
+            return (int)$matches[1];
+        }
+        return 1; // Default to attempt 1 if no number found
     }
     
     private function extractTimestamp($logLine) {
@@ -1573,6 +1725,16 @@ class AGIAnalytics {
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         
+        // Initialize totals counters
+        $totalCalls = 0;
+        $totalGoogleTTS = 0;
+        $totalGoogleSTT = 0;
+        $totalEdgeTTS = 0;
+        $totalGeocoding = 0;
+        $totalUserAPI = 0;
+        $totalRegistrationAPI = 0;
+        $totalDateParsingAPI = 0;
+        
         while ($row = $stmt->fetch()) {
             $csvRow = [
                 $row['id'], $row['call_id'], $row['unique_id'], $row['phone_number'], $row['extension'],
@@ -1595,7 +1757,31 @@ class AGIAnalytics {
             ];
             
             fputcsv($output, $csvRow);
+            
+            // Accumulate totals
+            $totalCalls++;
+            $totalGoogleTTS += (int)$row['google_tts_calls'];
+            $totalGoogleSTT += (int)$row['google_stt_calls'];
+            $totalEdgeTTS += (int)$row['edge_tts_calls'];
+            $totalGeocoding += (int)$row['geocoding_api_calls'];
+            $totalUserAPI += (int)$row['user_api_calls'];
+            $totalRegistrationAPI += (int)$row['registration_api_calls'];
+            $totalDateParsingAPI += (int)$row['date_parsing_api_calls'];
         }
+        
+        // Add summary rows
+        fputcsv($output, []); // Empty row for separation
+        fputcsv($output, ['=== SUMMARY ===']);
+        fputcsv($output, ['Total Calls', $totalCalls]);
+        fputcsv($output, ['Total Google TTS Calls', $totalGoogleTTS]);
+        fputcsv($output, ['Total Google STT Calls', $totalGoogleSTT]);
+        fputcsv($output, ['Total Edge TTS Calls', $totalEdgeTTS]);
+        fputcsv($output, ['Total Geocoding API Calls', $totalGeocoding]);
+        fputcsv($output, ['Total User API Calls', $totalUserAPI]);
+        fputcsv($output, ['Total Registration API Calls', $totalRegistrationAPI]);
+        fputcsv($output, ['Total Date Parsing API Calls', $totalDateParsingAPI]);
+        fputcsv($output, ['Total TTS Calls (All)', $totalGoogleTTS + $totalEdgeTTS]);
+        fputcsv($output, ['Total API Calls (All)', $totalGoogleTTS + $totalGoogleSTT + $totalEdgeTTS + $totalGeocoding + $totalUserAPI + $totalRegistrationAPI + $totalDateParsingAPI]);
         
         fclose($output);
         exit;
@@ -1605,7 +1791,9 @@ class AGIAnalytics {
     
     private function exportPDF() {
         // Get data using same filters as CSV
-        $data = $this->getExportData();
+        $exportResult = $this->getExportData();
+        $data = $exportResult['data'];
+        $totals = $exportResult['totals'];
         
         header('Content-Type: text/html; charset=utf-8');
         
@@ -1806,6 +1994,47 @@ class AGIAnalytics {
                 </div>
             </div>
             
+            <!-- API Usage Statistics -->
+            <div class="api-stats">
+                <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;">📊 API Usage Summary</h3>
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #e74c3c;"><?= number_format($totals['total_google_stt']) ?></div>
+                        <div class="stat-label">Total STT Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #3498db;"><?= number_format($totals['total_tts_all']) ?></div>
+                        <div class="stat-label">Total TTS Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #f39c12;"><?= number_format($totals['total_geocoding']) ?></div>
+                        <div class="stat-label">Total Geocoding</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #9b59b6;"><?= number_format($totals['total_api_calls_all']) ?></div>
+                        <div class="stat-label">Total API Calls</div>
+                    </div>
+                </div>
+                <div class="stats" style="margin-top: 1rem;">
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #27ae60;"><?= number_format($totals['total_google_tts']) ?></div>
+                        <div class="stat-label">Google TTS</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #2ecc71;"><?= number_format($totals['total_edge_tts']) ?></div>
+                        <div class="stat-label">Edge TTS</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #1abc9c;"><?= number_format($totals['total_user_api']) ?></div>
+                        <div class="stat-label">User API</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #34495e;"><?= number_format($totals['total_registration_api']) ?></div>
+                        <div class="stat-label">Registration API</div>
+                    </div>
+                </div>
+            </div>
+            
             <table>
                 <thead>
                     <tr>
@@ -1850,7 +2079,7 @@ class AGIAnalytics {
             </table>
             
             <div class="footer">
-                <p>📞 Call Analytics System Report | Generated: <?= date('Y-m-d H:i:s') ?> | Total Records: <?= count($data) ?></p>
+                <p>📞 Call Analytics System Report | Generated: <?= date('Y-m-d H:i:s') ?> | Total Records: <?= $totals['total_calls'] ?> | Total API Calls: <?= number_format($totals['total_api_calls_all']) ?></p>
             </div>
         </body>
         </html>
@@ -1862,7 +2091,9 @@ class AGIAnalytics {
     
     private function exportPrint() {
         // Same as PDF but without auto-print
-        $data = $this->getExportData();
+        $exportResult = $this->getExportData();
+        $data = $exportResult['data'];
+        $totals = $exportResult['totals'];
         
         header('Content-Type: text/html; charset=utf-8');
         
@@ -1933,6 +2164,47 @@ class AGIAnalytics {
                 <div class="stat-card">
                     <div class="stat-number warning"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'operator_transfer'; })) ?></div>
                     <div class="stat-label">Transferred</div>
+                </div>
+            </div>
+            
+            <!-- API Usage Statistics -->
+            <div class="api-stats">
+                <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;">📊 API Usage Summary</h3>
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #e74c3c;"><?= number_format($totals['total_google_stt']) ?></div>
+                        <div class="stat-label">Total STT Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #3498db;"><?= number_format($totals['total_tts_all']) ?></div>
+                        <div class="stat-label">Total TTS Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #f39c12;"><?= number_format($totals['total_geocoding']) ?></div>
+                        <div class="stat-label">Total Geocoding</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #9b59b6;"><?= number_format($totals['total_api_calls_all']) ?></div>
+                        <div class="stat-label">Total API Calls</div>
+                    </div>
+                </div>
+                <div class="stats" style="margin-top: 1rem;">
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #27ae60;"><?= number_format($totals['total_google_tts']) ?></div>
+                        <div class="stat-label">Google TTS</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #2ecc71;"><?= number_format($totals['total_edge_tts']) ?></div>
+                        <div class="stat-label">Edge TTS</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #1abc9c;"><?= number_format($totals['total_user_api']) ?></div>
+                        <div class="stat-label">User API</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #34495e;"><?= number_format($totals['total_registration_api']) ?></div>
+                        <div class="stat-label">Registration API</div>
+                    </div>
                 </div>
             </div>
             
@@ -2013,7 +2285,37 @@ class AGIAnalytics {
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         
-        return $stmt->fetchAll();
+        $data = $stmt->fetchAll();
+        
+        // Calculate totals
+        $totals = [
+            'total_calls' => count($data),
+            'total_google_tts' => 0,
+            'total_google_stt' => 0,
+            'total_edge_tts' => 0,
+            'total_geocoding' => 0,
+            'total_user_api' => 0,
+            'total_registration_api' => 0,
+            'total_date_parsing_api' => 0
+        ];
+        
+        foreach ($data as $row) {
+            $totals['total_google_tts'] += (int)$row['google_tts_calls'];
+            $totals['total_google_stt'] += (int)$row['google_stt_calls'];
+            $totals['total_edge_tts'] += (int)$row['edge_tts_calls'];
+            $totals['total_geocoding'] += (int)$row['geocoding_api_calls'];
+            $totals['total_user_api'] += (int)$row['user_api_calls'];
+            $totals['total_registration_api'] += (int)$row['registration_api_calls'];
+            $totals['total_date_parsing_api'] += (int)$row['date_parsing_api_calls'];
+        }
+        
+        $totals['total_tts_all'] = $totals['total_google_tts'] + $totals['total_edge_tts'];
+        $totals['total_api_calls_all'] = $totals['total_google_tts'] + $totals['total_google_stt'] + 
+                                        $totals['total_edge_tts'] + $totals['total_geocoding'] + 
+                                        $totals['total_user_api'] + $totals['total_registration_api'] + 
+                                        $totals['total_date_parsing_api'];
+        
+        return ['data' => $data, 'totals' => $totals];
     }
     
     // Helper method to get CSS class for outcome
@@ -2190,6 +2492,136 @@ class AGIAnalytics {
         .modal-actions {
             display: flex;
             gap: 0.75rem;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--gray-700);
+            font-size: 0.875rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: white;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-section {
+            border-top: 1px solid var(--gray-200);
+            padding-top: 1.5rem;
+        }
+
+        .form-section h4 {
+            font-weight: 600;
+            color: var(--gray-700);
+            margin-bottom: 1rem;
+            font-size: 1rem;
+        }
+
+        /* Recording Styles */
+        .recording-item {
+            background: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            transition: box-shadow 0.2s;
+        }
+
+        .recording-item:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .recording-header {
+            margin-bottom: 0.75rem;
+        }
+
+        .recording-info {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+        }
+
+        .recording-icon {
+            font-size: 1.25rem;
+            margin-top: 0.125rem;
+        }
+
+        .recording-details {
+            flex: 1;
+        }
+
+        .recording-title {
+            color: var(--gray-800);
+            font-size: 1rem;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+
+        .recording-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            font-size: 0.875rem;
+        }
+
+        .recording-filename {
+            color: var(--gray-600);
+            font-family: 'Courier New', monospace;
+            background: var(--gray-100);
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-size: 0.8125rem;
+        }
+
+        .recording-size {
+            color: var(--gray-500);
+        }
+
+        .recording-duration {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .recording-attempt {
+            background: var(--warning);
+            color: white;
+            font-size: 0.75rem;
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-weight: 600;
+        }
+
+        .recording-description {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+            line-height: 1.4;
+            margin-bottom: 0.75rem;
+            padding-left: 2rem;
+        }
+
+        .recording-player {
+            width: 100%;
+            margin-top: 0.5rem;
+            border-radius: 0.5rem;
         }
 
         .app-container {
@@ -2957,6 +3389,12 @@ class AGIAnalytics {
             align-items: center;
             padding: 1.5rem;
             border-bottom: 1px solid var(--gray-200);
+        }
+        
+        .modal-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
         
         .modal-title {
@@ -3835,7 +4273,18 @@ class AGIAnalytics {
         <div class="modal-content" style="width: 90vw; max-width: 1000px;">
             <div class="modal-header">
                 <h3 class="modal-title">Call Details</h3>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <div class="modal-actions">
+                    <button class="btn btn-sm btn-primary" onclick="refreshCallDetail()" title="Refresh">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button class="btn btn-sm btn-warning" onclick="editCall()" title="Edit Call">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteCall()" title="Delete Call">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                </div>
             </div>
             <div class="modal-body" id="callDetailBody">
                 <!-- Call details will be loaded here -->
@@ -3930,6 +4379,114 @@ class AGIAnalytics {
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Edit Call Modal -->
+    <div class="modal" id="editCallModal">
+        <div class="modal-content" style="width: 600px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> Edit Call</h3>
+                <button class="modal-close" onclick="closeEditModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="editCallForm">
+                    <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label for="editPhone">Phone Number</label>
+                            <input type="text" id="editPhone" class="form-control" placeholder="Phone number">
+                        </div>
+                        <div class="form-group">
+                            <label for="editExtension">Extension</label>
+                            <input type="text" id="editExtension" class="form-control" placeholder="Extension">
+                        </div>
+                        <div class="form-group">
+                            <label for="editCallType">Call Type</label>
+                            <select id="editCallType" class="form-control">
+                                <option value="">Select type</option>
+                                <option value="immediate">Immediate</option>
+                                <option value="reservation">Reservation</option>
+                                <option value="operator">Operator</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="editInitialChoice">Initial Choice</label>
+                            <select id="editInitialChoice" class="form-control">
+                                <option value="">Select choice</option>
+                                <option value="1">1 - Immediate</option>
+                                <option value="2">2 - Reservation</option>
+                                <option value="3">3 - Operator</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="editCallOutcome">Call Outcome</label>
+                            <select id="editCallOutcome" class="form-control">
+                                <option value="">Select outcome</option>
+                                <option value="success">Success</option>
+                                <option value="hangup">Hangup</option>
+                                <option value="operator_transfer">Operator Transfer</option>
+                                <option value="error">Error/Failed</option>
+                                <option value="anonymous_blocked">Anonymous Blocked</option>
+                                <option value="user_blocked">User Blocked</option>
+                                <option value="in_progress">In Progress</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="editName">Name</label>
+                            <input type="text" id="editName" class="form-control" placeholder="Customer name">
+                        </div>
+                    </div>
+                    
+                    <div class="form-section" style="margin-top: 1.5rem;">
+                        <h4 style="margin-bottom: 1rem; color: var(--gray-700); font-size: 1rem;">Pickup Address</h4>
+                        <div class="form-grid" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label for="editPickupAddress">Pickup Address</label>
+                                <input type="text" id="editPickupAddress" class="form-control" placeholder="Pickup address">
+                            </div>
+                            <div class="form-group">
+                                <label for="editPickupLat">Latitude</label>
+                                <input type="number" step="any" id="editPickupLat" class="form-control" placeholder="Latitude">
+                            </div>
+                            <div class="form-group">
+                                <label for="editPickupLng">Longitude</label>
+                                <input type="number" step="any" id="editPickupLng" class="form-control" placeholder="Longitude">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section" style="margin-top: 1.5rem;">
+                        <h4 style="margin-bottom: 1rem; color: var(--gray-700); font-size: 1rem;">Destination</h4>
+                        <div class="form-grid" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label for="editDestAddress">Destination Address</label>
+                                <input type="text" id="editDestAddress" class="form-control" placeholder="Destination address">
+                            </div>
+                            <div class="form-group">
+                                <label for="editDestLat">Latitude</label>
+                                <input type="number" step="any" id="editDestLat" class="form-control" placeholder="Latitude">
+                            </div>
+                            <div class="form-group">
+                                <label for="editDestLng">Longitude</label>
+                                <input type="number" step="any" id="editDestLng" class="form-control" placeholder="Longitude">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section" style="margin-top: 1.5rem;">
+                        <div class="form-group">
+                            <label for="editReservationTime">Reservation Time</label>
+                            <input type="datetime-local" id="editReservationTime" class="form-control">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem; padding: 1rem 1.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveCallEdit()">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
             </div>
         </div>
     </div>
@@ -4089,6 +4646,13 @@ class AGIAnalytics {
                     const format = this.getAttribute('data-format');
                     performExport(format);
                 });
+            });
+            
+            // Edit Modal Event Listeners
+            document.getElementById('editCallModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeEditModal();
+                }
             });
             
             // Heatmap duration change
@@ -4910,8 +5474,91 @@ class AGIAnalytics {
         
         // Removed renderOutcomesChart - replaced with heatmap
         
+        // Global variable to store current call ID
+        var currentCallId = null;
+
+        // Get recording description based on filename and type
+        function getRecordingDescription(filename, type, attempt) {
+            attempt = attempt || 1;
+            var attemptText = attempt > 1 ? ' (Attempt ' + attempt + ')' : '';
+            
+            switch (type) {
+                case 'confirmation':
+                    return {
+                        title: 'Confirmation Audio' + attemptText,
+                        description: 'System-generated confirmation message played to the customer to verify their booking details before finalizing the call. Contains TTS audio confirming pickup/destination addresses and asking for final approval.'
+                    };
+                case 'name':
+                    return {
+                        title: 'Customer Name Recording' + attemptText,
+                        description: 'Customer\'s spoken name recorded during the call. Used for identification and personalization in the taxi booking system. Processed through Google Speech-to-Text for automatic transcription.'
+                    };
+                case 'pickup':
+                    return {
+                        title: 'Pickup Address Recording' + attemptText,
+                        description: 'Customer\'s spoken pickup location. This audio is processed through speech-to-text and geocoding to determine the exact pickup coordinates. The system converts speech to text, then uses Google Maps API to find precise GPS coordinates.'
+                    };
+                case 'destination':
+                    return {
+                        title: 'Destination Recording' + attemptText,
+                        description: 'Customer\'s spoken destination address. Processed through STT and geocoding to determine the drop-off location for the taxi booking. Used to calculate fare estimates and route planning.'
+                    };
+                case 'reservation':
+                    return {
+                        title: 'Reservation Time Recording' + attemptText,
+                        description: 'Customer\'s spoken preferred time for the taxi booking. Processed through natural language parsing to extract date and time information for scheduled pickup times.'
+                    };
+                case 'welcome':
+                    return {
+                        title: 'Welcome Message' + attemptText,
+                        description: 'System greeting played at the start of the call to guide customers through the booking process. Contains menu options and instructions for using the automated taxi booking system.'
+                    };
+                case 'dtmf':
+                    return {
+                        title: 'DTMF Input Recording' + attemptText,
+                        description: 'Recording of customer\'s button press choices during the interactive menu navigation. Captures dual-tone multi-frequency signals from phone keypad inputs.'
+                    };
+                default:
+                    return {
+                        title: 'Call Recording' + attemptText,
+                        description: 'Audio recording from the customer call session. Contains spoken interaction between the customer and the automated taxi booking system.'
+                    };
+            }
+        }
+
+        // Get recording icon based on type
+        function getRecordingIcon(filename, type) {
+            switch (type) {
+                case 'confirmation':
+                    return '<i class="fas fa-check-circle text-success"></i>';
+                case 'name':
+                    return '<i class="fas fa-user text-primary"></i>';
+                case 'pickup':
+                    return '<i class="fas fa-map-marker-alt text-success"></i>';
+                case 'destination':
+                    return '<i class="fas fa-flag-checkered text-danger"></i>';
+                case 'reservation':
+                    return '<i class="fas fa-calendar-alt text-warning"></i>';
+                case 'welcome':
+                    return '<i class="fas fa-volume-up text-info"></i>';
+                case 'dtmf':
+                    return '<i class="fas fa-keypad text-secondary"></i>';
+                default:
+                    return '<i class="fas fa-microphone text-gray-600"></i>';
+            }
+        }
+
+        // Format audio duration
+        function formatAudioDuration(seconds) {
+            if (!seconds || seconds <= 0) return '';
+            var mins = Math.floor(seconds / 60);
+            var secs = Math.floor(seconds % 60);
+            return mins > 0 ? mins + 'm ' + secs + 's' : secs + 's';
+        }
+
         // Show call detail modal
         function showCallDetail(callId) {
+            currentCallId = callId;
             var modal = document.getElementById('callDetailModal');
             var body = document.getElementById('callDetailBody');
             
@@ -4995,13 +5642,39 @@ class AGIAnalytics {
             
             // Add recordings section
             if (call.recordings && call.recordings.length > 0) {
-                html += '<h4 style="margin: 1.5rem 0 1rem;">Recordings</h4>';
-                for (var i = 0; i < call.recordings.length; i++) {
-                    var recording = call.recordings[i];
+                html += '<h4 style="margin: 1.5rem 0 1rem;"><i class="fas fa-microphone"></i> Recordings</h4>';
+                // Sort recordings by type and attempt for better organization
+                var sortedRecordings = call.recordings.sort(function(a, b) {
+                    var typeOrder = ['welcome', 'name', 'pickup', 'destination', 'reservation', 'confirmation', 'dtmf', 'other'];
+                    var aIndex = typeOrder.indexOf(a.type) !== -1 ? typeOrder.indexOf(a.type) : 999;
+                    var bIndex = typeOrder.indexOf(b.type) !== -1 ? typeOrder.indexOf(b.type) : 999;
+                    if (aIndex !== bIndex) return aIndex - bIndex;
+                    return (a.attempt || 1) - (b.attempt || 1);
+                });
+                
+                for (var i = 0; i < sortedRecordings.length; i++) {
+                    var recording = sortedRecordings[i];
                     var sizeKB = (recording.size / 1024).toFixed(1);
-                    html += '<div class="audio-player">' +
-                               '<strong>' + recording.filename + '</strong> (' + sizeKB + ' KB)<br>' +
-                               '<audio controls style="width: 100%; margin-top: 0.5rem;">' +
+                    var description = getRecordingDescription(recording.filename, recording.type, recording.attempt);
+                    var icon = getRecordingIcon(recording.filename, recording.type);
+                    
+                    html += '<div class="recording-item">' +
+                               '<div class="recording-header">' +
+                                   '<div class="recording-info">' +
+                                       '<span class="recording-icon">' + icon + '</span>' +
+                                       '<div class="recording-details">' +
+                                           '<strong class="recording-title">' + description.title + '</strong>' +
+                                           '<div class="recording-meta">' +
+                                               '<span class="recording-filename">' + recording.filename + '</span>' +
+                                               '<span class="recording-size">' + sizeKB + ' KB</span>' +
+                                               (recording.duration ? '<span class="recording-duration">' + formatAudioDuration(recording.duration) + '</span>' : '') +
+                                               (recording.attempt > 1 ? '<span class="recording-attempt">Attempt ' + recording.attempt + '</span>' : '') +
+                                           '</div>' +
+                                       '</div>' +
+                                   '</div>' +
+                               '</div>' +
+                               '<div class="recording-description">' + description.description + '</div>' +
+                               '<audio controls class="recording-player" preload="none">' +
                                    '<source src="?action=audio&file=' + encodeURIComponent(recording.path) + '" type="audio/wav">' +
                                    'Your browser does not support the audio element.' +
                                '</audio>' +
@@ -5083,6 +5756,188 @@ class AGIAnalytics {
         // Close modal
         function closeModal() {
             document.getElementById('callDetailModal').classList.remove('show');
+            currentCallId = null;
+        }
+
+        // Refresh call detail
+        function refreshCallDetail() {
+            if (currentCallId) {
+                showCallDetail(currentCallId);
+            }
+        }
+
+        // Delete call
+        function deleteCall() {
+            if (!currentCallId) {
+                alert('No call selected');
+                return;
+            }
+
+            if (confirm('Are you sure you want to delete this call? This action cannot be undone.')) {
+                fetch('?endpoint=delete_call', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        call_id: currentCallId
+                    })
+                })
+                .then(function(response) { return response.json(); })
+                .then(function(result) {
+                    if (result.success) {
+                        alert('Call deleted successfully');
+                        closeModal();
+                        loadCalls(); // Refresh the calls table
+                        loadStats(); // Refresh statistics
+                    } else {
+                        alert('Failed to delete call: ' + (result.error || 'Unknown error'));
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Error deleting call:', error);
+                    alert('Failed to delete call');
+                });
+            }
+        }
+
+        // Edit call - open comprehensive edit modal
+        function editCall() {
+            if (!currentCallId) {
+                alert('No call selected');
+                return;
+            }
+
+            // Fetch current call data to populate the form
+            fetch('?endpoint=call&call_id=' + encodeURIComponent(currentCallId))
+                .then(function(response) { return response.json(); })
+                .then(function(call) {
+                    populateEditForm(call);
+                    document.getElementById('editCallModal').classList.add('show');
+                })
+                .catch(function(error) {
+                    console.error('Error loading call for edit:', error);
+                    alert('Failed to load call data for editing');
+                });
+        }
+
+        // Populate edit form with current call data
+        function populateEditForm(call) {
+            document.getElementById('editPhone').value = call.phone_number || '';
+            document.getElementById('editExtension').value = call.extension || '';
+            document.getElementById('editCallType').value = call.call_type || '';
+            document.getElementById('editInitialChoice').value = call.initial_choice || '';
+            document.getElementById('editCallOutcome').value = call.call_outcome || '';
+            document.getElementById('editName').value = call.user_name || call.name || '';  // Try user_name first, fallback to name
+            document.getElementById('editPickupAddress').value = call.pickup_address || '';
+            document.getElementById('editPickupLat').value = call.pickup_lat || '';
+            document.getElementById('editPickupLng').value = call.pickup_lng || '';
+            document.getElementById('editDestAddress').value = call.destination_address || '';
+            document.getElementById('editDestLat').value = call.destination_lat || call.dest_lat || '';  // Try destination_lat first
+            document.getElementById('editDestLng').value = call.destination_lng || call.dest_lng || '';  // Try destination_lng first
+            
+            // Format reservation time for datetime-local input
+            if (call.reservation_time) {
+                const date = new Date(call.reservation_time);
+                const formatted = date.getFullYear() + '-' + 
+                    String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(date.getDate()).padStart(2, '0') + 'T' + 
+                    String(date.getHours()).padStart(2, '0') + ':' + 
+                    String(date.getMinutes()).padStart(2, '0');
+                document.getElementById('editReservationTime').value = formatted;
+            } else {
+                document.getElementById('editReservationTime').value = '';
+            }
+        }
+
+        // Close edit modal
+        function closeEditModal() {
+            document.getElementById('editCallModal').classList.remove('show');
+        }
+
+        // Save call edits
+        function saveCallEdit() {
+            if (!currentCallId) {
+                alert('No call selected');
+                return;
+            }
+
+            // Collect form data - start with minimal data for debugging
+            const formData = {
+                call_id: currentCallId,
+                call_outcome: document.getElementById('editCallOutcome').value
+            };
+
+            // Add other fields only if they have values
+            const phone = document.getElementById('editPhone').value.trim();
+            if (phone) formData.phone_number = phone;
+            
+            const extension = document.getElementById('editExtension').value.trim();
+            if (extension) formData.extension = extension;
+            
+            const callType = document.getElementById('editCallType').value;
+            if (callType) formData.call_type = callType;
+            
+            const initialChoice = document.getElementById('editInitialChoice').value;
+            if (initialChoice) formData.initial_choice = initialChoice;
+            
+            const name = document.getElementById('editName').value.trim();
+            if (name) formData.name = name;
+            
+            const pickupAddress = document.getElementById('editPickupAddress').value.trim();
+            if (pickupAddress) formData.pickup_address = pickupAddress;
+            
+            const pickupLat = parseFloat(document.getElementById('editPickupLat').value);
+            if (!isNaN(pickupLat)) formData.pickup_lat = pickupLat;
+            
+            const pickupLng = parseFloat(document.getElementById('editPickupLng').value);
+            if (!isNaN(pickupLng)) formData.pickup_lng = pickupLng;
+            
+            const destAddress = document.getElementById('editDestAddress').value.trim();
+            if (destAddress) formData.destination_address = destAddress;
+            
+            const destLat = parseFloat(document.getElementById('editDestLat').value);
+            if (!isNaN(destLat)) formData.dest_lat = destLat;
+            
+            const destLng = parseFloat(document.getElementById('editDestLng').value);
+            if (!isNaN(destLng)) formData.dest_lng = destLng;
+            
+            const reservationTime = document.getElementById('editReservationTime').value;
+            if (reservationTime) formData.reservation_time = reservationTime;
+
+            // Debug logging
+            console.log('Form data to be sent:', formData);
+
+            // Send update request
+            fetch('?endpoint=edit_call', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(function(response) { 
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                }
+                return response.json(); 
+            })
+            .then(function(result) {
+                if (result.success) {
+                    alert('Call updated successfully');
+                    closeEditModal();
+                    refreshCallDetail(); // Refresh the current call detail
+                    loadCalls(); // Refresh the calls table
+                    loadStats(); // Refresh statistics
+                } else {
+                    alert('Failed to update call: ' + (result.error || result.message || 'Unknown error'));
+                }
+            })
+            .catch(function(error) {
+                console.error('Error updating call:', error);
+                console.error('Full error details:', error);
+                alert('Failed to update call: ' + error.message);
+            });
         }
         
         // Export Modal Functions
