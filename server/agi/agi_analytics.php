@@ -20,6 +20,8 @@
 class AGIAnalytics {
     private $db;
     private $table = 'automated_calls_analitycs';
+    private $language = 'el'; // Default to Greek
+    private $translations = [];
     
     // Database configuration
     private $dbConfig = [
@@ -34,6 +36,8 @@ class AGIAnalytics {
     ];
     
     public function __construct() {
+        $this->initializeLanguage();
+        $this->loadTranslations();
         $this->loadEnvConfig();
         $this->connectDatabase();
         $this->createTableIfNeeded();
@@ -51,6 +55,531 @@ class AGIAnalytics {
         $this->dbConfig['fallback_user'] = getenv('DB_FALLBACK_USER') ?: $this->dbConfig['fallback_user'];
         $this->dbConfig['fallback_pass'] = getenv('DB_FALLBACK_PASS') ?: $this->dbConfig['fallback_pass'];
         $this->dbConfig['port'] = getenv('DB_PORT') ?: $this->dbConfig['port'];
+    }
+    
+    /**
+     * Initialize language from URL parameter or default
+     */
+    private function initializeLanguage() {
+        // Check URL parameter first
+        $lang = $_GET['lang'] ?? 'el';
+        
+        // Validate language (only allow 'el' for Greek and 'en' for English)
+        if (in_array($lang, ['el', 'en'])) {
+            $this->language = $lang;
+        } else {
+            $this->language = 'el'; // Default to Greek
+        }
+    }
+    
+    /**
+     * Load translations for the selected language
+     */
+    private function loadTranslations() {
+        $this->translations = [
+            'el' => [
+                // Header and Navigation
+                'dashboard_title' => 'Πίνακας Αναλυτικών Στοιχείων',
+                'analytics_dashboard' => 'Πίνακας Αναλυτικών Στοιχείων',
+                'realtime_monitoring' => 'Παρακολούθηση σε πραγματικό χρόνο και αναλυτικά στοιχεία κλήσεων',
+                
+                // Buttons and Actions
+                'filters' => 'Φίλτρα',
+                'export' => 'Εξαγωγή',
+                'refresh' => 'Ανανέωση',
+                'stop' => 'Στάση',
+                'live' => 'Ζωντανά',
+                'search' => 'Αναζήτηση',
+                'clear_all' => 'Καθαρισμός Όλων',
+                'apply_filters' => 'Εφαρμογή Φίλτρων',
+                'edit' => 'Επεξεργασία',
+                'delete' => 'Διαγραφή',
+                'refresh_action' => 'Ανανέωση',
+                
+                // Filter Modal
+                'advanced_filters' => 'Προχωρημένα Φίλτρα',
+                'auto_filtering_enabled' => 'Αυτόματο φιλτράρισμα ενεργοποιημένο',
+                
+                // Form Labels
+                'phone_number' => 'Τηλέφωνο',
+                'extension' => 'Εσωτερικό',
+                'call_type' => 'Τύπος Κλήσης',
+                'outcome' => 'Αποτέλεσμα',
+                'date_from' => 'Ημερομηνία Από',
+                'date_to' => 'Ημερομηνία Έως',
+                'user' => 'Χρήστης',
+                'location' => 'Τοποθεσία',
+                
+                // Call Types
+                'all_types' => 'Όλοι οι Τύποι',
+                'immediate' => 'Άμεση',
+                'reservation' => 'Κράτηση',
+                'operator' => 'Τηλεφωνητής',
+                
+                // Outcomes
+                'all_outcomes' => 'Όλα τα Αποτελέσματα',
+                'success' => 'Επιτυχία',
+                'hangup' => 'Τερματισμός',
+                'operator_transfer' => 'Μεταφορά σε Τηλεφωνητή',
+                'error' => 'Σφάλμα',
+                'in_progress' => 'Σε Εξέλιξη',
+                
+                // Chart Titles
+                'calls_per_hour' => 'Κλήσεις ανά Ώρα',
+                'location_heatmap' => 'Χάρτης Τοποθεσιών',
+                'today' => 'Σήμερα',
+                
+                // Heatmap Controls
+                'last_30_minutes' => '🕐 Τελευταία 30 λεπτά',
+                'last_1_hour' => '🕐 Τελευταία 1 ώρα',
+                'last_3_hours' => '🕒 Τελευταίες 3 ώρες',
+                'last_6_hours' => '🕕 Τελευταίες 6 ώρες',
+                'last_12_hours' => '🕙 Τελευταίες 12 ώρες',
+                'last_24_hours' => '🌅 Τελευταίες 24 ώρες',
+                'pickups' => 'Παραλαβές',
+                'destinations' => 'Προορισμοί',
+                
+                // Table Headers
+                'recent_calls' => 'Πρόσφατες Κλήσεις',
+                'phone' => 'Τηλέφωνο',
+                'time' => 'Ώρα',
+                'duration' => 'Διάρκεια',
+                'status' => 'Κατάσταση',
+                'type' => 'Τύπος',
+                'apis' => 'APIs',
+                'actions' => 'Ενέργειες',
+                
+                // Pagination
+                'per_page' => 'ανά σελίδα',
+                '25_per_page' => '25 ανά σελίδα',
+                '50_per_page' => '50 ανά σελίδα',
+                '100_per_page' => '100 ανά σελίδα',
+                
+                // Heatmap States
+                'loading_location_data' => 'Φόρτωση δεδομένων τοποθεσίας...',
+                'fetching_locations' => 'Ανάκτηση τοποθεσιών κλήσεων από τη βάση δεδομένων',
+                'no_location_data' => 'Δεν υπάρχουν δεδομένα τοποθεσίας',
+                'waiting_for_calls' => 'Αναμονή για κλήσεις με δεδομένα τοποθεσίας...',
+                'try_longer_period' => 'Δοκιμάστε να επιλέξετε μεγαλύτερο χρονικό διάστημα ή ελέγξτε αργότερα',
+                'activity_level' => 'Επίπεδο Δραστηριότητας',
+                'low' => 'Χαμηλό',
+                'high' => 'Υψηλό',
+                
+                // Call Details
+                'call_details' => 'Λεπτομέρειες Κλήσης',
+                
+                // Export and System Messages
+                'csv_export' => 'Εξαγωγή CSV',
+                'export_complete' => 'Η εξαγωγή ολοκληρώθηκε',
+                'system_error' => 'Σφάλμα Συστήματος',
+                'database_error' => 'Σφάλμα Βάσης Δεδομένων',
+                'loading' => 'Φόρτωση...',
+                'processing' => 'Επεξεργασία...',
+                'no_data' => 'Δεν υπάρχουν δεδομένα',
+                
+                // Chart Labels
+                'total_calls' => 'Συνολικές Κλήσεις',
+                'successful_calls' => 'Επιτυχημένες Κλήσεις',
+                'failed_calls' => 'Αποτυχημένες Κλήσεις',
+                'average_duration' => 'Μέση Διάρκεια',
+                'total_duration' => 'Συνολική Διάρκεια',
+                
+                // Status Values (for table data)
+                'completed' => 'Ολοκληρώθηκε',
+                'answered' => 'Απαντήθηκε',
+                'busy' => 'Κατειλημμένο',
+                'no_answer' => 'Δεν Απαντά',
+                'failed' => 'Απέτυχε',
+                'cancelled' => 'Ακυρώθηκε',
+                'ongoing' => 'Σε Εξέλιξη',
+                
+                // Call Details Modal
+                'call_information' => 'Πληροφορίες Κλήσης',
+                'call_log' => 'Ιστορικό Κλήσης',
+                'call_id' => 'ID Κλήσης',
+                'unique_id' => 'Μοναδικό ID',
+                'caller_info' => 'Στοιχεία Καλούντος',
+                'call_flow' => 'Ροή Κλήσης',
+                'timeline' => 'Χρονολόγιο',
+                'recordings' => 'Ηχογραφήσεις',
+                'technical_details' => 'Τεχνικές Λεπτομέρειες',
+                'call_start' => 'Έναρξη Κλήσης',
+                'call_end' => 'Τέλος Κλήσης',
+                'call_outcome' => 'Αποτέλεσμα Κλήσης',
+                'customer_name' => 'Όνομα Πελάτη',
+                'pickup_location' => 'Τοποθεσία Παραλαβής',
+                'destination_location' => 'Τοποθεσία Προορισμού',
+                'reservation_time' => 'Ώρα Κράτησης',
+                'notes' => 'Σημειώσεις',
+                'api_calls' => 'Κλήσεις API',
+                'error_messages' => 'Μηνύματα Σφάλματος',
+                'system_logs' => 'Αρχεία Συστήματος',
+                
+                // Duration Units
+                'seconds_short' => 'δ',
+                'minutes_short' => 'λ',
+                'hours_short' => 'ω',
+                'days_short' => 'η',
+                
+                // Additional Status Terms
+                'active' => 'Ενεργό',
+                'inactive' => 'Ανενεργό',
+                'pending' => 'Εκκρεμές',
+                'processing' => 'Επεξεργάζεται',
+                'connecting' => 'Συνδέεται',
+                'ringing' => 'Χτυπά',
+                'talking' => 'Ομιλία',
+                
+                // Time and Date
+                'from' => 'Από',
+                'to' => 'Έως',
+                'at' => 'στις',
+                'duration_label' => 'Διάρκεια',
+                'start_time' => 'Ώρα Έναρξης',
+                'end_time' => 'Ώρα Τέλους',
+                
+                // Statistics Labels
+                'total_calls_today' => 'Συνολικές Κλήσεις Σήμερα',
+                'active' => 'Ενεργές',
+                'successful_calls' => 'Επιτυχημένες Κλήσεις',
+                'success_rate' => 'ποσοστό επιτυχίας',
+                'avg_duration' => 'Μέση Διάρκεια',
+                'per_call_average' => 'Μέσος όρος ανά κλήση',
+                'unique_callers' => 'Μοναδικοί Καλούντες',
+                'different_numbers' => 'Διαφορετικοί αριθμοί',
+                'yes' => 'Ναι',
+                'no' => 'Όχι',
+                
+                // Export Dialog
+                'export_data' => 'Εξαγωγή Δεδομένων',
+                'csv_export' => 'Εξαγωγή CSV',
+                'pdf_export' => 'Εξαγωγή PDF', 
+                'print_view' => 'Προβολή Εκτύπωσης',
+                'download_data_spreadsheet' => 'Κατέβασμα δεδομένων ως αρχείο υπολογιστικού φύλλου (.csv)',
+                'best_for_data_analysis' => 'Καλύτερο για ανάλυση δεδομένων και Excel',
+                'generate_formatted_pdf' => 'Δημιουργία μορφοποιημένης αναφοράς PDF',
+                'best_for_presentations' => 'Καλύτερο για παρουσιάσεις και αναφορές',
+                'open_print_friendly' => 'Άνοιγμα φιλικής προς εκτύπωση μορφής',
+                'best_for_printing' => 'Καλύτερο για άμεση εκτύπωση',
+                'export_options' => 'Επιλογές Εξαγωγής',
+                'date_range' => 'Εύρος Ημερομηνιών',
+                'to' => 'έως',
+                'include_current_filters' => 'Συμπερίληψη τρεχόντων φίλτρων',
+                'apply_current_search_filters' => 'Εφαρμογή ενεργών φίλτρων αναζήτησης στην εξαγωγή',
+                'records_limit' => 'Όριο Εγγραφών',
+                'last_100_records' => 'Τελευταίες 100 εγγραφές',
+                'last_500_records' => 'Τελευταίες 500 εγγραφές', 
+                'last_1000_records' => 'Τελευταίες 1000 εγγραφές',
+                'all_records' => 'Όλες οι εγγραφές',
+                'edit_call' => 'Επεξεργασία Κλήσης',
+                
+                // Call Details Modal Fields
+                'phone_number_label' => 'Αριθμός Τηλεφώνου',
+                'extension_label' => 'Εσωτερικό',
+                'duration_label' => 'Διάρκεια',
+                'status_label' => 'Κατάσταση',
+                'user_name_label' => 'Όνομα Χρήστη',
+                'language_label' => 'Γλώσσα',
+                'api_calls_label' => 'Κλήσεις API',
+                'location_information' => 'Πληροφορίες Τοποθεσίας',
+                'pickup_address_label' => 'Διεύθυνση Παραλαβής',
+                'destination_address_label' => 'Διεύθυνση Προορισμού',
+                'confirmation_audio' => 'Ήχος Επιβεβαίωσης',
+                'system_generated_confirmation' => 'Μήνυμα επιβεβαίωσης που δημιουργήθηκε από το σύστημα για επαλήθευση των στοιχείων κράτησης.',
+                'customer_name_recording' => 'Ηχογράφηση Ονόματος Πελάτη',
+                'pickup_address_recording' => 'Ηχογράφηση Διεύθυνσης Παραλαβής',
+                'destination_recording' => 'Ηχογράφηση Προορισμού',
+                'reservation_time_recording' => 'Ηχογράφηση Ώρας Κράτησης',
+                'welcome_message' => 'Μήνυμα Καλωσορίσματος',
+                'dtmf_input_recording' => 'Ηχογράφηση Εισαγωγής DTMF',
+                'call_recording' => 'Ηχογράφηση Κλήσης',
+                'attempt' => 'Προσπάθεια',
+                'kb_size' => 'KB',
+                'bytes_size' => 'bytes',
+                'audio_not_supported' => 'Ο φυλλομετρητής σας δεν υποστηρίζει το στοιχείο ήχου.',
+                
+                // Placeholders
+                'placeholder_search' => 'Τηλέφωνο, ID Κλήσης, Χρήστης...',
+                'placeholder_phone' => 'Αριθμός τηλεφώνου',
+                'placeholder_extension' => 'Εσωτερικό'
+            ],
+            'en' => [
+                // Header and Navigation
+                'dashboard_title' => 'Analytics Dashboard',
+                'analytics_dashboard' => 'Analytics Dashboard',
+                'realtime_monitoring' => 'Real-time call monitoring and analytics',
+                
+                // Buttons and Actions
+                'filters' => 'Filters',
+                'export' => 'Export',
+                'refresh' => 'Refresh',
+                'stop' => 'Stop',
+                'live' => 'Live',
+                'search' => 'Search',
+                'clear_all' => 'Clear All',
+                'apply_filters' => 'Apply Filters',
+                'edit' => 'Edit',
+                'delete' => 'Delete',
+                'refresh_action' => 'Refresh',
+                
+                // Filter Modal
+                'advanced_filters' => 'Advanced Filters',
+                'auto_filtering_enabled' => 'Auto-filtering enabled',
+                
+                // Form Labels
+                'phone_number' => 'Phone Number',
+                'extension' => 'Extension',
+                'call_type' => 'Call Type',
+                'outcome' => 'Outcome',
+                'date_from' => 'Date From',
+                'date_to' => 'Date To',
+                'user' => 'User',
+                'location' => 'Location',
+                
+                // Call Types
+                'all_types' => 'All Types',
+                'immediate' => 'Immediate',
+                'reservation' => 'Reservation',
+                'operator' => 'Operator',
+                
+                // Outcomes
+                'all_outcomes' => 'All Outcomes',
+                'success' => 'Success',
+                'hangup' => 'Hangup',
+                'operator_transfer' => 'Operator Transfer',
+                'error' => 'Error',
+                'in_progress' => 'In Progress',
+                
+                // Chart Titles
+                'calls_per_hour' => 'Calls per Hour',
+                'location_heatmap' => 'Location Heatmap',
+                'today' => 'Today',
+                
+                // Heatmap Controls
+                'last_30_minutes' => '🕐 Last 30 minutes',
+                'last_1_hour' => '🕐 Last 1 hour',
+                'last_3_hours' => '🕒 Last 3 hours',
+                'last_6_hours' => '🕕 Last 6 hours',
+                'last_12_hours' => '🕙 Last 12 hours',
+                'last_24_hours' => '🌅 Last 24 hours',
+                'pickups' => 'Pickups',
+                'destinations' => 'Destinations',
+                
+                // Table Headers
+                'recent_calls' => 'Recent Calls',
+                'phone' => 'Phone',
+                'time' => 'Time',
+                'duration' => 'Duration',
+                'status' => 'Status',
+                'type' => 'Type',
+                'apis' => 'APIs',
+                'actions' => 'Actions',
+                
+                // Pagination
+                'per_page' => 'per page',
+                '25_per_page' => '25 per page',
+                '50_per_page' => '50 per page',
+                '100_per_page' => '100 per page',
+                
+                // Heatmap States
+                'loading_location_data' => 'Loading location data...',
+                'fetching_locations' => 'Fetching call locations from database',
+                'no_location_data' => 'No location data available',
+                'waiting_for_calls' => 'Waiting for calls with location data...',
+                'try_longer_period' => 'Try selecting a longer time period or check back later',
+                'activity_level' => 'Activity Level',
+                'low' => 'Low',
+                'high' => 'High',
+                
+                // Call Details
+                'call_details' => 'Call Details',
+                
+                // Export and System Messages
+                'csv_export' => 'CSV Export',
+                'export_complete' => 'Export completed',
+                'system_error' => 'System Error',
+                'database_error' => 'Database Error',
+                'loading' => 'Loading...',
+                'processing' => 'Processing...',
+                'no_data' => 'No data available',
+                
+                // Chart Labels
+                'total_calls' => 'Total Calls',
+                'successful_calls' => 'Successful Calls',
+                'failed_calls' => 'Failed Calls',
+                'average_duration' => 'Average Duration',
+                'total_duration' => 'Total Duration',
+                
+                // Status Values (for table data)
+                'completed' => 'Completed',
+                'answered' => 'Answered',
+                'busy' => 'Busy',
+                'no_answer' => 'No Answer',
+                'failed' => 'Failed',
+                'cancelled' => 'Cancelled',
+                'ongoing' => 'Ongoing',
+                
+                // Call Details Modal
+                'call_information' => 'Call Information',
+                'call_log' => 'Call Log',
+                'call_id' => 'Call ID',
+                'unique_id' => 'Unique ID',
+                'caller_info' => 'Caller Information',
+                'call_flow' => 'Call Flow',
+                'timeline' => 'Timeline',
+                'recordings' => 'Recordings',
+                'technical_details' => 'Technical Details',
+                'call_start' => 'Call Start',
+                'call_end' => 'Call End',
+                'call_outcome' => 'Call Outcome',
+                'customer_name' => 'Customer Name',
+                'pickup_location' => 'Pickup Location',
+                'destination_location' => 'Destination Location',
+                'reservation_time' => 'Reservation Time',
+                'notes' => 'Notes',
+                'api_calls' => 'API Calls',
+                'error_messages' => 'Error Messages',
+                'system_logs' => 'System Logs',
+                
+                // Duration Units
+                'seconds_short' => 's',
+                'minutes_short' => 'm',
+                'hours_short' => 'h',
+                'days_short' => 'd',
+                
+                // Additional Status Terms
+                'active' => 'Active',
+                'inactive' => 'Inactive',
+                'pending' => 'Pending',
+                'processing' => 'Processing',
+                'connecting' => 'Connecting',
+                'ringing' => 'Ringing',
+                'talking' => 'Talking',
+                
+                // Time and Date
+                'from' => 'From',
+                'to' => 'To',
+                'at' => 'at',
+                'duration_label' => 'Duration',
+                'start_time' => 'Start Time',
+                'end_time' => 'End Time',
+                
+                // Statistics Labels
+                'total_calls_today' => 'Total Calls Today',
+                'active' => 'Active',
+                'successful_calls' => 'Successful Calls',
+                'success_rate' => 'success rate',
+                'avg_duration' => 'Avg Duration',
+                'per_call_average' => 'Per call average',
+                'unique_callers' => 'Unique Callers',
+                'different_numbers' => 'Different numbers',
+                'yes' => 'Yes',
+                'no' => 'No',
+                
+                // Export Dialog
+                'export_data' => 'Export Data',
+                'csv_export' => 'CSV Export',
+                'pdf_export' => 'PDF Export',
+                'print_view' => 'Print View',
+                'download_data_spreadsheet' => 'Download data as spreadsheet file (.csv)',
+                'best_for_data_analysis' => 'Best for data analysis and Excel',
+                'generate_formatted_pdf' => 'Generate formatted PDF report',
+                'best_for_presentations' => 'Best for presentations and reports',
+                'open_print_friendly' => 'Open print-friendly format',
+                'best_for_printing' => 'Best for immediate printing',
+                'export_options' => 'Export Options',
+                'date_range' => 'Date Range',
+                'to' => 'to',
+                'include_current_filters' => 'Include current filters',
+                'apply_current_search_filters' => 'Apply currently active search filters to export',
+                'records_limit' => 'Records Limit',
+                'last_100_records' => 'Last 100 records',
+                'last_500_records' => 'Last 500 records',
+                'last_1000_records' => 'Last 1000 records',
+                'all_records' => 'All records',
+                'edit_call' => 'Edit Call',
+                
+                // Call Details Modal Fields
+                'phone_number_label' => 'Phone Number',
+                'extension_label' => 'Extension',
+                'duration_label' => 'Duration',
+                'status_label' => 'Status',
+                'user_name_label' => 'User Name',
+                'language_label' => 'Language',
+                'api_calls_label' => 'API Calls',
+                'location_information' => 'Location Information',
+                'pickup_address_label' => 'Pickup Address',
+                'destination_address_label' => 'Destination Address',
+                'confirmation_audio' => 'Confirmation Audio',
+                'system_generated_confirmation' => 'System-generated confirmation message for booking verification.',
+                'customer_name_recording' => 'Customer Name Recording',
+                'pickup_address_recording' => 'Pickup Address Recording',
+                'destination_recording' => 'Destination Recording',
+                'reservation_time_recording' => 'Reservation Time Recording',
+                'welcome_message' => 'Welcome Message',
+                'dtmf_input_recording' => 'DTMF Input Recording',
+                'call_recording' => 'Call Recording',
+                'attempt' => 'Attempt',
+                'kb_size' => 'KB',
+                'bytes_size' => 'bytes',
+                'audio_not_supported' => 'Your browser does not support the audio element.',
+                
+                // Placeholders
+                'placeholder_search' => 'Phone, Call ID, User...',
+                'placeholder_phone' => 'Phone number',
+                'placeholder_extension' => 'Extension'
+            ]
+        ];
+    }
+    
+    /**
+     * Get translated text for the current language
+     */
+    private function t($key, $fallback = null) {
+        $translation = $this->translations[$this->language][$key] ?? $this->translations['en'][$key] ?? $fallback ?? $key;
+        return $translation;
+    }
+    
+    /**
+     * Translate status values
+     */
+    private function translateStatus($status) {
+        $statusMap = [
+            'success' => $this->t('success'),
+            'hangup' => $this->t('hangup'),
+            'operator_transfer' => $this->t('operator_transfer'),
+            'error' => $this->t('error'),
+            'in_progress' => $this->t('in_progress'),
+            'completed' => $this->t('completed'),
+            'answered' => $this->t('answered'),
+            'failed' => $this->t('failed'),
+            'ongoing' => $this->t('ongoing'),
+            'busy' => $this->t('busy'),
+            'no_answer' => $this->t('no_answer'),
+            'cancelled' => $this->t('cancelled'),
+            'active' => $this->t('active'),
+            'inactive' => $this->t('inactive'),
+            'pending' => $this->t('pending'),
+            'processing' => $this->t('processing'),
+            'connecting' => $this->t('connecting'),
+            'ringing' => $this->t('ringing'),
+            'talking' => $this->t('talking')
+        ];
+        
+        return $statusMap[$status] ?? $status;
+    }
+    
+    /**
+     * Translate call type values
+     */
+    private function translateCallType($type) {
+        $typeMap = [
+            'immediate' => $this->t('immediate'),
+            'reservation' => $this->t('reservation'),
+            'operator' => $this->t('operator')
+        ];
+        
+        return $typeMap[$type] ?? $type;
     }
     
     /**
@@ -1644,19 +2173,42 @@ class AGIAnalytics {
     // ===== UTILITY METHODS =====
     
     private function formatTimestamp($timestamp) {
-        return $timestamp ? date('M j, Y g:i A', strtotime($timestamp)) : '';
+        if (!$timestamp) return '';
+        
+        $time = strtotime($timestamp);
+        if ($this->language === 'el') {
+            // Greek date format: dd/mm/yyyy HH:mm
+            return date('d/m/Y H:i', $time);
+        } else {
+            // English date format: Mon j, Y g:i A
+            return date('M j, Y g:i A', $time);
+        }
     }
     
     private function formatDuration($seconds) {
+        $secondsUnit = $this->t('seconds_short');
+        $minutesUnit = $this->t('minutes_short');
+        $hoursUnit = $this->t('hours_short');
+        
         if ($seconds < 60) {
-            return "{$seconds}s";
+            return "{$seconds}{$secondsUnit}";
         } elseif ($seconds < 3600) {
-            return floor($seconds / 60) . "m " . ($seconds % 60) . "s";
+            $mins = floor($seconds / 60);
+            $secs = $seconds % 60;
+            return $secs > 0 ? "{$mins}{$minutesUnit} {$secs}{$secondsUnit}" : "{$mins}{$minutesUnit}";
         } else {
             $hours = floor($seconds / 3600);
             $minutes = floor(($seconds % 3600) / 60);
             $secs = $seconds % 60;
-            return "{$hours}h {$minutes}m {$secs}s";
+            
+            $result = "{$hours}{$hoursUnit}";
+            if ($minutes > 0) {
+                $result .= " {$minutes}{$minutesUnit}";
+            }
+            if ($secs > 0) {
+                $result .= " {$secs}{$secondsUnit}";
+            }
+            return $result;
         }
     }
     
@@ -1671,20 +2223,61 @@ class AGIAnalytics {
         // Add UTF-8 BOM for proper encoding in Excel
         fputs($output, "\xEF\xBB\xBF");
         
-        // CSV Headers
+        // CSV Headers (translated)
         $headers = [
-            'ID', 'Call ID', 'Unique ID', 'Phone Number', 'Extension', 'Call Start Time', 'Call End Time', 
-            'Duration (seconds)', 'Call Outcome', 'Call Type', 'Is Reservation', 'Reservation Time', 
-            'Language Used', 'Language Changed', 'Initial Choice', 'Confirmation Attempts', 'Total Retries',
-            'Name Attempts', 'Pickup Attempts', 'Destination Attempts', 'Reservation Attempts',
-            'Confirmed Default Address', 'Pickup Address', 'Pickup Latitude', 'Pickup Longitude',
-            'Destination Address', 'Destination Latitude', 'Destination Longitude', 'Google TTS Calls',
-            'Google STT Calls', 'Edge TTS Calls', 'Geocoding API Calls', 'User API Calls', 
-            'Registration API Calls', 'Date Parsing API Calls', 'TTS Processing Time (ms)', 
-            'STT Processing Time (ms)', 'Geocoding Processing Time (ms)', 'Total Processing Time (ms)',
-            'Successful Registration', 'Operator Transfer Reason', 'Error Messages', 'Recording Path',
-            'Log File Path', 'Progress JSON Path', 'TTS Provider', 'Callback Mode', 'Days Valid',
-            'User Name', 'Registration Result', 'API Response Time (ms)', 'Created At', 'Updated At'
+            'ID', 
+            $this->t('call_id', 'Call ID'), 
+            $this->t('unique_id', 'Unique ID'), 
+            $this->t('phone_number', 'Phone Number'), 
+            $this->t('extension', 'Extension'), 
+            $this->t('call_start', 'Call Start Time'), 
+            $this->t('call_end', 'Call End Time'), 
+            $this->t('duration_label', 'Duration') . ' (' . $this->t('seconds_short', 's') . ')', 
+            $this->t('call_outcome', 'Call Outcome'), 
+            $this->t('call_type', 'Call Type'), 
+            $this->t('reservation', 'Is Reservation'), 
+            $this->t('reservation_time', 'Reservation Time'), 
+            $this->language === 'el' ? 'Γλώσσα που Χρησιμοποιήθηκε' : 'Language Used', 
+            $this->language === 'el' ? 'Αλλαγή Γλώσσας' : 'Language Changed', 
+            $this->language === 'el' ? 'Αρχική Επιλογή' : 'Initial Choice', 
+            $this->language === 'el' ? 'Προσπάθειες Επιβεβαίωσης' : 'Confirmation Attempts', 
+            $this->language === 'el' ? 'Συνολικές Επαναλήψεις' : 'Total Retries',
+            $this->language === 'el' ? 'Προσπάθειες Ονόματος' : 'Name Attempts', 
+            $this->language === 'el' ? 'Προσπάθειες Παραλαβής' : 'Pickup Attempts', 
+            $this->language === 'el' ? 'Προσπάθειες Προορισμού' : 'Destination Attempts', 
+            $this->language === 'el' ? 'Προσπάθειες Κράτησης' : 'Reservation Attempts',
+            $this->language === 'el' ? 'Επιβεβαίωση Προεπιλεγμένης Διεύθυνσης' : 'Confirmed Default Address', 
+            $this->t('pickup_location', 'Pickup Address'), 
+            $this->language === 'el' ? 'Γεωγραφικό Πλάτος Παραλαβής' : 'Pickup Latitude', 
+            $this->language === 'el' ? 'Γεωγραφικό Μήκος Παραλαβής' : 'Pickup Longitude',
+            $this->t('destination_location', 'Destination Address'), 
+            $this->language === 'el' ? 'Γεωγραφικό Πλάτος Προορισμού' : 'Destination Latitude', 
+            $this->language === 'el' ? 'Γεωγραφικό Μήκος Προορισμού' : 'Destination Longitude', 
+            $this->language === 'el' ? 'Κλήσεις Google TTS' : 'Google TTS Calls',
+            $this->language === 'el' ? 'Κλήσεις Google STT' : 'Google STT Calls', 
+            $this->language === 'el' ? 'Κλήσεις Edge TTS' : 'Edge TTS Calls', 
+            $this->language === 'el' ? 'Κλήσεις Geocoding API' : 'Geocoding API Calls', 
+            $this->language === 'el' ? 'Κλήσεις User API' : 'User API Calls', 
+            $this->language === 'el' ? 'Κλήσεις Registration API' : 'Registration API Calls', 
+            $this->language === 'el' ? 'Κλήσεις Date Parsing API' : 'Date Parsing API Calls', 
+            $this->language === 'el' ? 'Χρόνος Επεξεργασίας TTS (ms)' : 'TTS Processing Time (ms)', 
+            $this->language === 'el' ? 'Χρόνος Επεξεργασίας STT (ms)' : 'STT Processing Time (ms)', 
+            $this->language === 'el' ? 'Χρόνος Επεξεργασίας Geocoding (ms)' : 'Geocoding Processing Time (ms)', 
+            $this->language === 'el' ? 'Συνολικός Χρόνος Επεξεργασίας (ms)' : 'Total Processing Time (ms)',
+            $this->language === 'el' ? 'Επιτυχημένη Εγγραφή' : 'Successful Registration', 
+            $this->language === 'el' ? 'Αιτία Μεταφοράς σε Τηλεφωνητή' : 'Operator Transfer Reason', 
+            $this->t('error_messages', 'Error Messages'), 
+            $this->language === 'el' ? 'Διαδρομή Ηχογράφησης' : 'Recording Path',
+            $this->language === 'el' ? 'Διαδρομή Αρχείου Log' : 'Log File Path', 
+            $this->language === 'el' ? 'Διαδρομή Progress JSON' : 'Progress JSON Path', 
+            $this->language === 'el' ? 'Πάροχος TTS' : 'TTS Provider', 
+            $this->language === 'el' ? 'Λειτουργία Callback' : 'Callback Mode', 
+            $this->language === 'el' ? 'Ημέρες Ισχύος' : 'Days Valid',
+            $this->language === 'el' ? 'Όνομα Χρήστη' : 'User Name', 
+            $this->language === 'el' ? 'Αποτέλεσμα Εγγραφής' : 'Registration Result', 
+            $this->language === 'el' ? 'Χρόνος Απόκρισης API (ms)' : 'API Response Time (ms)', 
+            $this->language === 'el' ? 'Δημιουργήθηκε στις' : 'Created At', 
+            $this->language === 'el' ? 'Ενημερώθηκε στις' : 'Updated At'
         ];
         
         fputcsv($output, $headers);
@@ -1738,8 +2331,11 @@ class AGIAnalytics {
         while ($row = $stmt->fetch()) {
             $csvRow = [
                 $row['id'], $row['call_id'], $row['unique_id'], $row['phone_number'], $row['extension'],
-                $row['call_start_time'], $row['call_end_time'], $row['call_duration'], $row['call_outcome'],
-                $row['call_type'], $row['is_reservation'] ? 'Yes' : 'No', $row['reservation_time'],
+                $row['call_start_time'], $row['call_end_time'], $row['call_duration'], 
+                $this->translateStatus($row['call_outcome']),
+                $this->translateCallType($row['call_type']), 
+                $row['is_reservation'] ? ($this->language === 'el' ? 'Ναι' : 'Yes') : ($this->language === 'el' ? 'Όχι' : 'No'), 
+                $row['reservation_time'],
                 $row['language_used'], $row['language_changed'] ? 'Yes' : 'No', $row['initial_choice'],
                 $row['confirmation_attempts'], $row['total_retries'], $row['name_attempts'], 
                 $row['pickup_attempts'], $row['destination_attempts'], $row['reservation_attempts'],
@@ -2385,11 +2981,11 @@ class AGIAnalytics {
     private function renderDashboard() {
         ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?php echo $this->language; ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AGI Analytics Dashboard</title>
+    <title><?php echo $this->t('dashboard_title'); ?></title>
     <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMiI+PHBhdGggZD0iTTMgM3YxOGwxOC0xOEgzeiIvPjxwYXRoIGQ9Im0xMCAxMCA0IDQiLz48L3N2Zz4K" type="image/svg+xml">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
@@ -2432,6 +3028,42 @@ class AGIAnalytics {
             color: var(--gray-900);
         }
         
+        .language-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 9999;
+            display: flex;
+            background: white;
+            border-radius: 25px;
+            padding: 0.25rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--gray-200);
+        }
+
+        .lang-btn {
+            border: none;
+            background: transparent;
+            padding: 0.5rem 0.75rem;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.8rem;
+            color: var(--gray-600);
+            transition: all 0.2s ease;
+            min-width: 40px;
+        }
+
+        .lang-btn:hover {
+            background: var(--gray-100);
+            color: var(--gray-800);
+        }
+
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+
         .filter-toggle {
             position: fixed;
             top: 1rem;
@@ -3993,10 +4625,16 @@ class AGIAnalytics {
     </style>
 </head>
 <body>
+    <!-- Language Toggle Button -->
+    <div class="language-toggle">
+        <button onclick="switchLanguage('el')" class="lang-btn <?php echo $this->language === 'el' ? 'active' : ''; ?>">ΕΛ</button>
+        <button onclick="switchLanguage('en')" class="lang-btn <?php echo $this->language === 'en' ? 'active' : ''; ?>">EN</button>
+    </div>
+
     <!-- Filter Toggle Button -->
     <button id="filterToggle" class="filter-toggle">
         <i class="fas fa-filter"></i>
-        <span>Filters</span>
+        <span><?php echo $this->t('filters'); ?></span>
     </button>
     
     <!-- Filter Modal -->
@@ -4005,7 +4643,7 @@ class AGIAnalytics {
             <div class="modal-header">
                 <h3>
                     <i class="fas fa-filter"></i>
-                    Advanced Filters
+                    <?php echo $this->t('advanced_filters'); ?>
                 </h3>
                 <button class="modal-close" id="filterModalClose">
                     <i class="fas fa-times"></i>
@@ -4016,55 +4654,55 @@ class AGIAnalytics {
                 <form id="filterForm">
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">Search</label>
-                            <input type="text" name="search" class="form-control" placeholder="Phone, Call ID, User...">
+                            <label class="form-label"><?php echo $this->t('search'); ?></label>
+                            <input type="text" name="search" class="form-control" placeholder="<?php echo $this->t('placeholder_search'); ?>">
                         </div>
                         
                         <div class="form-group">
-                            <label class="form-label">Phone Number</label>
-                            <input type="text" name="phone" class="form-control" placeholder="Phone number">
+                            <label class="form-label"><?php echo $this->t('phone_number'); ?></label>
+                            <input type="text" name="phone" class="form-control" placeholder="<?php echo $this->t('placeholder_phone'); ?>">
                         </div>
                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">Extension</label>
-                            <input type="text" name="extension" class="form-control" placeholder="Extension">
+                            <label class="form-label"><?php echo $this->t('extension'); ?></label>
+                            <input type="text" name="extension" class="form-control" placeholder="<?php echo $this->t('placeholder_extension'); ?>">
                         </div>
                         
                         <div class="form-group">
-                            <label class="form-label">Call Type</label>
+                            <label class="form-label"><?php echo $this->t('call_type'); ?></label>
                             <select name="call_type" class="form-control">
-                                <option value="">All Types</option>
-                                <option value="immediate">Immediate</option>
-                                <option value="reservation">Reservation</option>
-                                <option value="operator">Operator</option>
+                                <option value=""><?php echo $this->t('all_types'); ?></option>
+                                <option value="immediate"><?php echo $this->t('immediate'); ?></option>
+                                <option value="reservation"><?php echo $this->t('reservation'); ?></option>
+                                <option value="operator"><?php echo $this->t('operator'); ?></option>
                             </select>
                         </div>
                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">Outcome</label>
+                            <label class="form-label"><?php echo $this->t('outcome'); ?></label>
                             <select name="outcome" class="form-control">
-                                <option value="">All Outcomes</option>
-                                <option value="success">Success</option>
-                                <option value="hangup">Hangup</option>
-                                <option value="operator_transfer">Operator Transfer</option>
-                                <option value="error">Error</option>
-                                <option value="in_progress">In Progress</option>
+                                <option value=""><?php echo $this->t('all_outcomes'); ?></option>
+                                <option value="success"><?php echo $this->t('success'); ?></option>
+                                <option value="hangup"><?php echo $this->t('hangup'); ?></option>
+                                <option value="operator_transfer"><?php echo $this->t('operator_transfer'); ?></option>
+                                <option value="error"><?php echo $this->t('error'); ?></option>
+                                <option value="in_progress"><?php echo $this->t('in_progress'); ?></option>
                             </select>
                         </div>
                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">Date From</label>
+                            <label class="form-label"><?php echo $this->t('date_from'); ?></label>
                             <input type="date" name="date_from" class="form-control">
                         </div>
                         
                         <div class="form-group">
-                            <label class="form-label">Date To</label>
+                            <label class="form-label"><?php echo $this->t('date_to'); ?></label>
                             <input type="date" name="date_to" class="form-control">
                         </div>
                     </div>
@@ -4074,15 +4712,15 @@ class AGIAnalytics {
             <div class="modal-footer">
                 <div class="filter-status">
                     <small class="text-muted">
-                        <i class="fas fa-magic"></i> Auto-filtering enabled
+                        <i class="fas fa-magic"></i> <?php echo $this->t('auto_filtering_enabled'); ?>
                     </small>
                 </div>
                 <div class="modal-actions">
                     <button type="button" id="clearFilters" class="btn btn-secondary">
-                        <i class="fas fa-times"></i> Clear All
+                        <i class="fas fa-times"></i> <?php echo $this->t('clear_all'); ?>
                     </button>
                     <button type="submit" form="filterForm" class="btn btn-primary">
-                        <i class="fas fa-search"></i> Apply Filters
+                        <i class="fas fa-search"></i> <?php echo $this->t('apply_filters'); ?>
                     </button>
                 </div>
             </div>
@@ -4098,20 +4736,20 @@ class AGIAnalytics {
                     <div class="header-left">
                         <h1 class="dashboard-title">
                             <i class="fas fa-chart-line"></i>
-                            Analytics Dashboard
+                            <?php echo $this->t('analytics_dashboard'); ?>
                         </h1>
-                        <p class="dashboard-subtitle">Real-time call monitoring and analytics</p>
+                        <p class="dashboard-subtitle"><?php echo $this->t('realtime_monitoring'); ?></p>
                     </div>
                     <div class="header-right">
                         <div class="header-actions">
                             <button id="exportBtn" class="btn btn-info">
-                                <i class="fas fa-download"></i> Export
+                                <i class="fas fa-download"></i> <?php echo $this->t('export'); ?>
                             </button>
                             <button id="refreshBtn" class="btn btn-secondary">
-                                <i class="fas fa-refresh"></i> Refresh
+                                <i class="fas fa-refresh"></i> <?php echo $this->t('refresh'); ?>
                             </button>
                             <button id="realtimeBtn" class="btn btn-danger">
-                                <i class="fas fa-stop"></i> Stop
+                                <i class="fas fa-stop"></i> <?php echo $this->t('stop'); ?>
                             </button>
                         </div>
                         <div class="header-actions-mobile">
@@ -4120,19 +4758,19 @@ class AGIAnalytics {
                             </button>
                             <div class="mobile-menu-dropdown" id="mobileMenuDropdown">
                                 <button id="exportBtnMobile" class="btn btn-info">
-                                    <i class="fas fa-download"></i> Export
+                                    <i class="fas fa-download"></i> <?php echo $this->t('export'); ?>
                                 </button>
                                 <button id="refreshBtnMobile" class="btn btn-secondary">
-                                    <i class="fas fa-refresh"></i> Refresh
+                                    <i class="fas fa-refresh"></i> <?php echo $this->t('refresh'); ?>
                                 </button>
                                 <button id="realtimeBtnMobile" class="btn btn-danger">
-                                    <i class="fas fa-stop"></i> Stop
+                                    <i class="fas fa-stop"></i> <?php echo $this->t('stop'); ?>
                                 </button>
                             </div>
                         </div>
                         <div class="connection-status">
                             <span class="status-indicator online"></span>
-                            <span class="status-text">Live</span>
+                            <span class="status-text"><?php echo $this->t('live'); ?></span>
                         </div>
                     </div>
                 </div>
@@ -4148,9 +4786,9 @@ class AGIAnalytics {
                 <!-- Hourly Chart -->
                 <div class="chart-container">
                     <div class="chart-header">
-                        <h3 class="chart-title">Calls per Hour</h3>
+                        <h3 class="chart-title"><?php echo $this->t('calls_per_hour'); ?></h3>
                         <select id="hourlyDateSelect" class="form-control" style="width: auto;">
-                            <option value="">Today</option>
+                            <option value=""><?php echo $this->t('today'); ?></option>
                         </select>
                     </div>
                     <div class="chart-canvas-container">
@@ -4162,25 +4800,25 @@ class AGIAnalytics {
                 <div class="chart-container heatmap-container">
                     <div class="chart-header">
                         <h3 class="chart-title">
-                            <i class="fas fa-map-marked-alt"></i> Location Heatmap
+                            <i class="fas fa-map-marked-alt"></i> <?php echo $this->t('location_heatmap'); ?>
                         </h3>
                         <div class="heatmap-controls">
                             <select id="heatmapDuration" class="form-control">
-                                <option value="30">🕐 Last 30 minutes</option>
-                                <option value="60">🕐 Last 1 hour</option>
-                                <option value="180">🕒 Last 3 hours</option>
-                                <option value="360">🕕 Last 6 hours</option>
-                                <option value="720">🕙 Last 12 hours</option>
-                                <option value="1440">🌅 Last 24 hours</option>
+                                <option value="30"><?php echo $this->t('last_30_minutes'); ?></option>
+                                <option value="60"><?php echo $this->t('last_1_hour'); ?></option>
+                                <option value="180"><?php echo $this->t('last_3_hours'); ?></option>
+                                <option value="360"><?php echo $this->t('last_6_hours'); ?></option>
+                                <option value="720"><?php echo $this->t('last_12_hours'); ?></option>
+                                <option value="1440"><?php echo $this->t('last_24_hours'); ?></option>
                             </select>
                             <div id="heatmapStats" class="heatmap-stats">
                                 <span class="stat-item">
                                     <i class="fas fa-map-pin text-success"></i>
-                                    <span id="pickupCount">0</span> Pickups
+                                    <span id="pickupCount">0</span> <?php echo $this->t('pickups'); ?>
                                 </span>
                                 <span class="stat-item">
                                     <i class="fas fa-flag-checkered text-danger"></i>
-                                    <span id="destinationCount">0</span> Destinations
+                                    <span id="destinationCount">0</span> <?php echo $this->t('destinations'); ?>
                                 </span>
                                 <button id="heatmapFullscreen" class="heatmap-fullscreen-btn" title="Fullscreen">
                                     <i class="fas fa-expand"></i>
@@ -4194,8 +4832,8 @@ class AGIAnalytics {
                             <div class="loading-spinner">
                                 <div class="spinner-ring"></div>
                             </div>
-                            <h4>Loading location data...</h4>
-                            <p>Fetching call locations from database</p>
+                            <h4><?php echo $this->t('loading_location_data'); ?></h4>
+                            <p><?php echo $this->t('fetching_locations'); ?></p>
                         </div>
                         
                         <!-- Empty State -->
@@ -4203,12 +4841,12 @@ class AGIAnalytics {
                             <div class="empty-icon">
                                 <i class="fas fa-map-marker-alt"></i>
                             </div>
-                            <h4>No location data available</h4>
-                            <p>Waiting for calls with location data...</p>
+                            <h4><?php echo $this->t('no_location_data'); ?></h4>
+                            <p><?php echo $this->t('waiting_for_calls'); ?></p>
                             <div class="empty-suggestions">
                                 <small>
                                     <i class="fas fa-info-circle"></i>
-                                    Try selecting a longer time period or check back later
+                                    <?php echo $this->t('try_longer_period'); ?>
                                 </small>
                             </div>
                         </div>
@@ -4218,11 +4856,11 @@ class AGIAnalytics {
                         
                         <!-- Map Legend -->
                         <div id="heatmapLegend" class="heatmap-legend" style="display: none;">
-                            <div class="legend-title">Activity Level</div>
+                            <div class="legend-title"><?php echo $this->t('activity_level'); ?></div>
                             <div class="legend-gradient">
-                                <span class="legend-low">Low</span>
+                                <span class="legend-low"><?php echo $this->t('low'); ?></span>
                                 <div class="legend-bar"></div>
-                                <span class="legend-high">High</span>
+                                <span class="legend-high"><?php echo $this->t('high'); ?></span>
                             </div>
                         </div>
                     </div>
@@ -4232,12 +4870,12 @@ class AGIAnalytics {
             <!-- Calls Table -->
             <div class="calls-table-container">
                 <div class="table-header">
-                    <h3 class="table-title">Recent Calls</h3>
+                    <h3 class="table-title"><?php echo $this->t('recent_calls'); ?></h3>
                     <div class="btn-group">
                         <select id="limitSelect" class="form-control" style="width: auto;">
-                            <option value="25">25 per page</option>
-                            <option value="50" selected>50 per page</option>
-                            <option value="100">100 per page</option>
+                            <option value="25"><?php echo $this->t('25_per_page'); ?></option>
+                            <option value="50" selected><?php echo $this->t('50_per_page'); ?></option>
+                            <option value="100"><?php echo $this->t('100_per_page'); ?></option>
                         </select>
                     </div>
                 </div>
@@ -4245,15 +4883,15 @@ class AGIAnalytics {
                     <table class="table" id="callsTable">
                         <thead>
                             <tr>
-                                <th>Phone</th>
-                                <th>Time</th>
-                                <th>Duration</th>
-                                <th>Status</th>
-                                <th>Type</th>
-                                <th>User</th>
-                                <th>Location</th>
-                                <th>APIs</th>
-                                <th>Actions</th>
+                                <th><?php echo $this->t('phone'); ?></th>
+                                <th><?php echo $this->t('time'); ?></th>
+                                <th><?php echo $this->t('duration'); ?></th>
+                                <th><?php echo $this->t('status'); ?></th>
+                                <th><?php echo $this->t('type'); ?></th>
+                                <th><?php echo $this->t('user'); ?></th>
+                                <th><?php echo $this->t('location'); ?></th>
+                                <th><?php echo $this->t('apis'); ?></th>
+                                <th><?php echo $this->t('actions'); ?></th>
                             </tr>
                         </thead>
                         <tbody id="callsTableBody">
@@ -4272,16 +4910,16 @@ class AGIAnalytics {
     <div class="modal" id="callDetailModal">
         <div class="modal-content" style="width: 90vw; max-width: 1000px;">
             <div class="modal-header">
-                <h3 class="modal-title">Call Details</h3>
+                <h3 class="modal-title"><?php echo $this->t('call_details'); ?></h3>
                 <div class="modal-actions">
-                    <button class="btn btn-sm btn-primary" onclick="refreshCallDetail()" title="Refresh">
-                        <i class="fas fa-sync-alt"></i> Refresh
+                    <button class="btn btn-sm btn-primary" onclick="refreshCallDetail()" title="<?php echo $this->t('refresh_action'); ?>">
+                        <i class="fas fa-sync-alt"></i> <?php echo $this->t('refresh_action'); ?>
                     </button>
-                    <button class="btn btn-sm btn-warning" onclick="editCall()" title="Edit Call">
-                        <i class="fas fa-edit"></i> Edit
+                    <button class="btn btn-sm btn-warning" onclick="editCall()" title="<?php echo $this->t('edit'); ?>">
+                        <i class="fas fa-edit"></i> <?php echo $this->t('edit'); ?>
                     </button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteCall()" title="Delete Call">
-                        <i class="fas fa-trash"></i> Delete
+                    <button class="btn btn-sm btn-danger" onclick="deleteCall()" title="<?php echo $this->t('delete'); ?>">
+                        <i class="fas fa-trash"></i> <?php echo $this->t('delete'); ?>
                     </button>
                     <button class="modal-close" onclick="closeModal()">&times;</button>
                 </div>
@@ -4296,7 +4934,7 @@ class AGIAnalytics {
     <div class="modal" id="exportModal">
         <div class="modal-content" style="width: 500px;">
             <div class="modal-header">
-                <h3><i class="fas fa-download"></i> Export Data</h3>
+                <h3><i class="fas fa-download"></i> <?php echo $this->t('export_data'); ?></h3>
                 <button class="modal-close" id="exportModalClose">
                     <i class="fas fa-times"></i>
                 </button>
@@ -4308,9 +4946,9 @@ class AGIAnalytics {
                             <i class="fas fa-file-csv"></i>
                         </div>
                         <div class="export-option-content">
-                            <h4>CSV Export</h4>
-                            <p>Download data as spreadsheet file (.csv)</p>
-                            <small class="text-muted">Best for data analysis and Excel</small>
+                            <h4><?php echo $this->t('csv_export'); ?></h4>
+                            <p><?php echo $this->t('download_data_spreadsheet'); ?></p>
+                            <small class="text-muted"><?php echo $this->t('best_for_data_analysis'); ?></small>
                         </div>
                         <div class="export-option-action">
                             <i class="fas fa-download"></i>
@@ -4322,9 +4960,9 @@ class AGIAnalytics {
                             <i class="fas fa-file-pdf"></i>
                         </div>
                         <div class="export-option-content">
-                            <h4>PDF Export</h4>
-                            <p>Generate formatted PDF report</p>
-                            <small class="text-muted">Best for presentations and reports</small>
+                            <h4><?php echo $this->t('pdf_export'); ?></h4>
+                            <p><?php echo $this->t('generate_formatted_pdf'); ?></p>
+                            <small class="text-muted"><?php echo $this->t('best_for_presentations'); ?></small>
                         </div>
                         <div class="export-option-action">
                             <i class="fas fa-download"></i>
@@ -4336,9 +4974,9 @@ class AGIAnalytics {
                             <i class="fas fa-print"></i>
                         </div>
                         <div class="export-option-content">
-                            <h4>Print View</h4>
-                            <p>Open print-friendly format</p>
-                            <small class="text-muted">Best for immediate printing</small>
+                            <h4><?php echo $this->t('print_view'); ?></h4>
+                            <p><?php echo $this->t('open_print_friendly'); ?></p>
+                            <small class="text-muted"><?php echo $this->t('best_for_printing'); ?></small>
                         </div>
                         <div class="export-option-action">
                             <i class="fas fa-print"></i>
@@ -4347,13 +4985,13 @@ class AGIAnalytics {
                 </div>
                 
                 <div class="export-filters">
-                    <h5><i class="fas fa-filter"></i> Export Options</h5>
+                    <h5><i class="fas fa-filter"></i> <?php echo $this->t('export_options'); ?></h5>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Date Range</label>
+                            <label><?php echo $this->t('date_range'); ?></label>
                             <div class="date-range-inputs">
                                 <input type="datetime-local" id="exportDateFrom" class="form-control">
-                                <span>to</span>
+                                <span><?php echo $this->t('to'); ?></span>
                                 <input type="datetime-local" id="exportDateTo" class="form-control">
                             </div>
                         </div>
@@ -4362,19 +5000,19 @@ class AGIAnalytics {
                         <div class="form-group">
                             <label>
                                 <input type="checkbox" id="includeCurrentFilters" checked>
-                                Include current filters
+                                <?php echo $this->t('include_current_filters'); ?>
                             </label>
-                            <small class="text-muted">Apply currently active search filters to export</small>
+                            <small class="text-muted"><?php echo $this->t('apply_current_search_filters'); ?></small>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Records Limit</label>
+                            <label><?php echo $this->t('records_limit'); ?></label>
                             <select id="exportLimit" class="form-control">
-                                <option value="100">Last 100 records</option>
-                                <option value="500">Last 500 records</option>
-                                <option value="1000">Last 1000 records</option>
-                                <option value="all" selected>All records</option>
+                                <option value="100"><?php echo $this->t('last_100_records'); ?></option>
+                                <option value="500"><?php echo $this->t('last_500_records'); ?></option>
+                                <option value="1000"><?php echo $this->t('last_1000_records'); ?></option>
+                                <option value="all" selected><?php echo $this->t('all_records'); ?></option>
                             </select>
                         </div>
                     </div>
@@ -4387,7 +5025,7 @@ class AGIAnalytics {
     <div class="modal" id="editCallModal">
         <div class="modal-content" style="width: 600px;">
             <div class="modal-header">
-                <h3><i class="fas fa-edit"></i> Edit Call</h3>
+                <h3><i class="fas fa-edit"></i> <?php echo $this->t('edit_call', 'Edit Call'); ?></h3>
                 <button class="modal-close" onclick="closeEditModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -4502,6 +5140,62 @@ class AGIAnalytics {
         window.heatmapInstance = null;
         window.heatmapLayer = null;
         
+        // Language switching function
+        function switchLanguage(lang) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('lang', lang);
+            window.location.href = url.toString();
+        }
+        
+        // Language constants for JavaScript
+        const LANG = {
+            current: '<?php echo $this->language; ?>',
+            translations: {
+                seconds_short: '<?php echo $this->t('seconds_short'); ?>',
+                minutes_short: '<?php echo $this->t('minutes_short'); ?>',
+                hours_short: '<?php echo $this->t('hours_short'); ?>',
+                loading: '<?php echo $this->t('loading'); ?>',
+                processing: '<?php echo $this->t('processing'); ?>',
+                success: '<?php echo $this->t('success'); ?>',
+                error: '<?php echo $this->t('error'); ?>',
+                hangup: '<?php echo $this->t('hangup'); ?>',
+                operator_transfer: '<?php echo $this->t('operator_transfer'); ?>',
+                in_progress: '<?php echo $this->t('in_progress'); ?>',
+                completed: '<?php echo $this->t('completed'); ?>',
+                answered: '<?php echo $this->t('answered'); ?>',
+                failed: '<?php echo $this->t('failed'); ?>',
+                ongoing: '<?php echo $this->t('ongoing'); ?>',
+                today: '<?php echo $this->t('today'); ?>',
+                total_calls: '<?php echo $this->t('total_calls'); ?>',
+                successful_calls: '<?php echo $this->t('successful_calls'); ?>',
+                total_calls_today: '<?php echo $this->t('total_calls_today'); ?>',
+                active: '<?php echo $this->t('active'); ?>',
+                success_rate: '<?php echo $this->t('success_rate'); ?>',
+                avg_duration: '<?php echo $this->t('avg_duration'); ?>',
+                per_call_average: '<?php echo $this->t('per_call_average'); ?>',
+                unique_callers: '<?php echo $this->t('unique_callers'); ?>',
+                busy: '<?php echo $this->t('busy'); ?>',
+                no_answer: '<?php echo $this->t('no_answer'); ?>',
+                cancelled: '<?php echo $this->t('cancelled'); ?>',
+                immediate: '<?php echo $this->t('immediate'); ?>',
+                reservation: '<?php echo $this->t('reservation'); ?>',
+                operator: '<?php echo $this->t('operator'); ?>',
+                different_numbers: '<?php echo $this->t('different_numbers'); ?>',
+                phone_number_label: '<?php echo $this->t('phone_number_label'); ?>',
+                extension_label: '<?php echo $this->t('extension_label'); ?>',
+                duration_label: '<?php echo $this->t('duration_label'); ?>',
+                status_label: '<?php echo $this->t('status_label'); ?>',
+                user_name_label: '<?php echo $this->t('user_name_label'); ?>',
+                language_label: '<?php echo $this->t('language_label'); ?>',
+                api_calls_label: '<?php echo $this->t('api_calls_label'); ?>',
+                location_information: '<?php echo $this->t('location_information'); ?>',
+                pickup_address_label: '<?php echo $this->t('pickup_address_label'); ?>',
+                destination_address_label: '<?php echo $this->t('destination_address_label'); ?>',
+                confirmation_audio: '<?php echo $this->t('confirmation_audio'); ?>',
+                system_generated_confirmation: '<?php echo $this->t('system_generated_confirmation'); ?>'
+            }
+        };
+        
         // Global functions
         function showFilterStatus(message, className) {
             const status = document.querySelector('.filter-status small');
@@ -4516,7 +5210,7 @@ class AGIAnalytics {
                 
                 // Set new timeout to reset status
                 window.filterStatusTimeout = setTimeout(() => {
-                    status.innerHTML = '<i class="fas fa-magic"></i> Auto-filtering enabled';
+                    status.innerHTML = '<i class="fas fa-magic"></i> <?php echo $this->t('auto_filtering_enabled'); ?>';
                     status.className = 'text-muted';
                 }, 2000);
             }
@@ -4968,53 +5662,53 @@ class AGIAnalytics {
             statsGrid.innerHTML = 
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
-                        '<span class="stat-card-title">Total Calls Today</span>' +
+                        '<span class="stat-card-title">' + LANG.translations.total_calls_today + '</span>' +
                         '<div class="stat-card-icon icon-primary">' +
                             '<i class="fas fa-phone"></i>' +
                         '</div>' +
                     '</div>' +
                     '<div class="stat-value" id="totalCallsStat">' + totalCalls.toLocaleString() + '</div>' +
                     '<div class="stat-change change-positive">' +
-                        '<i class="fas fa-arrow-up"></i> Active' +
+                        '<i class="fas fa-arrow-up"></i> ' + LANG.translations.active +
                     '</div>' +
                 '</div>' +
                 
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
-                        '<span class="stat-card-title">Successful Calls</span>' +
+                        '<span class="stat-card-title">' + LANG.translations.successful_calls + '</span>' +
                         '<div class="stat-card-icon icon-success">' +
                             '<i class="fas fa-check-circle"></i>' +
                         '</div>' +
                     '</div>' +
                     '<div class="stat-value" id="successfulCallsStat">' + successfulCalls.toLocaleString() + '</div>' +
                     '<div class="stat-change change-positive">' +
-                        successRate + '% success rate' +
+                        successRate + '% ' + LANG.translations.success_rate +
                     '</div>' +
                 '</div>' +
                 
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
-                        '<span class="stat-card-title">Avg Duration</span>' +
+                        '<span class="stat-card-title">' + LANG.translations.avg_duration + '</span>' +
                         '<div class="stat-card-icon icon-info">' +
                             '<i class="fas fa-clock"></i>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="stat-value">' + Math.round(stats.avg_duration || 0) + 's</div>' +
+                    '<div class="stat-value">' + formatDuration(Math.round(stats.avg_duration || 0)) + '</div>' +
                     '<div class="stat-change">' +
-                        'Per call average' +
+                        LANG.translations.per_call_average +
                     '</div>' +
                 '</div>' +
                 
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
-                        '<span class="stat-card-title">Unique Callers</span>' +
+                        '<span class="stat-card-title">' + LANG.translations.unique_callers + '</span>' +
                         '<div class="stat-card-icon icon-warning">' +
                             '<i class="fas fa-users"></i>' +
                         '</div>' +
                     '</div>' +
                     '<div class="stat-value" id="uniqueCallersStat">' + (stats.unique_callers || 0) + '</div>' +
                     '<div class="stat-change">' +
-                        'Different numbers' +
+                        LANG.translations.different_numbers +
                     '</div>' +
                 '</div>';
             
@@ -5480,48 +6174,62 @@ class AGIAnalytics {
         // Get recording description based on filename and type
         function getRecordingDescription(filename, type, attempt) {
             attempt = attempt || 1;
-            var attemptText = attempt > 1 ? ' (Attempt ' + attempt + ')' : '';
+            var attemptText = attempt > 1 ? ' (' + LANG.translations.attempt + ' ' + attempt + ')' : '';
             
             switch (type) {
                 case 'confirmation':
                     return {
-                        title: 'Confirmation Audio' + attemptText,
-                        description: 'System-generated confirmation message played to the customer to verify their booking details before finalizing the call. Contains TTS audio confirming pickup/destination addresses and asking for final approval.'
+                        title: LANG.translations.confirmation_audio + attemptText,
+                        description: LANG.translations.system_generated_confirmation
                     };
                 case 'name':
                     return {
-                        title: 'Customer Name Recording' + attemptText,
-                        description: 'Customer\'s spoken name recorded during the call. Used for identification and personalization in the taxi booking system. Processed through Google Speech-to-Text for automatic transcription.'
+                        title: LANG.translations.customer_name_recording + attemptText,
+                        description: LANG.current === 'el' ? 
+                            'Ηχογραφημένο όνομα του πελάτη κατά τη διάρκεια της κλήσης. Χρησιμοποιείται για αναγνώριση και εξατομίκευση στο σύστημα κράτησης ταξί.' : 
+                            'Customer\'s spoken name recorded during the call. Used for identification and personalization in the taxi booking system.'
                     };
                 case 'pickup':
                     return {
-                        title: 'Pickup Address Recording' + attemptText,
-                        description: 'Customer\'s spoken pickup location. This audio is processed through speech-to-text and geocoding to determine the exact pickup coordinates. The system converts speech to text, then uses Google Maps API to find precise GPS coordinates.'
+                        title: LANG.translations.pickup_address_recording + attemptText,
+                        description: LANG.current === 'el' ? 
+                            'Προφορική τοποθεσία παραλαβής του πελάτη. Επεξεργάζεται μέσω αναγνώρισης ομιλίας και γεωκωδικοποίησης για τον ακριβή προσδιορισμό των συντεταγμένων.' : 
+                            'Customer\'s spoken pickup location. Processed through speech-to-text and geocoding to determine exact pickup coordinates.'
                     };
                 case 'destination':
                     return {
-                        title: 'Destination Recording' + attemptText,
-                        description: 'Customer\'s spoken destination address. Processed through STT and geocoding to determine the drop-off location for the taxi booking. Used to calculate fare estimates and route planning.'
+                        title: LANG.translations.destination_recording + attemptText,
+                        description: LANG.current === 'el' ? 
+                            'Προφορική διεύθυνση προορισμού του πελάτη. Επεξεργάζεται για τον προσδιορισμό της τοποθεσίας παράδοσης για την κράτηση ταξί.' : 
+                            'Customer\'s spoken destination address. Processed to determine the drop-off location for the taxi booking.'
                     };
                 case 'reservation':
                     return {
-                        title: 'Reservation Time Recording' + attemptText,
-                        description: 'Customer\'s spoken preferred time for the taxi booking. Processed through natural language parsing to extract date and time information for scheduled pickup times.'
+                        title: LANG.translations.reservation_time_recording + attemptText,
+                        description: LANG.current === 'el' ? 
+                            'Προτιμώμενη ώρα του πελάτη για την κράτηση ταξί. Επεξεργάζεται για την εξαγωγή πληροφοριών ημερομηνίας και ώρας.' : 
+                            'Customer\'s preferred time for taxi booking. Processed to extract date and time information for scheduled pickup.'
                     };
                 case 'welcome':
                     return {
-                        title: 'Welcome Message' + attemptText,
-                        description: 'System greeting played at the start of the call to guide customers through the booking process. Contains menu options and instructions for using the automated taxi booking system.'
+                        title: LANG.translations.welcome_message + attemptText,
+                        description: LANG.current === 'el' ? 
+                            'Μήνυμα καλωσορίσματος του συστήματος που παίζει στην αρχή της κλήσης για να καθοδηγήσει τους πελάτες.' : 
+                            'System greeting played at the start of the call to guide customers through the booking process.'
                     };
                 case 'dtmf':
                     return {
-                        title: 'DTMF Input Recording' + attemptText,
-                        description: 'Recording of customer\'s button press choices during the interactive menu navigation. Captures dual-tone multi-frequency signals from phone keypad inputs.'
+                        title: LANG.translations.dtmf_input_recording + attemptText,
+                        description: LANG.current === 'el' ? 
+                            'Ηχογράφηση των επιλογών πλήκτρων του πελάτη κατά τη διάρκεια της πλοήγησης στο διαδραστικό μενού.' : 
+                            'Recording of customer\'s button press choices during interactive menu navigation.'
                     };
                 default:
                     return {
-                        title: 'Call Recording' + attemptText,
-                        description: 'Audio recording from the customer call session. Contains spoken interaction between the customer and the automated taxi booking system.'
+                        title: LANG.translations.call_recording + attemptText,
+                        description: LANG.current === 'el' ? 
+                            'Ηχογράφηση από τη συνεδρία κλήσης του πελάτη. Περιέχει προφορική αλληλεπίδραση με το αυτοματοποιημένο σύστημα κράτησης ταξί.' : 
+                            'Audio recording from the customer call session. Contains spoken interaction with the automated taxi booking system.'
                     };
             }
         }
@@ -5580,54 +6288,54 @@ class AGIAnalytics {
             
             var html = '<div class="call-detail-grid">' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">Call ID</div>' +
+                    '<div class="detail-label">' + LANG.translations.call_id + '</div>' +
                     '<div class="detail-value">' + (call.call_id || 'N/A') + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">Phone Number</div>' +
+                    '<div class="detail-label">' + LANG.translations.phone_number_label + '</div>' +
                     '<div class="detail-value">' + (call.phone_number || 'N/A') + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">Extension</div>' +
+                    '<div class="detail-label">' + LANG.translations.extension_label + '</div>' +
                     '<div class="detail-value">' + (call.extension || 'N/A') + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">Duration</div>' +
+                    '<div class="detail-label">' + LANG.translations.duration_label + '</div>' +
                     '<div class="detail-value" ' + 
                         (call.call_outcome === 'in_progress' ? 'class="live-duration-detail" data-start="' + new Date(call.call_start_time).getTime() + '" data-server-duration="' + call.call_duration + '"' : '') + '>' + 
                         formatDuration(call.call_duration, call.call_outcome === 'in_progress') + 
                     '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">Status</div>' +
+                    '<div class="detail-label">' + LANG.translations.status_label + '</div>' +
                     '<div class="detail-value">' + renderStatusBadge(call.call_outcome) + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">User Name</div>' +
+                    '<div class="detail-label">' + LANG.translations.user_name_label + '</div>' +
                     '<div class="detail-value">' + (call.user_name || 'N/A') + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">Language</div>' +
+                    '<div class="detail-label">' + LANG.translations.language_label + '</div>' +
                     '<div class="detail-value">' + (call.language_used || 'N/A') + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">API Calls</div>' +
+                    '<div class="detail-label">' + LANG.translations.api_calls_label + '</div>' +
                     '<div class="detail-value">' + (call.total_api_calls || 0) + '</div>' +
                 '</div>' +
             '</div>';
             
             // Add location information
             if (call.pickup_address) {
-                html += '<h4 style="margin: 1.5rem 0 1rem;">Location Information</h4>' +
+                html += '<h4 style="margin: 1.5rem 0 1rem;">' + LANG.translations.location_information + '</h4>' +
                        '<div class="call-detail-grid">' +
                            '<div class="detail-item" style="grid-column: 1 / -1;">' +
-                               '<div class="detail-label">Pickup Address</div>' +
+                               '<div class="detail-label">' + LANG.translations.pickup_address_label + '</div>' +
                                '<div class="detail-value">' + call.pickup_address + '</div>' +
                            '</div>';
                 
                 if (call.destination_address) {
                     html += '<div class="detail-item" style="grid-column: 1 / -1;">' +
-                               '<div class="detail-label">Destination Address</div>' +
+                               '<div class="detail-label">' + LANG.translations.destination_address_label + '</div>' +
                                '<div class="detail-value">' + call.destination_address + '</div>' +
                            '</div>';
                 }
@@ -5642,7 +6350,7 @@ class AGIAnalytics {
             
             // Add recordings section
             if (call.recordings && call.recordings.length > 0) {
-                html += '<h4 style="margin: 1.5rem 0 1rem;"><i class="fas fa-microphone"></i> Recordings</h4>';
+                html += '<h4 style="margin: 1.5rem 0 1rem;"><i class="fas fa-microphone"></i> ' + LANG.translations.recordings + '</h4>';
                 // Sort recordings by type and attempt for better organization
                 var sortedRecordings = call.recordings.sort(function(a, b) {
                     var typeOrder = ['welcome', 'name', 'pickup', 'destination', 'reservation', 'confirmation', 'dtmf', 'other'];
@@ -5666,9 +6374,9 @@ class AGIAnalytics {
                                            '<strong class="recording-title">' + description.title + '</strong>' +
                                            '<div class="recording-meta">' +
                                                '<span class="recording-filename">' + recording.filename + '</span>' +
-                                               '<span class="recording-size">' + sizeKB + ' KB</span>' +
+                                               '<span class="recording-size">' + sizeKB + ' ' + LANG.translations.kb_size + '</span>' +
                                                (recording.duration ? '<span class="recording-duration">' + formatAudioDuration(recording.duration) + '</span>' : '') +
-                                               (recording.attempt > 1 ? '<span class="recording-attempt">Attempt ' + recording.attempt + '</span>' : '') +
+                                               (recording.attempt > 1 ? '<span class="recording-attempt">' + LANG.translations.attempt + ' ' + recording.attempt + '</span>' : '') +
                                            '</div>' +
                                        '</div>' +
                                    '</div>' +
@@ -5676,7 +6384,7 @@ class AGIAnalytics {
                                '<div class="recording-description">' + description.description + '</div>' +
                                '<audio controls class="recording-player" preload="none">' +
                                    '<source src="?action=audio&file=' + encodeURIComponent(recording.path) + '" type="audio/wav">' +
-                                   'Your browser does not support the audio element.' +
+                                   LANG.translations.audio_not_supported +
                                '</audio>' +
                            '</div>';
                 }
@@ -5684,7 +6392,7 @@ class AGIAnalytics {
             
             // Add enhanced call log section
             if (call.call_log && call.call_log.length > 0) {
-                html += '<h4 style="margin: 1.5rem 0 1rem;">Call Log</h4>' +
+                html += '<h4 style="margin: 1.5rem 0 1rem;">' + LANG.translations.call_log + '</h4>' +
                        '<div style="background: var(--gray-50); padding: 0; border-radius: 0.5rem; max-height: 500px; overflow-y: auto; border: 1px solid var(--gray-200);">';
                 
                 // Group logs by category for better organization
@@ -6107,19 +6815,48 @@ class AGIAnalytics {
         function formatDate(dateStr) {
             if (!dateStr) return 'N/A';
             const date = new Date(dateStr);
-            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const locale = LANG.current === 'el' ? 'el-GR' : 'en-US';
+            const dateOptions = { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric' 
+            };
+            const timeOptions = {
+                hour: '2-digit', 
+                minute: '2-digit'
+            };
+            return date.toLocaleDateString(locale, dateOptions) + ' ' + date.toLocaleTimeString(locale, timeOptions);
         }
         
         function formatDuration(seconds, isLive) {
-            if (!seconds || seconds === 0) return isLive ? 'Starting...' : '0s';
+            const s_unit = LANG.translations.seconds_short;
+            const m_unit = LANG.translations.minutes_short;
+            const h_unit = LANG.translations.hours_short;
             
-            const mins = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            
-            if (mins > 0) {
-                return `${mins}m ${secs}s`;
+            if (!seconds || seconds === 0) {
+                return isLive ? LANG.translations.processing : `0${s_unit}`;
             }
-            return `${seconds}s`;
+            
+            if (seconds < 60) {
+                return `${seconds}${s_unit}`;
+            } else if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return secs > 0 ? `${mins}${m_unit} ${secs}${s_unit}` : `${mins}${m_unit}`;
+            } else {
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                const secs = seconds % 60;
+                
+                let result = `${hours}${h_unit}`;
+                if (minutes > 0) {
+                    result += ` ${minutes}${m_unit}`;
+                }
+                if (secs > 0) {
+                    result += ` ${secs}${s_unit}`;
+                }
+                return result;
+            }
         }
         
         function truncate(str, length) {
