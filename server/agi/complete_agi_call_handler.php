@@ -626,7 +626,7 @@ class AGICallHandler
                 'bg' => 'Моля, обадете се от номер, който не е анонимен'
             ],
             'greeting_with_name' => [
-                'el' => 'Γεια σας {name}. Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {address}? Πατήστε 1 για ναι ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.',
+                'el' => 'Γεια σας {name}. Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {address}? Πατήστε 1 για ναι, ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.',
                 'en' => 'Hello {name}. Would you like to use the pickup address {address}? Press 1 for yes or 2 to enter a new pickup address.',
                 'bg' => 'Здравейте {name}. Искате ли да използвате адреса за вземане {address}? Натиснете 1 за да или 2, за да въведете нов адрес за вземане.'
             ],
@@ -1169,9 +1169,26 @@ class AGICallHandler
     // === GEOCODING SERVICE ===
 
     /**
-     * Geocode address using Google Maps API
+     * Geocode address using Google Maps API (wrapper function that checks config)
      */
     private function getLatLngFromGoogle($address, $is_pickup = true)
+    {
+        // Check which API version to use from config
+        $geocoding_version = $this->config[$this->extension]['geocodingApiVersion'] ?? 1;
+        
+        if ($geocoding_version == 2) {
+            // Use new Google Places API v1
+            return $this->getLatLngFromGooglePlacesV1($address, $is_pickup);
+        } else {
+            // Use legacy Google Maps Geocoding API
+            return $this->getLatLngFromGoogleGeocoding($address, $is_pickup);
+        }
+    }
+    
+    /**
+     * Geocode address using Google Maps Geocoding API (legacy/version 1)
+     */
+    private function getLatLngFromGoogleGeocoding($address, $is_pickup = true)
     {
         // Handle special cases first
         if ($this->handleSpecialAddresses($address, $is_pickup)) {
@@ -1207,6 +1224,125 @@ class AGICallHandler
         if (!$data || $data['status'] !== 'OK' || empty($data['results'])) return null;
 
         return $this->validateLocationResult($data['results'][0], $is_pickup);
+    }
+    
+    /**
+     * Geocode address using Google Places API v1 (new/version 2)
+     */
+    private function getLatLngFromGooglePlacesV1($address, $is_pickup = true)
+    {
+        // Handle special cases first
+        if ($this->handleSpecialAddresses($address, $is_pickup)) {
+            return $this->handleSpecialAddresses($address, $is_pickup);
+        }
+
+        $startTime = microtime(true);
+
+        $url = "https://places.googleapis.com/v1/places:searchText";
+        
+        $headers = [
+            "Content-Type: application/json",
+            "X-Goog-Api-Key: " . $this->api_key,
+            "X-Goog-FieldMask: places.displayName,places.formattedAddress,places.location,places.addressComponents"
+        ];
+        
+        $data = [
+            "textQuery" => $address,
+            "languageCode" => "el",
+            "regionCode" => "GR",
+            "maxResultCount" => 1
+        ];
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_POSTFIELDS => json_encode($data)
+        ]);
+
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
+        $this->trackGeocodingCall($processingTime);
+
+        if ($http_code !== 200 || !$response) {
+            $this->logMessage("Places API v1 request failed - HTTP: {$http_code}");
+            return null;
+        }
+
+        $result = json_decode($response, true);
+        if (!$result || empty($result['places'])) {
+            $this->logMessage("Places API v1 no results found");
+            return null;
+        }
+
+        $place = $result['places'][0];
+        
+        // Convert Places API response to match expected format
+        return $this->validatePlacesApiResult($place, $is_pickup);
+    }
+    
+    /**
+     * Validate and format Places API v1 result
+     */
+    private function validatePlacesApiResult($place, $is_pickup)
+    {
+        // Determine location precision from address components
+        $location_type = 'APPROXIMATE'; // Default
+        
+        if (!empty($place['addressComponents'])) {
+            $has_street_number = false;
+            $has_route = false;
+            
+            foreach ($place['addressComponents'] as $component) {
+                foreach ($component['types'] as $type) {
+                    if ($type === 'street_number') $has_street_number = true;
+                    if ($type === 'route') $has_route = true;
+                }
+            }
+            
+            // Determine precision based on components
+            if ($has_street_number && $has_route) {
+                $location_type = 'ROOFTOP';
+            } elseif ($has_route) {
+                $location_type = 'RANGE_INTERPOLATED';
+            } else {
+                $location_type = 'GEOMETRIC_CENTER';
+            }
+        }
+        
+        // Validate location type based on pickup/dropoff and config
+        if ($is_pickup) {
+            // Pickup locations ALWAYS require precise location types
+            if (!in_array($location_type, ['ROOFTOP', 'RANGE_INTERPOLATED'])) {
+                $this->logMessage("Pickup location rejected (Places API) - type: {$location_type}, address: {$place['formattedAddress']}");
+                return null;
+            }
+        } else {
+            // Dropoff location validation based on config
+            $strict_dropoff = $this->config[$this->extension]['strictDropoffLocation'] ?? false;
+                
+            if ($strict_dropoff && !in_array($location_type, ['ROOFTOP', 'RANGE_INTERPOLATED'])) {
+                $this->logMessage("Dropoff location rejected (Places API, strict mode) - type: {$location_type}, address: {$place['formattedAddress']}");
+                return null;
+            }
+        }
+        
+        $this->logMessage("Location accepted (Places API) - type: {$location_type}, address: {$place['formattedAddress']}");
+        
+        return [
+            "address" => $place['formattedAddress'],
+            "location_type" => $location_type,
+            "latLng" => [
+                "lat" => $place['location']['latitude'],
+                "lng" => $place['location']['longitude']
+            ]
+        ];
     }
 
     private function handleSpecialAddresses($address, $is_pickup)
@@ -1849,6 +1985,29 @@ class AGICallHandler
                 
                 if (file_exists($register_info_file)) {
                     $this->logMessage("register_info.json found, starting status monitoring");
+                    
+                    // Read car number from register_info.json and announce taxi
+                    $register_info = json_decode(file_get_contents($register_info_file), true);
+                    if ($register_info && isset($register_info['carNo']) && !empty(trim($register_info['carNo']))) {
+                        $car_no = trim($register_info['carNo']);
+                        $this->logMessage("Found car number in register_info.json: {$car_no}");
+                        
+                        $status_message = $this->getLocalizedStatusMessage('driver_accepted', $car_no);
+                        $status_file = "{$this->filebase}/taxi_assigned";
+                        
+                        $this->logMessage("Generating TTS for taxi assignment: {$status_message}");
+                        $this->startMusicOnHold();
+                        $tts_success = $this->callTTS($status_message, $status_file);
+                        $this->stopMusicOnHold();
+                        
+                        if ($tts_success) {
+                            $this->logMessage("Playing taxi assignment announcement to caller");
+                            $this->agiCommand("EXEC Playback \"{$status_file}\"");
+                        }
+                    } else {
+                        $this->logMessage("No car number found in register_info.json, starting monitoring silently");
+                    }
+                    
                     break;
                 }
                 
@@ -2161,6 +2320,10 @@ class AGICallHandler
         // Handle no taxi found
         if ($current_status == 20) {
             $this->playStatusMessage('no_taxi_found', '', $status_file);
+            // Play transfer message and redirect to operator
+            $this->playStatusMessage('transfer_to_operator', '', $status_file . '_transfer');
+            $this->setCallOutcome('operator_transfer', 'No taxi found - transferring to operator');
+            $this->redirectToOperator();
             return true;
         }
         
@@ -2179,7 +2342,7 @@ class AGICallHandler
             $this->playStatusMessage('status_update', $current_car_no, $status_file, $current_status, $current_time);
             $this->updateLastValues($last_status, $last_car_no, $last_time, $current_status, $current_car_no, $current_time);
             
-            if (in_array($current_status, [30, 31, 32, 100])) {
+            if (in_array($current_status, [30, 31, 32, 100, 255])) {
                 $this->logMessage("Final status reached: {$current_status}");
                 return true;
             }
@@ -2230,7 +2393,7 @@ class AGICallHandler
                 2 => 'έχει φτάσει στη διεύθυνσή σας',
                 3 => 'σας παραλαμβάνει',
                 8 => 'σας παραδίδει στον προορισμό',
-                10 => 'δέχτηκε την κλήση σας',
+                10 => 'δέχτηκε την κλήση σας και θα είναι σύντομα κοντά σας',
                 20 => 'δεν βρέθηκε διαθέσιμο ταξί',
                 30 => 'η κλήση ακυρώθηκε από τον επιβάτη',
                 31 => 'η κλήση ακυρώθηκε από τον οδηγό',
@@ -2302,6 +2465,15 @@ class AGICallHandler
                     return "Такси номер {$car_no} " . $lang_status[10];
                 } else {
                     return "Το ταξί με αριθμό {$car_no} " . $lang_status[10];
+                }
+                
+            case 'transfer_to_operator':
+                if ($this->current_language == 'en') {
+                    return "We will now transfer you to an operator";
+                } else if ($this->current_language == 'bg') {
+                    return "Сега ще ви свържем с оператор";
+                } else {
+                    return "Θα σας μεταφέρουμε τώρα σε έναν εκπρόσωπο";
                 }
                 
             case 'status_update':

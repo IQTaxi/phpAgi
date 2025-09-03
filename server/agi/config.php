@@ -9,6 +9,10 @@
 // true = Only accept precise locations for dropoff (ROOFTOP, RANGE_INTERPOLATED only)
 // Note: Pickup locations ALWAYS require precise location types (ROOFTOP, RANGE_INTERPOLATED)
 
+// geocodingApiVersion configuration:
+// 1 = Use Google Maps Geocoding API (current/legacy version)
+// 2 = Use Google Places API v1 (new version with searchText endpoint)
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -25,7 +29,8 @@ class AGICallHandlerConfig
         "callbackMode" => 1,
         "callbackUrl" => "http://192.168.1.100/callback.php",
         "repeatTimes" => 10,
-        "strictDropoffLocation" => false
+        "strictDropoffLocation" => false,
+        "geocodingApiVersion" => 1
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -40,7 +45,8 @@ class AGICallHandlerConfig
         "callbackMode" => 1,
         "callbackUrl" => "http://192.168.1.100/callback.php",
         "repeatTimes" => 10,
-        "strictDropoffLocation" => false
+        "strictDropoffLocation" => false,
+        "geocodingApiVersion" => 1
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -55,7 +61,8 @@ class AGICallHandlerConfig
         "callbackMode" => 2,
         "callbackUrl" => "http://79.129.41.206/callback.php",
         "repeatTimes" => 10,
-        "strictDropoffLocation" => false
+        "strictDropoffLocation" => false,
+        "geocodingApiVersion" => 1
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -70,7 +77,8 @@ class AGICallHandlerConfig
         "callbackMode" => 2,
         "callbackUrl" => "https://18300.fortiddns.com/callback.php",
         "repeatTimes" => 10,
-        "strictDropoffLocation" => false
+        "strictDropoffLocation" => false,
+        "geocodingApiVersion" => 1
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -85,7 +93,8 @@ class AGICallHandlerConfig
 		"callbackMode" => 1,
 		"callbackUrl" => "http://192.168.1.100/callback.php",
 		"repeatTimes" => 10,
-		"strictDropoffLocation" => false
+		"strictDropoffLocation" => false,
+		"geocodingApiVersion" => 1
     ]
 ];
 }
