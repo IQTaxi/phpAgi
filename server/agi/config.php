@@ -30,7 +30,10 @@ class AGICallHandlerConfig
         "callbackUrl" => "http://192.168.1.100/callback.php",
         "repeatTimes" => 10,
         "strictDropoffLocation" => false,
-        "geocodingApiVersion" => 1
+        "geocodingApiVersion" => 1,
+        "initialMessageSound" => "strike",
+        "redirectToOperator" => false,
+        "autoCallCentersMode" => 3
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -46,7 +49,10 @@ class AGICallHandlerConfig
         "callbackUrl" => "http://192.168.1.100/callback.php",
         "repeatTimes" => 10,
         "strictDropoffLocation" => false,
-        "geocodingApiVersion" => 1
+        "geocodingApiVersion" => 1,
+        "initialMessageSound" => "strike",
+        "redirectToOperator" => false,
+        "autoCallCentersMode" => 3
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -62,7 +68,10 @@ class AGICallHandlerConfig
         "callbackUrl" => "http://79.129.41.206/callback.php",
         "repeatTimes" => 10,
         "strictDropoffLocation" => false,
-        "geocodingApiVersion" => 1
+        "geocodingApiVersion" => 1,
+        "initialMessageSound" => "strike",
+        "redirectToOperator" => false,
+        "autoCallCentersMode" => 3
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -78,7 +87,10 @@ class AGICallHandlerConfig
         "callbackUrl" => "https://18300.fortiddns.com/callback.php",
         "repeatTimes" => 10,
         "strictDropoffLocation" => false,
-        "geocodingApiVersion" => 1
+        "geocodingApiVersion" => 1,
+        "initialMessageSound" => "strike",
+        "redirectToOperator" => false,
+        "autoCallCentersMode" => 3
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -94,7 +106,9 @@ class AGICallHandlerConfig
 		"callbackUrl" => "http://192.168.1.100/callback.php",
 		"repeatTimes" => 10,
 		"strictDropoffLocation" => false,
-		"geocodingApiVersion" => 1
+		"geocodingApiVersion" => 1,
+		"initialMessageSound" => "strike",
+		"redirectToOperator" => false
     ]
 ];
 }

@@ -41,6 +41,9 @@ class AGICallHandler
     private $days_valid = 7;
     private $current_language = 'el';
     private $default_language = 'el';
+    private $initial_message_sound = '';
+    private $redirect_to_operator = false;
+    private $auto_call_centers_mode = 3;
     
     // Call data properties
     private $max_retries = 3;
@@ -131,6 +134,9 @@ class AGICallHandler
             $this->days_valid = intval($config['daysValid'] ?? 7);
             $this->default_language = $config['defaultLanguage'] ?? 'el';
             $this->current_language = $this->default_language;
+            $this->initial_message_sound = $config['initialMessageSound'] ?? '';
+            $this->redirect_to_operator = $config['redirectToOperator'] ?? false;
+            $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
         }
     }
 
@@ -1126,32 +1132,50 @@ class AGICallHandler
     {
         $filtered_words = [
             'κώλο', 'βλάκας', 'χαζός', 'τρελός', 'κοπρίτης', 'σκατά', 'σκουπίδι',
-            'μαλάκας', 'μαλακία', 'μαλακίες', 'γαμώτο', 'αρχίδι', 'παπάρι', 
-            'πούτσα', 'μουνί',
-            'γαμώ', 'γαμήσου', 'γαμιέται', 'πούστης', 'τσούλα', 'κουράδα', 
+            'μαλάκας', 'μαλακας', 'malakas', 'mal@kas', 'μαλάκα', 'μαλακισμένος', 'μαλακιστήρι',
+            'μαλακία', 'μαλακιες', 'μαλακιτσα', 'μαλακίες', 'γαμώτο', 'αρχίδι', 'αρχιδι', 'αρχιδάκι', 'αρχιδάτος', 'παπάρι', 
+            'πούτσα', 'μουνί', 'μουνι', 'μουνάκι',
+            'ηλίθιος', 'ηλιθιος', 'χαζομάρα', 'βλάκα', 'βλακας', 'βλακεια',
+            'κρετίνος', 'κρετινος', 'στόκος', 'ανόητος',
+            'καριόλα', 'καριολα', 'καριολάκι', 'καριολακι',
+            'πουτάνα', 'πουτανα', 'πουτανάκι', 'πουτανακι', 'πουτανίτσα',
+            'πουστής', 'πουστης', 'πουστρα', 'πουστρακι', 'παλιοπουστης', 'πουσταρα',
+            'γαμώ', 'γαμω', 'γαμημενος', 'γαμιεσαι', 'γαμήσου', 'γ@μω', 'gamw',
+            'γαμιέται', 'τσούλα', 'κουράδα', 
             'σκυλίσιος',
             'βλάσφημος', 'καταραμένος', 'διάολος',
             'κλειτορίδα', 'πέος', 'βυζιά', 'κόλπος', 'προπέλα',
             'κατούρημα', 'κατουρώ', 'χέσιμο', 'χεσμένος', 'χέστηκα',
             'σκατόψυχος', 'κωλόπαιδο',
             'γαμάω', 'γαμιόμουν', 'γαμήθηκε', 'γαμίστε', 'γαμώτους',
-            'πουτάνα', 'πορνή', 'κάργα', 'σκύλα', 'καριόλα',
+            'πορνή', 'κάργα', 'σκύλα',
             'κερατάς', 'κερατάδα', 'κερατωμένος',
             'πουστάρα', 'παλιοπούστης', 'μπινέ',
-            'αρχιδάτος', 'αρχιδάκι', 'βυζαρού',
+            'βυζαρού',
             'βρωμιάρης', 'γλείφτρα', 'τραβήγκα',
             'ξεφτίλα', 'σκουπίδιαρος', 'βρωμόγερος',
-            'σκατοφάγος', 'κωλοτρυπίδα', 'μουνάκι',
+            'σκατοφάγος', 'κωλοτρυπίδα',
             'σκυλομουνιά', 'πεολειχτήρας', 'χεστήρι',
             'γίδι', 'χοίρος', 'γουρούνι', 'κατσίκι', 'σκυλί',
-            'βλαμμένος', 'καραγκιόζης', 'χαζομάρα',
+            'βλαμμένος', 'καραγκιόζης',
             'ζώον', 'κτήνος', 'ανθρωπάκος', 'σκουλήκι',
             'πουτσαράς', 'μουνόπανο', 'κωλόδουλος', 'σκατόμορφος',
-            'γαμημένος', 'γαμησιάτικος',
+            'γαμησιάτικος',
             'λαμόγιο', 'απατεώνας', 'κλέφτης', 'ψεύτης',
-            'μαλακισμένος', 'κρετίνος', 'ηλίθιος', 'βλακώδης',
-            'στόκος', 'αλήτης', 'παπάρας',
+            'βλακώδης',
+            'αλήτης', 'παπάρας',
             'κερατούκλης', 'μουνόχειλο', 'πουτσομάλακας',
+            // Υποτιμητικοί / ρατσιστικοί όροι
+            'γύφτος', 'γυφτος', 'γυφτακι', 'γυφτισα',
+            'πακιστανός', 'πακιστανος', 'πακιστανακι',
+            'αράπης', 'αραπης', 'μαυριδερός',
+            'τουρκόσπορος', 'τουρκοσπορος',
+            'βούλγαρος', 'βουλγαρος',
+            'τραβέλι', 'τραβελι', 'τραβεστί',
+            'αδερφή', 'αδελφή', 'αδελφούλα',
+            // Ακραίες εκφράσεις
+            'άντε γαμήσου', 'αντε γαμησου', 'αντε στο διάολο',
+            'ψόφα', 'ψοφα', 'ψοφος', 'να ψοφήσεις', 'θα σε σκοτώσω',
         ];
 
         $filtered_text = $text;
@@ -1950,6 +1974,8 @@ class AGICallHandler
         
         if ($callback_mode == 2) {
             $this->handleCallbackMode();
+            // Callback mode handles its own call termination, so return here
+            return;
         } else {
             $this->handleNormalMode($result);
         }
@@ -2022,6 +2048,13 @@ class AGICallHandler
             }
         }
         $this->monitorStatusUpdates();
+        
+        // After monitoring completes, end the call properly
+        $this->logMessage("Callback monitoring completed - ending call");
+        $this->setCallOutcome('success');
+        $this->finalizeCall();
+        $this->agiCommand('EXEC Wait "1"');
+        $this->agiCommand('HANGUP');
     }
 
     private function handleNormalMode($result)
@@ -2405,7 +2438,7 @@ class AGICallHandler
                 80 => 'τροποποιήθηκε η κράτηση',
                 100 => 'η διαδρομή ολοκληρώθηκε',
                 101 => 'νέο μήνυμα',
-                255 => 'είναι καθ\' οδόν'
+                255 => 'είναι καθ\' οδόν. Σας ευχαριστούμε για την κλήση'
             ],
             'en' => [
                 -1 => 'we are searching for a taxi for you',
@@ -2425,7 +2458,7 @@ class AGICallHandler
                 80 => 'reservation was modified',
                 100 => 'the trip was completed',
                 101 => 'new message',
-                255 => 'is on the way'
+                255 => 'is on the way. Thank you for your call'
             ],
             'bg' => [
                 -1 => 'търсим такси за вас',
@@ -2445,7 +2478,7 @@ class AGICallHandler
                 80 => 'резервацията беше променена',
                 100 => 'пътуването приключи',
                 101 => 'ново съобщение',
-                255 => 'е в движение'
+                255 => 'е в движение. Благодарим ви за обаждането'
             ]
         ];
         
@@ -2561,6 +2594,15 @@ class AGICallHandler
                 return;
             }
 
+            // Check autoCallCentersMode to determine what's allowed
+            if ($this->auto_call_centers_mode == 0) {
+                // Mode 0: All disabled - redirect to operator
+                $this->logMessage("Auto call centers mode is 0 (all disabled), redirecting to operator");
+                $this->setCallOutcome('operator_transfer', 'All services disabled by configuration');
+                $this->redirectToOperator();
+                return;
+            }
+
             if ($user_choice == "3") {
                 $this->logMessage("User selected operator");
                 $this->setCallType('operator');
@@ -2570,13 +2612,29 @@ class AGICallHandler
             }
 
             if ($user_choice == "2") {
+                if ($this->auto_call_centers_mode == 1) {
+                    // Mode 1: Only ASAP calls allowed, reservations disabled
+                    $this->logMessage("Reservations disabled (mode 1: ASAP only), redirecting to operator");
+                    $this->setCallOutcome('operator_transfer', 'Reservations disabled by configuration');
+                    $this->redirectToOperator();
+                    return;
+                }
                 $this->logMessage("Reservation selected");
                 $this->setCallType('reservation');
                 $this->handleReservationFlow();
                 return;
             }
 
-            if ($user_choice != "1") {
+            if ($user_choice == "1") {
+                if ($this->auto_call_centers_mode == 2) {
+                    // Mode 2: Only reservations allowed, ASAP calls disabled
+                    $this->logMessage("ASAP calls disabled (mode 2: reservations only), redirecting to operator");
+                    $this->setCallOutcome('operator_transfer', 'ASAP calls disabled by configuration');
+                    $this->redirectToOperator();
+                    return;
+                }
+                // ASAP call is allowed, continue with normal flow
+            } else {
                 $this->logMessage("Invalid or no selection, redirecting to operator");
                 $this->setCallOutcome('operator_transfer', 'Invalid or no selection');
                 $this->redirectToOperator();
@@ -2607,6 +2665,18 @@ class AGICallHandler
 
     private function getInitialUserChoice()
     {
+        // Play initial message if configured
+        if (!empty($this->initial_message_sound)) {
+            $this->playInitialMessage();
+        }
+        
+        // Check if we should redirect to operator (after initial message or immediately if no initial message)
+        if ($this->redirect_to_operator) {
+            $this->logMessage("Redirecting to operator as configured");
+            $this->redirectToOperator();
+            return '';
+        }
+        
         $this->logMessage("Playing welcome message");
         $user_choice = $this->readDTMF($this->getSoundFile('welcome'), 1, 5);
         $this->logMessage("User choice: {$user_choice}");
@@ -2625,6 +2695,22 @@ class AGICallHandler
 
         $this->setInitialChoice($user_choice);
         return $user_choice;
+    }
+
+    private function playInitialMessage()
+    {
+        // Use getSoundFile to get the proper filename with language suffix
+        $initial_sound_file = $this->getSoundFile($this->initial_message_sound);
+        
+        // Check if the initial message sound file exists
+        $file_exists = $this->checkSoundFileExists($initial_sound_file);
+        
+        if ($file_exists) {
+            $this->logMessage("Playing initial message: {$this->initial_message_sound} -> {$initial_sound_file}");
+            $this->agiCommand('EXEC Playback "' . $initial_sound_file . '"');
+        } else {
+            $this->logMessage("Initial message sound file not found: {$initial_sound_file} - continuing without playing");
+        }
     }
 
     private function handleImmediateCall()
