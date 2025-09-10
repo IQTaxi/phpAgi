@@ -7,7 +7,8 @@
       "Bash(python:*)",
       "Read(/C:\\/**)",
       "Bash(grep:*)",
-      "Bash(php:*)"
+      "Bash(php:*)",
+      "WebFetch(domain:maps.googleapis.com)"
     ],
     "additionalDirectories": [
       "C:\\Users\\billy\\Documents\\phpAgi\\server",

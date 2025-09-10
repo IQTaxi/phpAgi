@@ -13,6 +13,18 @@
 // 1 = Use Google Maps Geocoding API (current/legacy version)
 // 2 = Use Google Places API v1 (new version with searchText endpoint)
 
+// bounds configuration:
+// null = No geographic bounds validation (default behavior)
+// Object with north, south, east, west coordinates = Post-processing validation bounds
+// Example: ["north" => 38.1, "south" => 37.8, "east" => 24.0, "west" => 23.5]
+// Used for post-processing validation to reject results outside bounds
+//
+// centerBias configuration:
+// null = No center bias (default behavior)
+// Object with lat, lng, radius = Bias API results toward a center point
+// Example: ["lat" => 37.9755, "lng" => 23.7348, "radius" => 50000] (radius in meters)
+// Used by both Google Geocoding API v1 and Places API v2 to bias location results
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -33,7 +45,9 @@ class AGICallHandlerConfig
         "geocodingApiVersion" => 1,
         "initialMessageSound" => "strike",
         "redirectToOperator" => false,
-        "autoCallCentersMode" => 3
+        "autoCallCentersMode" => 3,
+        "bounds" => null,
+        "centerBias" => null
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -52,7 +66,9 @@ class AGICallHandlerConfig
         "geocodingApiVersion" => 1,
         "initialMessageSound" => "strike",
         "redirectToOperator" => false,
-        "autoCallCentersMode" => 3
+        "autoCallCentersMode" => 3,
+        "bounds" => null,
+        "centerBias" => null
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -71,7 +87,9 @@ class AGICallHandlerConfig
         "geocodingApiVersion" => 1,
         "initialMessageSound" => "strike",
         "redirectToOperator" => false,
-        "autoCallCentersMode" => 3
+        "autoCallCentersMode" => 3,
+        "bounds" => null,
+        "centerBias" => null
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -90,7 +108,9 @@ class AGICallHandlerConfig
         "geocodingApiVersion" => 1,
         "initialMessageSound" => "strike",
         "redirectToOperator" => false,
-        "autoCallCentersMode" => 3
+        "autoCallCentersMode" => 3,
+        "bounds" => null,
+        "centerBias" => null
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -108,7 +128,10 @@ class AGICallHandlerConfig
 		"strictDropoffLocation" => false,
 		"geocodingApiVersion" => 1,
 		"initialMessageSound" => "strike",
-		"redirectToOperator" => false
+		"redirectToOperator" => false,
+		"autoCallCentersMode" => 3,
+		"bounds" => null,
+		"centerBias" => null
     ]
 ];
 }

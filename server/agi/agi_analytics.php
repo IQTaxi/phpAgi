@@ -36,6 +36,9 @@ class AGIAnalytics {
     ];
     
     public function __construct() {
+        // Keep server in UTC for universal compatibility
+        date_default_timezone_set('UTC');
+        
         $this->initializeLanguage();
         $this->loadTranslations();
         $this->loadEnvConfig();
@@ -573,6 +576,11 @@ class AGIAnalytics {
      * Translate call type values
      */
     private function translateCallType($type) {
+        // Handle null/empty call type
+        if (empty($type) || $type === null) {
+            return 'N/A';
+        }
+        
         $typeMap = [
             'immediate' => $this->t('immediate'),
             'reservation' => $this->t('reservation'),
@@ -628,7 +636,7 @@ class AGIAnalytics {
             `call_end_time` TIMESTAMP NULL,
             `call_duration` INT(11) DEFAULT 0,
             `call_outcome` ENUM('success','operator_transfer','hangup','error','anonymous_blocked','user_blocked','in_progress') DEFAULT 'success',
-            `call_type` ENUM('immediate','reservation','operator') DEFAULT 'immediate',
+            `call_type` ENUM('immediate','reservation','operator') DEFAULT NULL,
             `is_reservation` TINYINT(1) DEFAULT 0,
             `reservation_time` TIMESTAMP NULL,
             `language_used` VARCHAR(5) DEFAULT 'el',
@@ -1238,7 +1246,7 @@ class AGIAnalytics {
         $data = array_merge([
             'call_start_time' => date('Y-m-d H:i:s'),
             'call_outcome' => 'in_progress',
-            'call_type' => 'immediate',
+            'call_type' => null,
             'language_used' => 'el',
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s')
@@ -2992,10 +3000,23 @@ class AGIAnalytics {
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        // Load leaflet heat plugin after leaflet is loaded
+        // Load leaflet heat plugin and ensure it's ready
+        window.heatPluginReady = false;
         document.addEventListener('DOMContentLoaded', function() {
             const script = document.createElement('script');
             script.src = 'https://unpkg.com/leaflet.heat/dist/leaflet-heat.js';
+            script.onload = function() {
+                console.log('Leaflet heat plugin loaded successfully');
+                window.heatPluginReady = true;
+                // Trigger a re-render if heatmap was attempted before plugin loaded
+                if (window.pendingHeatmapData) {
+                    renderLocationHeatmap(window.pendingHeatmapData);
+                    window.pendingHeatmapData = null;
+                }
+            };
+            script.onerror = function() {
+                console.error('Failed to load leaflet heat plugin');
+            };
             document.head.appendChild(script);
         });
     </script>
@@ -5351,6 +5372,7 @@ class AGIAnalytics {
             
             // Heatmap duration change
             document.getElementById('heatmapDuration').addEventListener('change', function() {
+                console.log('Dropdown changed to:', this.value);
                 loadLocationHeatmap();
             });
             
@@ -5770,7 +5792,11 @@ class AGIAnalytics {
                 var duration = call.call_duration;
                 var durationCell = '';
                 if (call.call_outcome === 'in_progress' && call.call_start_time) {
-                    var startTime = new Date(call.call_start_time).getTime();
+                    // Parse UTC timestamp correctly for live duration calculation
+                    var utcDate = call.call_start_time.includes('T') ? 
+                        new Date(call.call_start_time) : 
+                        new Date(call.call_start_time.replace(' ', 'T') + 'Z');
+                    var startTime = utcDate.getTime();
                     // Use server-calculated duration, but still mark for live updates
                     durationCell = '<td class="live-duration" data-start="' + startTime + '" data-server-duration="' + duration + '">' + formatDuration(duration, true) + '</td>';
                 } else {
@@ -5904,7 +5930,13 @@ class AGIAnalytics {
             var successfulCallsData = [];
             
             for (var i = 0; i < hourlyData.length; i++) {
-                hourLabels.push(hourlyData[i].hour + ':00');
+                // Convert UTC hour to local time for display
+                var utcHour = hourlyData[i].hour;
+                var utcDate = new Date();
+                utcDate.setUTCHours(utcHour, 0, 0, 0);
+                var localHour = utcDate.getHours();
+                
+                hourLabels.push(localHour + ':00');
                 totalCallsData.push(hourlyData[i].total_calls || 0);
                 successfulCallsData.push(hourlyData[i].successful_calls || 0);
             }
@@ -6007,20 +6039,21 @@ class AGIAnalytics {
         function loadLocationHeatmap() {
             var duration = document.getElementById('heatmapDuration').value || 30;
             
-            // Don't show loading state on refresh to prevent flashing
-            // Only show loading on first load
-            if (!window.heatmapInstance) {
-                showHeatmapLoading();
-            }
+            // Always show loading state when changing duration
+            console.log('Loading heatmap for duration:', duration, 'minutes');
+            showHeatmapLoading();
             
+            console.log('Fetching location data for duration:', duration, 'minutes');
             fetch('?endpoint=locations&minutes=' + duration)
                 .then(function(response) { 
+                    console.log('Response received:', response.status);
                     if (!response.ok) {
-                        throw new Error('Network response was not ok');
+                        throw new Error('Network response was not ok: ' + response.status);
                     }
                     return response.json(); 
                 })
                 .then(function(data) { 
+                    console.log('Location data received:', data);
                     renderLocationHeatmap(data);
                 })
                 .catch(function(error) { 
@@ -6058,6 +6091,7 @@ class AGIAnalytics {
         
         // Render location heatmap
         function renderLocationHeatmap(data) {
+            console.log('renderLocationHeatmap called with data:', data);
             var container = document.getElementById('locationHeatmap');
             var loading = document.getElementById('heatmapLoading');
             var empty = document.getElementById('heatmapEmpty');
@@ -6067,20 +6101,26 @@ class AGIAnalytics {
             updateLocationStats(data);
             
             if (!data.locations || data.locations.length === 0) {
+                console.log('No locations found, showing empty state');
                 showHeatmapEmpty();
                 return;
             }
             
+            console.log('Found', data.locations.length, 'locations to display');
+            
             // Hide loading and empty states
+            console.log('Hiding loading state and showing map');
             loading.style.display = 'none';
             empty.style.display = 'none';
             
-                // Show map and legend smoothly
+            // Show map and legend smoothly
+            console.log('Setting container opacity to 1, current opacity:', container.style.opacity);
             if (container.style.opacity !== '1') {
                 container.style.transition = 'opacity 0.3s ease';
                 container.style.opacity = '1';
             }
             legend.style.display = 'block';
+            console.log('Map container opacity after setting:', container.style.opacity);
             
             // Initialize map if not exists
             if (!window.heatmapInstance) {
@@ -6089,6 +6129,16 @@ class AGIAnalytics {
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         attribution: '© OpenStreetMap contributors'
                     }).addTo(window.heatmapInstance);
+                    
+                    // Add zoom event listener to update heatmap radius (only for actual heatmap layers)
+                    window.heatmapInstance.on('zoomend', function() {
+                        if (window.heatmapLayer && window.heatmapLayer.options && typeof window.heatmapLayer.redraw === 'function') {
+                            var currentZoom = window.heatmapInstance.getZoom();
+                            var newRadius = Math.max(15, Math.min(40, 25 + (18 - currentZoom) * 2));
+                            window.heatmapLayer.options.radius = newRadius;
+                            window.heatmapLayer.redraw();
+                        }
+                    });
                 } catch (e) {
                     console.error('Error initializing map:', e);
                     showHeatmapEmpty();
@@ -6096,13 +6146,43 @@ class AGIAnalytics {
                 }
             }
             
-            // Prepare heat data
-            var heatData = data.locations.map(function(loc) {
-                return [loc.lat, loc.lng, 0.5];
+            // Clear existing layers before adding new ones
+            if (window.heatmapLayer) {
+                console.log('Removing existing heatmap layer');
+                try {
+                    window.heatmapInstance.removeLayer(window.heatmapLayer);
+                } catch(e) {
+                    console.log('Error removing layer:', e);
+                }
+                window.heatmapLayer = null;
+            }
+            
+            // Prepare heat data with intensity based on location frequency
+            var locationCount = {};
+            var heatData = [];
+            
+            // Count frequency of each location
+            data.locations.forEach(function(loc) {
+                var key = loc.lat + ',' + loc.lng;
+                locationCount[key] = (locationCount[key] || 0) + 1;
             });
             
-            // Update existing heat layer or create new one
-            if (typeof L !== 'undefined' && L.heatLayer && typeof L.heatLayer === 'function') {
+            // Create heat data with higher intensity for better visibility
+            data.locations.forEach(function(loc) {
+                var key = loc.lat + ',' + loc.lng;
+                var frequency = locationCount[key];
+                var intensity = Math.min(1.0, Math.max(0.3, frequency / 3)); // Higher base intensity
+                heatData.push([loc.lat, loc.lng, intensity]);
+            });
+            
+            // Debug heatmap availability
+            console.log('Leaflet available:', typeof L !== 'undefined');
+            console.log('HeatLayer available:', typeof L !== 'undefined' && L.heatLayer && typeof L.heatLayer === 'function');
+            console.log('Heat plugin ready:', window.heatPluginReady);
+            
+            // Force circle markers for better visibility
+            if (false && typeof L !== 'undefined' && L.heatLayer && typeof L.heatLayer === 'function') {
+                console.log('Using heatmap visualization');
                 if (window.heatmapLayer && window.heatmapLayer.setLatLngs) {
                     // Update existing layer smoothly instead of removing/recreating
                     window.heatmapLayer.setLatLngs(heatData);
@@ -6111,42 +6191,75 @@ class AGIAnalytics {
                     if (window.heatmapLayer) {
                         window.heatmapInstance.removeLayer(window.heatmapLayer);
                     }
-                    // Create new layer
+                    // Create new heatmap layer with improved visibility
                     window.heatmapLayer = L.heatLayer(heatData, {
-                        radius: 25,
-                        blur: 15,
-                        maxZoom: 17,
+                        radius: function(zoom) {
+                            // Dynamic radius based on zoom level for optimal visibility
+                            return Math.max(20, Math.min(60, 35 + (18 - zoom) * 3));
+                        },
+                        blur: 20, // Increased blur for smoother heat effect
+                        minOpacity: 0.4, // Increased minimum opacity
+                        maxZoom: 22,
                         max: 1.0,
                         gradient: {
-                            0.0: '#3b82f6',
-                            0.25: '#06d6a0',
-                            0.5: '#ffd23f',
-                            0.75: '#ff6b35',
-                            1.0: '#f72585'
+                            0.0: '#0066ff',    // Blue for low activity
+                            0.2: '#00ccff',    // Light blue
+                            0.4: '#00ff99',    // Green
+                            0.6: '#ffff00',    // Yellow
+                            0.8: '#ff6600',    // Orange
+                            1.0: '#ff0000'     // Red for high activity
                         }
                     }).addTo(window.heatmapInstance);
                 }
             } else {
                 // Fallback to regular markers
+                console.log('Creating markers for', data.locations.length, 'locations');
+                
+                // Clear existing markers layer if it exists
+                if (window.heatmapLayer) {
+                    console.log('Removing existing markers layer');
+                    try {
+                        window.heatmapInstance.removeLayer(window.heatmapLayer);
+                    } catch(e) {
+                        console.log('Error removing markers layer:', e);
+                    }
+                }
+                
                 window.heatmapLayer = L.layerGroup();
+                var bounds = [];
+                
                 for (var i = 0; i < data.locations.length; i++) {
                     var loc = data.locations[i];
+                    console.log('Adding location:', loc.type, loc.lat, loc.lng, loc.address);
+                    
                     var color = loc.type === 'pickup' ? '#10b981' : '#ef4444';
                     var marker = L.circleMarker([loc.lat, loc.lng], {
-                        radius: 8,
+                        radius: 12, // Increased from 8 to make more visible
                         fillColor: color,
-                        color: '#fff',
-                        weight: 2,
+                        color: '#333', // Changed from #fff to darker border
+                        weight: 3, // Increased border weight
                         opacity: 1,
-                        fillOpacity: 0.8
-                    }).bindPopup('<strong>' + (loc.type === 'pickup' ? '📍 Pickup' : '🏁 Destination') + '</strong><br>' + loc.address);
+                        fillOpacity: 0.9 // Increased fill opacity
+                    }).bindPopup('<strong>' + (loc.type === 'pickup' ? '📍 ' + (LANG.translations.pickups || 'Pickup') : '🏁 ' + (LANG.translations.destinations || 'Destination')) + '</strong><br>' + (loc.address || 'No address'));
+                    
                     window.heatmapLayer.addLayer(marker);
+                    bounds.push([loc.lat, loc.lng]);
                 }
+                
                 window.heatmapLayer.addTo(window.heatmapInstance);
+                
+                // Auto-fit bounds to show all markers
+                if (bounds.length > 0) {
+                    console.log('Fitting bounds to', bounds.length, 'points');
+                    var group = new L.featureGroup(window.heatmapLayer.getLayers());
+                    window.heatmapInstance.fitBounds(group.getBounds().pad(0.1));
+                } else {
+                    console.log('No valid coordinates found');
+                }
             }
             
-            // Fit bounds if we have locations
-            if (heatData.length > 0) {
+            // Fit bounds for heatmap if we have heat data and no circle markers were used
+            if (heatData.length > 0 && (typeof L !== 'undefined' && L.heatLayer && typeof L.heatLayer === 'function')) {
                 var bounds = L.latLngBounds(heatData.map(function(point) {
                     return [point[0], point[1]];
                 }));
@@ -6814,19 +6927,31 @@ class AGIAnalytics {
         // Utility functions
         function formatDate(dateStr) {
             if (!dateStr) return 'N/A';
-            const date = new Date(dateStr);
+            
+            // Parse as UTC timestamp from server
+            let date;
+            if (dateStr.includes('T')) {
+                // Already in ISO format
+                date = new Date(dateStr);
+            } else {
+                // MySQL datetime format - append UTC indicator
+                date = new Date(dateStr.replace(' ', 'T') + 'Z');
+            }
+            
+            // Convert to user's local timezone automatically
             const locale = LANG.current === 'el' ? 'el-GR' : 'en-US';
-            const dateOptions = { 
+            const options = { 
                 day: '2-digit', 
                 month: '2-digit', 
-                year: 'numeric' 
-            };
-            const timeOptions = {
+                year: 'numeric',
                 hour: '2-digit', 
-                minute: '2-digit'
+                minute: '2-digit',
+                hour12: LANG.current === 'en'
             };
-            return date.toLocaleDateString(locale, dateOptions) + ' ' + date.toLocaleTimeString(locale, timeOptions);
+            
+            return date.toLocaleString(locale, options);
         }
+        
         
         function formatDuration(seconds, isLive) {
             const s_unit = LANG.translations.seconds_short;

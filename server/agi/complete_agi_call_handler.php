@@ -2,6 +2,16 @@
 <?php
 include 'config.php';
 
+// Set UTF-8 encoding for proper Greek character handling
+ini_set('default_charset', 'UTF-8');
+mb_internal_encoding('UTF-8');
+mb_http_output('UTF-8');
+mb_regex_encoding('UTF-8');
+setlocale(LC_ALL, 'en_US.UTF-8');
+
+// Keep server in UTC for universal compatibility
+date_default_timezone_set('UTC');
+
 /**
  * Automated Taxi Call Registration System
  * 
@@ -307,13 +317,13 @@ class AGICallHandler
     
     private function createAnalyticsRecord()
     {
-        $this->logMessage("ANALYTICS: Creating initial record");
+        // Don't log - will be logged in sendAnalyticsData for POST
         $this->sendAnalyticsData('call', 'POST');
     }
     
     private function updateAnalyticsRecord()
     {
-        $this->logMessage("ANALYTICS: Updating record");
+        // Don't log routine updates
         $this->sendAnalyticsData('call', 'PUT');
     }
     
@@ -393,21 +403,21 @@ class AGICallHandler
             $this->analytics_data['edge_tts_calls']++;
         }
         $this->analytics_data['tts_processing_time'] += $processingTime;
-        $this->updateAnalyticsRecord();
+        // Don't send analytics on every TTS call - batch updates instead
     }
     
     private function trackSTTCall($processingTime = 0)
     {
         $this->analytics_data['google_stt_calls']++;
         $this->analytics_data['stt_processing_time'] += $processingTime;
-        $this->updateAnalyticsRecord();
+        // Don't send analytics on every STT call - batch updates instead
     }
     
     private function trackGeocodingCall($processingTime = 0)
     {
         $this->analytics_data['geocoding_api_calls']++;
         $this->analytics_data['geocoding_processing_time'] += $processingTime;
-        $this->updateAnalyticsRecord();
+        // Don't send analytics on every GEO call - batch updates instead
     }
     
     private function trackUserAPICall()
@@ -479,25 +489,29 @@ class AGICallHandler
             $this->analytics_data['geocoding_processing_time']
         );
         
-        $this->logMessage("ANALYTICS: About to send data with call_id: " . $this->analytics_data['call_id']);
-        
         // Send to analytics via HTTP
         $this->sendAnalyticsData('call', 'PUT');
         
         $this->logMessage("ANALYTICS: finalizeCall() completed");
+        
+        // Log call completion summary
+        $this->logCallComplete();
     }
     
     private function sendAnalyticsData($endpoint = 'call', $method = 'POST')
     {
-        $this->logMessage("ANALYTICS: Starting sendAnalyticsData() - Method: {$method}");
+        // Only log initial creation and final hangup completion
+        if ($method === 'POST') {
+            $this->logMessage("ANALYTICS: Creating new call record", 'INFO', 'ANALYTICS');
+        } elseif (isset($this->analytics_data['call_outcome']) && 
+                  strtolower($this->analytics_data['call_outcome']) === 'hangup') {
+            $this->logMessage("ANALYTICS: Completing call with hangup outcome", 'INFO', 'ANALYTICS');
+        }
         
         try {
             // Build URL with endpoint parameter for new analytics system
             $url = $this->analytics_url . '?endpoint=' . urlencode($endpoint);
-            $this->logMessage("ANALYTICS: Sending to URL: " . $url);
-            
             $json_data = json_encode($this->analytics_data, JSON_UNESCAPED_UNICODE);
-            $this->logMessage("ANALYTICS: JSON data length: " . strlen($json_data));
             
             $ch = curl_init();
             $options = [
@@ -537,12 +551,25 @@ class AGICallHandler
                 $this->addErrorMessage("Analytics communication failed: {$curl_error}");
             } else {
                 $this->logMessage("ANALYTICS {$method} - HTTP: {$http_code}, Response time: {$response_info['total_time']}s");
-                $this->logMessage("ANALYTICS Response: " . substr($response, 0, 300));
                 
+                // Parse response and only log meaningful messages
+                $response_data = json_decode($response, true);
                 if ($http_code >= 200 && $http_code < 300) {
-                    $this->logMessage("ANALYTICS: Successfully sent data to analytics system");
+                    // Only log non-routine messages for successful responses
+                    if ($response_data && isset($response_data['message'])) {
+                        $message = $response_data['message'];
+                        // Skip routine "updated successfully" messages
+                        if (!preg_match('/updated successfully|created successfully/', $message)) {
+                            $this->logMessage("ANALYTICS: {$message}");
+                        }
+                    }
                 } else {
-                    $this->logMessage("ANALYTICS Warning: HTTP {$http_code} - {$response}");
+                    // Always log errors with full response
+                    if ($response_data && isset($response_data['message'])) {
+                        $this->logMessage("ANALYTICS Error: {$response_data['message']}");
+                    } else {
+                        $this->logMessage("ANALYTICS Warning: HTTP {$http_code} - " . substr($response, 0, 200));
+                    }
                     $this->addErrorMessage("Analytics HTTP error: {$http_code}");
                 }
             }
@@ -551,7 +578,7 @@ class AGICallHandler
             $this->addErrorMessage("Analytics exception: " . $e->getMessage());
         }
         
-        $this->logMessage("ANALYTICS: sendAnalyticsData() completed");
+        // Don't log completion for routine operations
     }
     
     
@@ -678,20 +705,321 @@ class AGICallHandler
     // === LOGGING AND UTILITIES ===
 
     /**
-     * Log messages to file with timestamp
+     * Log messages to file with unified pretty formatting for multiple concurrent calls
      */
-    private function logMessage($message)
+    private function logMessage($message, $level = 'INFO', $category = 'GENERAL')
     {
-        $timestamp = date('Y-m-d H:i:s');
-        $log_entry = "$timestamp - {$this->log_prefix} $message\n";
+        $timestamp = date('H:i:s');
+        $call_duration = $this->call_start_time ? round((microtime(true) - $this->call_start_time) * 1000) : 0;
         
-        // Always log to main asterisk calls log
-        error_log($log_entry, 3, "/var/log/auto_register_call/asterisk_calls.log");
+        // Create a pretty, unified log entry
+        $this->writeUnifiedLog($timestamp, $level, $category, $message, $call_duration);
         
-        // Only log non-analytics messages to individual call log
+        // Also log to individual call log (non-analytics only)
         if (!empty($this->filebase) && !$this->isAnalyticsMessage($message)) {
-            error_log($log_entry, 3, "{$this->filebase}/log.txt");
+            $detailed_entry = sprintf(
+                "[%s] [%s] [%s] %s\n",
+                date('Y-m-d H:i:s.u'),
+                $level,
+                $category,
+                mb_convert_encoding($message, 'UTF-8', 'UTF-8')
+            );
+            
+            // Use file_put_contents with UTF-8 handling instead of error_log
+            $individual_log = "{$this->filebase}/log.txt";
+            $individual_dir = dirname($individual_log);
+            if (!is_dir($individual_dir)) {
+                mkdir($individual_dir, 0755, true);
+            }
+            
+            // Initialize with UTF-8 BOM if new file
+            if (!file_exists($individual_log)) {
+                file_put_contents($individual_log, "\xEF\xBB\xBF", LOCK_EX);
+            }
+            
+            file_put_contents($individual_log, $detailed_entry, FILE_APPEND | LOCK_EX);
         }
+    }
+    
+    /**
+     * Write to unified pretty log with multi-call support
+     */
+    private function writeUnifiedLog($timestamp, $level, $category, $message, $call_duration)
+    {
+        // Skip analytics spam and low-level noise
+        if ($this->isAnalyticsMessage($message) || 
+            strpos($message, 'Channel status') !== false ||
+            strpos($message, 'Audio conversion') !== false ||
+            strpos($message, 'DEBUG') !== false) {
+            return;
+        }
+        
+        $phone_short = substr($this->caller_num, -4); // Last 4 digits for identification
+        $duration_display = $call_duration > 0 ? sprintf("%4dms", $call_duration) : "   0ms";
+        
+        // Format message based on category and content
+        $formatted_message = $this->formatUnifiedMessage($message, $category);
+        
+        if (!empty($formatted_message)) {
+            // Create a pretty, UTF-8 encoded log entry
+            $log_entry = sprintf(
+                "%s │ %s │ %s │ %s\n",
+                $timestamp,
+                $phone_short,
+                $duration_display,
+                mb_convert_encoding($formatted_message, 'UTF-8', 'UTF-8')
+            );
+            
+            // Ensure UTF-8 encoding and proper file handling
+            $log_file = "/var/log/auto_register_call/calls.log";
+            
+            // Create directory if it doesn't exist
+            $log_dir = dirname($log_file);
+            if (!is_dir($log_dir)) {
+                mkdir($log_dir, 0755, true);
+            }
+            
+            // Initialize log file with UTF-8 BOM if it doesn't exist
+            if (!file_exists($log_file)) {
+                // Create with UTF-8 BOM for proper encoding detection
+                file_put_contents($log_file, "\xEF\xBB\xBF", LOCK_EX);
+            }
+            
+            // Write with proper UTF-8 encoding and file locking
+            file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+        }
+    }
+    
+    /**
+     * Format messages for the unified pretty log
+     */
+    private function formatUnifiedMessage($message, $category)
+    {
+        // Call flow transitions
+        if (preg_match('/STEP: (\w+) -> (\w+) \(took (\d+)ms\)/', $message, $matches)) {
+            $from_step = $this->humanizeStepName($matches[1]);
+            $to_step = $this->humanizeStepName($matches[2]);
+            return sprintf("🔄 %s → %s (%sms)", $from_step, $to_step, $matches[3]);
+        }
+        
+        // Call initiation
+        if (preg_match('/🎯 CALL INITIATED/', $message)) {
+            // Extract key info from multi-line message
+            preg_match('/Phone: ([^\n]+)/', $message, $phone_match);
+            preg_match('/Extension: ([^\n]+)/', $message, $ext_match);
+            preg_match('/Language: ([^\n]+)/', $message, $lang_match);
+            preg_match('/Areas: ([^\n]+)/', $message, $area_match);
+            
+            $phone = $phone_match[1] ?? 'Unknown';
+            $extension = $ext_match[1] ?? 'Unknown';
+            $lang = $lang_match[1] ?? 'Unknown';
+            $areas = $area_match[1] ?? 'None';
+            
+            return sprintf("🎯 CALL START: %s | Ext: %s | Lang: %s | Areas: %s", 
+                $phone, $extension, $lang, $areas);
+        }
+        
+        // Call completion
+        if (preg_match('/🏁 CALL COMPLETED/', $message)) {
+            preg_match('/Outcome: ([^\n]+)/', $message, $outcome_match);
+            preg_match('/Total Duration: (\d+ms)/', $message, $duration_match);
+            preg_match('/Name: ([^\n]+)/', $message, $name_match);
+            preg_match('/Pickup: ([^\n]+)/', $message, $pickup_match);
+            preg_match('/Destination: ([^\n]+)/', $message, $dest_match);
+            
+            $outcome = $outcome_match[1] ?? 'Unknown';
+            $duration = $duration_match[1] ?? '0ms';
+            $name = $name_match[1] ?? 'Not captured';
+            $pickup = $pickup_match[1] ?? 'Not captured';
+            $dest = $dest_match[1] ?? 'Not captured';
+            
+            // Use appropriate emoji based on outcome
+            $outcome_emoji = '🏁';
+            if (strtolower($outcome) === 'hangup') {
+                $outcome_emoji = '📞';
+            } elseif (strtolower($outcome) === 'operator_transfer') {
+                $outcome_emoji = '👨‍💼';
+            }
+            
+            return sprintf("%s END: %s (%s) | %s | %s → %s", 
+                $outcome_emoji, $outcome, $duration, $name, 
+                $pickup === 'Not captured' ? '❌' : '✅ ' . $pickup,
+                $dest === 'Not captured' ? '❌' : '✅ ' . $dest);
+        }
+        
+        // User interactions
+        if (preg_match('/User choice: (.+)/', $message, $matches)) {
+            $choice = trim($matches[1]);
+            if (empty($choice)) {
+                return "⏱️ User timeout (no input)";
+            }
+            return sprintf("👤 User selected: '%s'", $choice);
+        }
+        
+        if (preg_match('/User pickup address choice: (.+)/', $message, $matches)) {
+            $choice = trim($matches[1]);
+            $action = $choice == '1' ? 'Use saved address' : 'Enter new address';
+            return sprintf("📍 Pickup: %s", $action);
+        }
+        
+        // Data collection
+        if (preg_match('/STT result for (\w+): (.+)/', $message, $matches)) {
+            $field = strtoupper($matches[1]);
+            $result = trim($matches[2], "'");
+            return sprintf("🗣️ %s: %s", $field, $result);
+        }
+        
+        if (preg_match('/successfully captured: (.+)/', $message, $matches)) {
+            $data = $matches[1];
+            $icon = '📝';
+            if (strpos($message, 'Name') !== false) $icon = '👤';
+            elseif (strpos($message, 'Pickup') !== false) $icon = '📍';
+            elseif (strpos($message, 'Destination') !== false) $icon = '🎯';
+            return sprintf("%s Captured: %s", $icon, $data);
+        }
+        
+        // Geocoding
+        if (preg_match('/🗺️ GEOCODING: Using (.+) \| (.+) \| Address: (.+)/', $message, $matches)) {
+            $api = str_replace(['Google ', ' API'], '', $matches[1]);
+            $areas = $matches[2];
+            $address = $matches[3];
+            return sprintf("🗺️ %s | %s | %s", $api, $areas, $address);
+        }
+        
+        if (strpos($message, 'Location accepted') !== false) {
+            preg_match('/type: ([^,]+), address: (.+)/', $message, $matches);
+            $type = $matches[1] ?? 'unknown';
+            $address = $matches[2] ?? 'unknown';
+            return sprintf("✅ Location: %s (%s)", $address, $type);
+        }
+        
+        if (strpos($message, 'LOCATION REJECTED') !== false) {
+            return "❌ Location rejected (outside allowed areas)";
+        }
+        
+        // Registration
+        if (strpos($message, 'Registration result') !== false) {
+            $call_operator = strpos($message, 'callOperator: true') !== false;
+            return $call_operator ? "❌ Registration failed" : "✅ Registration successful";
+        }
+        
+        // Errors and important events
+        if (strpos($message, 'dead channel') !== false) {
+            return "📞 Call dropped (channel disconnected)";
+        }
+        
+        if (strpos($message, 'Hangup detected') !== false || 
+            strpos($message, 'User hung up') !== false ||
+            strpos($message, 'No selection received (likely hangup)') !== false) {
+            return "📞 User hangup";
+        }
+        
+        if (strpos($message, 'Redirecting to operator') !== false) {
+            return "📞 → Operator transfer";
+        }
+        
+        if (strpos($message, 'Found existing user data') !== false) {
+            return "👤 Found existing customer data";
+        }
+        
+        // Analytics creation (only the important one)
+        if (strpos($message, 'Creating new call record') !== false) {
+            return "📊 Analytics record created";
+        }
+        
+        // Ignore everything else
+        return null;
+    }
+    
+    // Removed old logToSummary - now using unified log format
+    
+    // Removed old formatMessageForSummary - now using unified formatUnifiedMessage
+    
+    /**
+     * Convert technical step names to human-readable names
+     */
+    private function humanizeStepName($step)
+    {
+        $step_names = [
+            'initialization' => 'Call Setup',
+            'call_start' => 'Welcome Message',
+            'call_type_selected' => 'Service Selection',
+            'immediate_call_flow' => 'Immediate Booking',
+            'collecting_name' => 'Name Collection',
+            'collecting_pickup' => 'Pickup Address',
+            'collecting_destination' => 'Destination Address', 
+            'collecting_datetime' => 'Date & Time',
+            'confirming_data' => 'Data Confirmation',
+            'registration' => 'Taxi Dispatch',
+            'operator_transfer' => 'Operator Transfer',
+            'hangup' => 'User Hangup',
+            'call_outcome_set' => 'Call Completion'
+        ];
+        
+        return $step_names[$step] ?? ucfirst(str_replace('_', ' ', $step));
+    }
+    
+    /**
+     * Log call start with summary information
+     */
+    private function logCallStart()
+    {
+        $config = $this->config[$this->extension] ?? [];
+        $extension_name = $config['name'] ?? 'Unknown';
+        
+        $summary = sprintf(
+            "🎯 CALL INITIATED\n" .
+            "   📞 Phone: %s\n" .
+            "   📋 Extension: %s (%s)\n" .
+            "   🌐 Language: %s\n" .
+            "   🔧 Geocoding: API v%s\n" .
+            "   📍 Admin Areas: %s\n" .
+            "   🏷️ Call ID: %s",
+            $this->calling_number,
+            $this->extension,
+            $extension_name,
+            strtoupper($this->current_language),
+            $config['geocodingApiVersion'] ?? '1',
+            empty($config['bounds']) ? 'No bounds' : 'Bounds set',
+            $this->analytics_data['call_id'] ?? 'Unknown'
+        );
+        
+        $this->logMessage($summary, 'INFO', 'CALL_START');
+    }
+    
+    /**
+     * Log call completion with final summary
+     */
+    private function logCallComplete()
+    {
+        $end_time = microtime(true);
+        $total_duration = round(($end_time - $this->call_start_time) * 1000);
+        $outcome = $this->analytics_data['call_outcome'] ?? 'unknown';
+        
+        $summary = sprintf(
+            "🏁 CALL COMPLETED\n" .
+            "   📞 Phone: %s\n" .
+            "   ⏱️ Total Duration: %dms (%ds)\n" .
+            "   🎯 Outcome: %s\n" .
+            "   👤 Name: %s\n" .
+            "   📍 Pickup: %s\n" .
+            "   🎯 Destination: %s\n" .
+            "   🔍 STT Calls: %d\n" .
+            "   🗣️ TTS Calls: %d\n" .
+            "   🗺️ Geocoding Calls: %d",
+            $this->calling_number,
+            $total_duration,
+            round($total_duration / 1000),
+            strtoupper($outcome),
+            $this->analytics_data['customer_name'] ?? 'Not captured',
+            $this->analytics_data['pickup_address'] ?? 'Not captured',
+            $this->analytics_data['destination_address'] ?? 'Not captured',
+            $this->analytics_data['google_stt_calls'] ?? 0,
+            $this->analytics_data['google_tts_calls'] ?? 0,
+            $this->analytics_data['geocoding_calls'] ?? 0
+        );
+        
+        $this->logMessage($summary, 'INFO', 'CALL_COMPLETE');
     }
     
     /**
@@ -737,7 +1065,19 @@ class AGICallHandler
     private function agiCommand($command)
     {
         echo $command . "\n";
-        return trim(fgets(STDIN));
+        $response = trim(fgets(STDIN));
+        
+        // Check for hangup conditions
+        if (strpos($response, '200 result=-1') !== false || 
+            strpos($response, '511 Command Not Permitted') !== false ||
+            strpos($response, 'HANGUP') !== false) {
+            $this->logMessage("Hangup detected during AGI command: $command");
+            $this->setCallOutcome('hangup', 'User hung up during call');
+            $this->finalizeCall();
+            exit(0);
+        }
+        
+        return $response;
     }
 
     /**
@@ -819,11 +1159,34 @@ class AGICallHandler
     private function readDTMF($prompt_file, $digits = 1, $timeout = 10)
     {
         $response = $this->agiCommand("EXEC \"Read\" \"USER_CHOICE,{$prompt_file},{$digits},,1,{$timeout}\"");
+        
+        // Check if the EXEC command failed due to hangup
+        if (strpos($response, '200 result=-1') !== false) {
+            $this->logMessage("Hangup detected during DTMF input");
+            $this->setCallOutcome('hangup', 'User hung up during DTMF input');
+            $this->finalizeCall();
+            exit(0);
+        }
+        
         $choice_response = $this->agiCommand("GET VARIABLE USER_CHOICE");
 
         if (preg_match('/200 result=1 \((.+)\)/', $choice_response, $matches)) {
             return $matches[1];
         }
+        
+        // If no input was received, it could be a timeout or hangup
+        $this->logMessage("No DTMF input received - checking channel status");
+        $status_response = $this->agiCommand('CHANNEL STATUS');
+        
+        // Check channel status for hangup
+        if (strpos($status_response, '200 result=6') !== false || 
+            strpos($status_response, '200 result=0') !== false) {
+            $this->logMessage("Channel is down/unavailable - treating as hangup");
+            $this->setCallOutcome('hangup', 'User hung up (no response)');
+            $this->finalizeCall();
+            exit(0);
+        }
+        
         return '';
     }
 
@@ -1199,6 +1562,12 @@ class AGICallHandler
     {
         // Check which API version to use from config
         $geocoding_version = $this->config[$this->extension]['geocodingApiVersion'] ?? 1;
+        $bounds = $this->config[$this->extension]['bounds'] ?? null;
+        
+        // Log which API and filters are being used
+        $api_name = $geocoding_version == 2 ? 'Google Places API v1' : 'Google Geocoding API v1';
+        $bounds_filter = empty($bounds) ? 'No geographic restrictions' : 'Bounds: ' . json_encode($bounds);
+        $this->logMessage("🗺️ GEOCODING: Using {$api_name} | {$bounds_filter} | Address: {$address}", 'INFO', 'GEOCODING');
         
         if ($geocoding_version == 2) {
             // Use new Google Places API v1
@@ -1222,11 +1591,24 @@ class AGICallHandler
         $startTime = microtime(true);
 
         $url = "https://maps.googleapis.com/maps/api/geocode/json";
-        $params = http_build_query([
+        
+        $params_array = [
             "address" => $address,
             "key" => $this->api_key,
             "language" => "el-GR"
-        ]);
+        ];
+        
+        // Add center bias if configured
+        $centerBias = $this->config[$this->extension]['centerBias'] ?? null;
+        if (!empty($centerBias) && isset($centerBias['lat']) && isset($centerBias['lng']) && isset($centerBias['radius'])) {
+            // Use location bias to prefer results near center point
+            $params_array["location"] = "{$centerBias['lat']},{$centerBias['lng']}";
+            $params_array["radius"] = $centerBias['radius'];
+            $this->logMessage("🎯 GEOCODING API: Adding center bias - Lat: {$centerBias['lat']}, Lng: {$centerBias['lng']}, Radius: {$centerBias['radius']}m", 'DEBUG', 'GEOCODING');
+        }
+        
+        $params = http_build_query($params_array);
+        $this->logMessage("🌐 GEOCODING DEBUG: Full API URL: " . $url . '?' . $params, 'DEBUG', 'GEOCODING');
 
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -1247,7 +1629,29 @@ class AGICallHandler
         $data = json_decode($response, true);
         if (!$data || $data['status'] !== 'OK' || empty($data['results'])) return null;
 
-        return $this->validateLocationResult($data['results'][0], $is_pickup);
+        $result = $data['results'][0];
+        $this->logMessage("📍 GEOCODING API: Found place: " . $result['formatted_address'] . " at Lat: " . $result['geometry']['location']['lat'] . ", Lng: " . $result['geometry']['location']['lng'], 'DEBUG', 'GEOCODING');
+        
+        // Check if result is within bounds if bounds are configured
+        $bounds = $this->config[$this->extension]['bounds'] ?? null;
+        if (!empty($bounds)) {
+            $lat = $result['geometry']['location']['lat'];
+            $lng = $result['geometry']['location']['lng'];
+            
+            if ($lat < $bounds['south'] || $lat > $bounds['north'] || 
+                $lng < $bounds['west'] || $lng > $bounds['east']) {
+                $this->logMessage("🚫 GEOCODING API: Result outside bounds", 'INFO', 'GEOCODING');
+                $this->logMessage("   Location: Lat: {$lat}, Lng: {$lng}", 'DEBUG', 'GEOCODING');
+                $this->logMessage("   Bounds: N:{$bounds['north']} S:{$bounds['south']} E:{$bounds['east']} W:{$bounds['west']}", 'DEBUG', 'GEOCODING');
+                $this->logMessage("   Check: Lat in range? " . ($lat >= $bounds['south'] && $lat <= $bounds['north'] ? 'YES' : 'NO') . 
+                                  ", Lng in range? " . ($lng >= $bounds['west'] && $lng <= $bounds['east'] ? 'YES' : 'NO'), 'DEBUG', 'GEOCODING');
+                return null;
+            } else {
+                $this->logMessage("✅ GEOCODING API: Result within bounds", 'DEBUG', 'GEOCODING');
+            }
+        }
+
+        return $this->validateLocationResult($result, $is_pickup);
     }
     
     /**
@@ -1276,6 +1680,24 @@ class AGICallHandler
             "regionCode" => "GR",
             "maxResultCount" => 1
         ];
+        
+        // Add center bias if configured
+        $centerBias = $this->config[$this->extension]['centerBias'] ?? null;
+        if (!empty($centerBias) && isset($centerBias['lat']) && isset($centerBias['lng']) && isset($centerBias['radius'])) {
+            // Use locationBias with circle to prefer results near center point
+            $data["locationBias"] = [
+                "circle" => [
+                    "center" => [
+                        "latitude" => $centerBias['lat'],
+                        "longitude" => $centerBias['lng']
+                    ],
+                    "radius" => $centerBias['radius']
+                ]
+            ];
+            $this->logMessage("🎯 PLACES API: Adding center bias - Lat: {$centerBias['lat']}, Lng: {$centerBias['lng']}, Radius: {$centerBias['radius']}m", 'DEBUG', 'GEOCODING');
+        }
+        
+        $this->logMessage("🌐 PLACES API DEBUG: Request data: " . json_encode($data, JSON_UNESCAPED_UNICODE), 'DEBUG', 'GEOCODING');
 
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -1289,23 +1711,57 @@ class AGICallHandler
 
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
         curl_close($ch);
         
         $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
         $this->trackGeocodingCall($processingTime);
+        
+        $this->logMessage("📊 PLACES API Response - HTTP: {$http_code}, Time: {$processingTime}ms", 'DEBUG', 'GEOCODING');
+
+        if ($curl_error) {
+            $this->logMessage("❌ PLACES API CURL Error: " . $curl_error, 'ERROR', 'GEOCODING');
+            return null;
+        }
 
         if ($http_code !== 200 || !$response) {
-            $this->logMessage("Places API v1 request failed - HTTP: {$http_code}");
+            $this->logMessage("❌ Places API request failed - HTTP: {$http_code}, Response: " . substr($response, 0, 500), 'ERROR', 'GEOCODING');
             return null;
         }
 
         $result = json_decode($response, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $this->logMessage("❌ Places API JSON decode error: " . json_last_error_msg(), 'ERROR', 'GEOCODING');
+            $this->logMessage("Raw response: " . substr($response, 0, 1000), 'DEBUG', 'GEOCODING');
+            return null;
+        }
+        
         if (!$result || empty($result['places'])) {
-            $this->logMessage("Places API v1 no results found");
+            $this->logMessage("⚠️ Places API returned no results. Full response: " . json_encode($result), 'INFO', 'GEOCODING');
             return null;
         }
 
         $place = $result['places'][0];
+        $this->logMessage("📍 PLACES API: Found place: " . $place['formattedAddress'] . " at Lat: " . $place['location']['latitude'] . ", Lng: " . $place['location']['longitude'], 'DEBUG', 'GEOCODING');
+        
+        // Check if result is within bounds if bounds are configured
+        $bounds = $this->config[$this->extension]['bounds'] ?? null;
+        if (!empty($bounds) && isset($place['location'])) {
+            $lat = $place['location']['latitude'];
+            $lng = $place['location']['longitude'];
+            
+            if ($lat < $bounds['south'] || $lat > $bounds['north'] || 
+                $lng < $bounds['west'] || $lng > $bounds['east']) {
+                $this->logMessage("🚫 PLACES API: Result outside bounds", 'INFO', 'GEOCODING');
+                $this->logMessage("   Location: Lat: {$lat}, Lng: {$lng}", 'DEBUG', 'GEOCODING');
+                $this->logMessage("   Bounds: N:{$bounds['north']} S:{$bounds['south']} E:{$bounds['east']} W:{$bounds['west']}", 'DEBUG', 'GEOCODING');
+                $this->logMessage("   Check: Lat in range? " . ($lat >= $bounds['south'] && $lat <= $bounds['north'] ? 'YES' : 'NO') . 
+                                  ", Lng in range? " . ($lng >= $bounds['west'] && $lng <= $bounds['east'] ? 'YES' : 'NO'), 'DEBUG', 'GEOCODING');
+                return null;
+            } else {
+                $this->logMessage("✅ PLACES API: Result within bounds", 'DEBUG', 'GEOCODING');
+            }
+        }
         
         // Convert Places API response to match expected format
         return $this->validatePlacesApiResult($place, $is_pickup);
@@ -1357,7 +1813,8 @@ class AGICallHandler
             }
         }
         
-        $this->logMessage("Location accepted (Places API) - type: {$location_type}, address: {$place['formattedAddress']}");
+        
+        $this->logMessage("Location accepted (Places API) - type: {$location_type}, address: {$place['formattedAddress']}", 'INFO', 'GEOCODING');
         
         return [
             "address" => $place['formattedAddress'],
@@ -1372,9 +1829,20 @@ class AGICallHandler
     private function handleSpecialAddresses($address, $is_pickup)
     {
         $normalized_address = $this->removeDiacritics(strtolower(trim($address)));
-        $center_addresses = ["κεντρο", "τοπικο", "κεντρο αθηνα", "κεντρο θεσσαλονικη"];
+        $center_addresses = ["κεντρο", "τοπικο", "κεντρο αθηνα", "αθηνα κεντρο", "κεντρο θεσσαλονικη", "θεσσαλονικη κεντρο"];
 
-        if (!$is_pickup && in_array($normalized_address, $center_addresses)) {
+        // Check if address contains center terms (not exact match)
+        $is_center = false;
+        if (!$is_pickup) {
+            foreach ($center_addresses as $center_term) {
+                if (strpos($normalized_address, $center_term) !== false) {
+                    $is_center = true;
+                    break;
+                }
+            }
+        }
+        
+        if ($is_center) {
             return [
                 "address" => $address,
                 "location_type" => "EXACT",
@@ -1420,7 +1888,8 @@ class AGICallHandler
             }
         }
         
-        $this->logMessage("Location accepted - type: {$location_type}, address: {$result['formatted_address']}");
+        
+        $this->logMessage("Location accepted - type: {$location_type}, address: {$result['formatted_address']}", 'INFO', 'GEOCODING');
         return [
             "address" => $result['formatted_address'],
             "location_type" => $location_type,
@@ -1550,7 +2019,7 @@ class AGICallHandler
         }
 
         $call_operator = ($result_code !== 0);
-        $this->logMessage("Registration result - callOperator: " . ($call_operator ? 'true' : 'false'));
+        $this->logMessage("Registration result - callOperator: " . ($call_operator ? 'true' : 'false'), 'INFO', 'REGISTRATION');
 
         return ["callOperator" => $call_operator, "msg" => $msg];
     }
@@ -1650,13 +2119,14 @@ class AGICallHandler
             $name = $this->callGoogleSTT($recording_file . ".wav");
             $this->stopMusicOnHold();
 
-            $this->logMessage("STT result for name: '{$name}' (length: " . strlen(trim($name)) . ")");
+            $this->logMessage("STT result for name: '{$name}' (length: " . strlen(trim($name)) . ")", 'INFO', 'STT');
 
             if (!empty($name) && strlen(trim($name)) > 1) {
                 $this->name_result = trim($name);
                 $this->setUserInfo($this->name_result);
                 $this->saveJson("name", $this->name_result);
                 $this->logMessage("Name successfully captured: {$this->name_result}");
+                $this->updateAnalyticsRecord(); // Batch update after name collection
                 return true;
             } else {
                 $this->logMessage("Name rejected - empty or too short");
@@ -1706,7 +2176,7 @@ class AGICallHandler
 
             $this->startMusicOnHold();
             $pickup = $this->callGoogleSTT($recording_file . ".wav");
-            $this->logMessage("STT result for pickup: {$pickup}");
+            $this->logMessage("STT result for pickup: {$pickup}", 'INFO', 'STT');
 
             if (!empty($pickup) && strlen(trim($pickup)) > 2) {
                 $location = $this->getLatLngFromGoogle($pickup, true);
@@ -1723,6 +2193,7 @@ class AGICallHandler
                     $this->saveJson("pickup", $this->pickup_result);
                     $this->saveJson("pickupLocation", $this->pickup_location);
                     $this->logMessage("Pickup successfully captured: {$this->pickup_result}");
+                    $this->updateAnalyticsRecord(); // Batch update after pickup collection
                     return true;
                 }
             } else {
@@ -1773,7 +2244,7 @@ class AGICallHandler
 
             $this->startMusicOnHold();
             $dest = $this->callGoogleSTT($recording_file . ".wav");
-            $this->logMessage("STT result for destination: {$dest}");
+            $this->logMessage("STT result for destination: {$dest}", 'INFO', 'STT');
 
             if (!empty($dest) && strlen(trim($dest)) > 2) {
                 $location = $this->getLatLngFromGoogle($dest, false);
@@ -1790,6 +2261,7 @@ class AGICallHandler
                     $this->saveJson("destination", $this->dest_result);
                     $this->saveJson("destinationLocation", $this->dest_location);
                     $this->logMessage("Destination successfully captured: {$this->dest_result}");
+                    $this->updateAnalyticsRecord(); // Batch update after destination collection
                     return true;
                 }
             } else {
@@ -1840,7 +2312,7 @@ class AGICallHandler
 
             $this->startMusicOnHold();
             $reservation_speech = $this->callGoogleSTT($recording_file . ".wav");
-            $this->logMessage("STT result for reservation: {$reservation_speech}");
+            $this->logMessage("STT result for reservation: {$reservation_speech}", 'INFO', 'STT');
 
             if (!empty($reservation_speech) && strlen(trim($reservation_speech)) > 2) {
                 $parsed_date = $this->parseDateFromText(trim($reservation_speech));
@@ -1906,7 +2378,7 @@ class AGICallHandler
 
             if ($this->generateAndPlayConfirmation()) {
                 $choice = $this->readDTMF($this->getSoundFile('options'), 1, 10);
-                $this->logMessage("User choice: {$choice}");
+                $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 if ($choice == "0") {
                     $this->processConfirmedCall();
@@ -2214,7 +2686,7 @@ class AGICallHandler
 
             if ($this->generateAndPlayReservationConfirmation()) {
                 $choice = $this->readDTMF($this->getSoundFile('options'), 1, 10);
-                $this->logMessage("User choice: {$choice}");
+                $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 if ($choice == "0") {
                     $this->processConfirmedReservation();
@@ -2574,7 +3046,8 @@ class AGICallHandler
         }
         
         try {
-            $this->logMessage("Starting call processing for {$this->caller_num}");
+            $this->logMessage("Starting call processing for {$this->caller_num}", 'INFO', 'CALL_START');
+            $this->logCallStart();
 
             if ($this->isAnonymousCaller()) {
                 $this->setCallOutcome('anonymous_blocked', 'Anonymous caller blocked');
@@ -2679,7 +3152,7 @@ class AGICallHandler
         
         $this->logMessage("Playing welcome message");
         $user_choice = $this->readDTMF($this->getSoundFile('welcome'), 1, 5);
-        $this->logMessage("User choice: {$user_choice}");
+        $this->logMessage("User choice: {$user_choice}", 'INFO', 'USER_INPUT');
 
         if ($user_choice == "9") {
             $this->logMessage("User selected language change to English");
@@ -2688,7 +3161,7 @@ class AGICallHandler
             $this->saveJson("language", $this->current_language);
             
             $user_choice = $this->readDTMF($this->getSoundFile('welcome'), 1, 5);
-            $this->logMessage("User choice after language change: {$user_choice}");
+            $this->logMessage("User choice after language change: {$user_choice}", 'INFO', 'USER_INPUT');
         } else {
             $this->setLanguage($this->current_language, false);
         }

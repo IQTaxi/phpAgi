@@ -1,6 +1,8 @@
 <?php
 // Configuration Manager for AGI Call Handler
 // Manages /var/lib/asterisk/agi-bin/iqtaxi/config.php
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+ini_set('display_errors', '0');
 
 class ConfigManager {
     private $configPath;
@@ -45,6 +47,16 @@ class ConfigManager {
         $configContent .= "// geocodingApiVersion configuration:\n";
         $configContent .= "// 1 = Use Google Maps Geocoding API (current/legacy version)\n";
         $configContent .= "// 2 = Use Google Places API v1 (new version with searchText endpoint)\n\n";
+        $configContent .= "// bounds configuration:\n";
+        $configContent .= "// null = Search in all areas (default behavior)\n";
+        $configContent .= "// Object with north, south, east, west coordinates = Post-processing validation bounds\n";
+        $configContent .= "// Example: {\"north\": 38.1, \"south\": 37.8, \"east\": 24.0, \"west\": 23.5}\n";
+        $configContent .= "// Used for post-processing validation to reject results outside bounds\n\n";
+        $configContent .= "// centerBias configuration:\n";
+        $configContent .= "// null = No center bias (default behavior)\n";
+        $configContent .= "// Object with lat, lng, radius = Bias API results toward a center point\n";
+        $configContent .= "// Example: {\"lat\": 37.9755, \"lng\": 23.7348, \"radius\": 50000} (radius in meters)\n";
+        $configContent .= "// Used by both Google Geocoding API v1 and Places API v2 to bias location results\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         $configContent .= "];\n}\n";
@@ -75,6 +87,16 @@ class ConfigManager {
         $configContent .= "// geocodingApiVersion configuration:\n";
         $configContent .= "// 1 = Use Google Maps Geocoding API (current/legacy version)\n";
         $configContent .= "// 2 = Use Google Places API v1 (new version with searchText endpoint)\n\n";
+        $configContent .= "// bounds configuration:\n";
+        $configContent .= "// null = Search in all areas (default behavior)\n";
+        $configContent .= "// Object with north, south, east, west coordinates = Post-processing validation bounds\n";
+        $configContent .= "// Example: {\"north\": 38.1, \"south\": 37.8, \"east\": 24.0, \"west\": 23.5}\n";
+        $configContent .= "// Used for post-processing validation to reject results outside bounds\n\n";
+        $configContent .= "// centerBias configuration:\n";
+        $configContent .= "// null = No center bias (default behavior)\n";
+        $configContent .= "// Object with lat, lng, radius = Bias API results toward a center point\n";
+        $configContent .= "// Example: {\"lat\": 37.9755, \"lng\": 23.7348, \"radius\": 50000} (radius in meters)\n";
+        $configContent .= "// Used by both Google Geocoding API v1 and Places API v2 to bias location results\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         
@@ -88,6 +110,43 @@ class ConfigManager {
                     $configContent .= "        \"$key\" => $boolValue,\n";
                 } elseif (is_numeric($value)) {
                     $configContent .= "        \"$key\" => $value,\n";
+                } elseif (is_array($value)) {
+                    // Check if it's an associative array (object) or indexed array
+                    $isAssoc = (array_keys($value) !== range(0, count($value) - 1));
+                    
+                    if ($isAssoc || empty($value)) {
+                        // Handle as object/associative array (like bounds)
+                        if (empty($value)) {
+                            $configContent .= "        \"$key\" => null,\n";
+                        } else {
+                            $arrayContent = '[';
+                            $arrayItems = [];
+                            foreach ($value as $k => $v) {
+                                if (is_numeric($v)) {
+                                    $arrayItems[] = "\"$k\" => $v";
+                                } else {
+                                    $arrayItems[] = "\"$k\" => \"" . addslashes($v) . "\"";
+                                }
+                            }
+                            $arrayContent .= implode(', ', $arrayItems);
+                            $arrayContent .= ']';
+                            $configContent .= "        \"$key\" => $arrayContent,\n";
+                        }
+                    } else {
+                        // Handle as indexed array
+                        $arrayContent = '[';
+                        if (!empty($value)) {
+                            $arrayItems = [];
+                            foreach ($value as $item) {
+                                $arrayItems[] = '"' . addslashes($item) . '"';
+                            }
+                            $arrayContent .= implode(', ', $arrayItems);
+                        }
+                        $arrayContent .= ']';
+                        $configContent .= "        \"$key\" => $arrayContent,\n";
+                    }
+                } elseif (is_null($value)) {
+                    $configContent .= "        \"$key\" => null,\n";
                 }
             }
             $configContent .= "    ],\n";
@@ -859,6 +918,82 @@ $currentConfig = $configManager->getConfig();
             cursor: pointer;
         }
         
+        /* Tags styles */
+        .tags-container {
+            width: 100%;
+        }
+        
+        .tags-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            border: 2px solid #000000;
+            border-radius: 4px;
+            background-color: #ffffff;
+            min-height: 2.5rem;
+        }
+        
+        .tags-wrapper:focus-within {
+            border-color: #0066cc;
+            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.3);
+        }
+        
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            background-color: #0066cc;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .tag-remove {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 0;
+            margin-left: 0.25rem;
+            font-size: 1rem;
+            line-height: 1;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .tag-remove:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .tag-input {
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            padding: 0.25rem 0 !important;
+            margin: 0 !important;
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .tags-wrapper.missing-key {
+            border-color: #cc0000;
+            background-color: #fff5f5;
+        }
+        
+        .tags-wrapper.missing-key:focus-within {
+            border-color: #cc0000;
+            box-shadow: 0 0 0 3px rgba(204, 0, 0, 0.3);
+        }
+        
         .alert {
             padding: 1rem;
             margin-bottom: 1rem;
@@ -1187,7 +1322,145 @@ $currentConfig = $configManager->getConfig();
                 gap: 1rem;
             }
         }
+        
+        /* Card-based Administrative Areas */
+        .cards-container {
+            width: 100%;
+        }
+        
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .area-card {
+            position: relative;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            background-color: var(--input-bg);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            overflow: hidden;
+        }
+        
+        .area-card:hover {
+            border-color: var(--accent-color);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .area-card.selected {
+            border-color: var(--accent-color);
+            background-color: rgba(147, 197, 253, 0.1);
+            box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.2);
+        }
+        
+        .area-checkbox {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--accent-color);
+        }
+        
+        .area-label {
+            display: flex;
+            align-items: center;
+            padding: 16px 50px 16px 16px;
+            cursor: pointer;
+            height: 100%;
+            min-height: 70px;
+        }
+        
+        .area-icon {
+            font-size: 28px;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+        
+        .area-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-color);
+            line-height: 1.4;
+        }
+        
+        .area-card.selected .area-text {
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+        
+        .area-card:first-child {
+            grid-column: 1 / -1;
+            background-color: rgba(255, 99, 71, 0.05);
+            border-color: #ff6347;
+        }
+        
+        .area-card:first-child:hover {
+            border-color: #ff4500;
+            background-color: rgba(255, 99, 71, 0.1);
+        }
+        
+        .area-card:first-child.selected {
+            border-color: #ff4500;
+            background-color: rgba(255, 99, 71, 0.15);
+            box-shadow: 0 0 0 3px rgba(255, 99, 71, 0.2);
+        }
+        
+        .area-card:first-child .area-text {
+            font-style: italic;
+            color: #ff4500;
+        }
+        
+        .clear-all-btn {
+            padding: 8px 16px;
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        
+        .clear-all-btn:hover {
+            background-color: var(--button-hover-bg);
+            transform: translateY(-1px);
+        }
+        
+        @media (max-width: 768px) {
+            .cards-grid {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+            
+            .area-label {
+                padding: 12px 40px 12px 12px;
+                min-height: 60px;
+            }
+            
+            .area-icon {
+                font-size: 24px;
+                margin-right: 8px;
+            }
+            
+            .area-text {
+                font-size: 13px;
+            }
+        }
     </style>
+    
+    <!-- Leaflet CSS for OpenStreetMap -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 </head>
 <body>
     <div class="container">
@@ -1360,7 +1633,7 @@ $currentConfig = $configManager->getConfig();
 
     <script>
         let currentLanguage = 'en';
-        let currentConfigs = <?php echo json_encode($currentConfig); ?>;
+        let currentConfigs = <?php echo json_encode($currentConfig ?: []); ?>;
         let selectedExtension = null;
         let currentExtensionConfig = null;
         
@@ -1382,7 +1655,9 @@ $currentConfig = $configManager->getConfig();
             geocodingApiVersion: 1,
             initialMessageSound: '',
             redirectToOperator: false,
-            autoCallCentersMode: 3
+            autoCallCentersMode: 3,
+            bounds: null,
+            centerBias: null
         };
         
         const translations = {
@@ -1405,6 +1680,8 @@ $currentConfig = $configManager->getConfig();
                 'initialMessageSound': 'Initial Message Sound',
                 'redirectToOperator': 'Redirect To Operator',
                 'autoCallCentersMode': 'Auto Call Centers Mode',
+                'bounds': 'Geographic Bounds',
+                'centerBias': 'Center Bias',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -1423,6 +1700,8 @@ $currentConfig = $configManager->getConfig();
                 'initialMessageSound_tooltip': 'Sound file name to play before welcome message',
                 'redirectToOperator_tooltip': 'Automatically redirect to operator after initial message',
                 'autoCallCentersMode_tooltip': 'Call center mode: 0=All disabled (redirect to operator), 1=ASAP calls only, 2=Reservations only, 3=All enabled',
+                'bounds_tooltip': 'Set geographic bounds for post-processing validation. Results outside bounds will be rejected. Leave empty to accept all areas.',
+                'centerBias_tooltip': 'Set center point and radius to bias API search results. Enter coordinates and radius in meters.',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -1495,6 +1774,8 @@ $currentConfig = $configManager->getConfig();
                 'initialMessageSound': 'Ήχος Αρχικού Μηνύματος',
                 'redirectToOperator': 'Ανακατεύθυνση σε Χειριστή',
                 'autoCallCentersMode': 'Λειτουργία Αυτόματου Call Center',
+                'bounds': 'Γεωγραφικά Όρια',
+                'centerBias': 'Κεντρική Προκατάληψη',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -1513,6 +1794,8 @@ $currentConfig = $configManager->getConfig();
                 'initialMessageSound_tooltip': 'Όνομα αρχείου ήχου που θα παιχτεί πριν το μήνυμα καλωσορίσματος',
                 'redirectToOperator_tooltip': 'Αυτόματη ανακατεύθυνση σε χειριστή μετά το αρχικό μήνυμα',
                 'autoCallCentersMode_tooltip': 'Λειτουργία call center: 0=Όλα απενεργοποιημένα (ανακατεύθυνση σε χειριστή), 1=Μόνο άμεσες κλήσεις, 2=Μόνο κρατήσεις, 3=Όλα ενεργοποιημένα',
+                'bounds_tooltip': 'Ορίστε γεωγραφικά όρια για επικύρωση αποτελεσμάτων. Αποτελέσματα εκτός ορίων θα απορρίπτονται. Αφήστε κενό για αποδοχή όλων των περιοχών.',
+                'centerBias_tooltip': 'Ορίστε κεντρικό σημείο και ακτίνα για προκατάληψη αποτελεσμάτων API. Εισάγετε συντεταγμένες και ακτίνα σε μέτρα.',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',
@@ -1728,6 +2011,7 @@ $currentConfig = $configManager->getConfig();
         function createFormField(key, value) {
             const formGroup = document.createElement('div');
             formGroup.className = 'form-group';
+            formGroup.setAttribute('data-key', key);
             
             // Check if this key was missing from the original config
             const originalConfig = currentConfigs[selectedExtension];
@@ -1766,6 +2050,454 @@ $currentConfig = $configManager->getConfig();
                 select.value = value;
                 select.onchange = () => updateConfigValue(key, fieldType === 'number' ? parseInt(select.value) : select.value);
                 return select;
+            } else if (fieldType === 'bounds') {
+                const container = document.createElement('div');
+                container.className = 'bounds-container';
+                
+                // Create map container
+                const mapContainer = document.createElement('div');
+                mapContainer.id = 'bounds-map-' + key;
+                mapContainer.style.height = '400px';
+                mapContainer.style.width = '100%';
+                mapContainer.style.border = '2px solid #dee2e6';
+                mapContainer.style.borderRadius = '8px';
+                mapContainer.style.marginBottom = '15px';
+                
+                // Create bounds display
+                const boundsDisplay = document.createElement('div');
+                boundsDisplay.className = 'bounds-display';
+                
+                const coordsText = document.createElement('div');
+                coordsText.className = 'bounds-coords';
+                coordsText.style.fontFamily = 'monospace';
+                coordsText.style.padding = '10px';
+                coordsText.style.backgroundColor = '#f8f9fa';
+                coordsText.style.border = '1px solid #dee2e6';
+                coordsText.style.borderRadius = '4px';
+                coordsText.style.marginBottom = '10px';
+                
+                const updateCoordsDisplay = (bounds) => {
+                    if (bounds && bounds.north) {
+                        coordsText.innerHTML = '📍 <strong>Geographic Bounds:</strong><br>' +
+                            'North: ' + bounds.north.toFixed(6) + ' | South: ' + bounds.south.toFixed(6) + '<br>' +
+                            'East: ' + bounds.east.toFixed(6) + ' | West: ' + bounds.west.toFixed(6);
+                    } else {
+                        coordsText.innerHTML = '<em>🌍 No bounds set - searches all areas</em>';
+                    }
+                };
+                
+                updateCoordsDisplay(value);
+                
+                // Add map instructions
+                const mapInstructions = document.createElement('div');
+                mapInstructions.style.padding = '10px';
+                mapInstructions.style.backgroundColor = '#e3f2fd';
+                mapInstructions.style.border = '1px solid #90caf9';
+                mapInstructions.style.borderRadius = '4px';
+                mapInstructions.style.marginBottom = '10px';
+                mapInstructions.innerHTML = '🗺️ <strong>Map Instructions:</strong> Click and drag to draw a rectangle on the map to set geographic bounds';
+                
+                // Buttons for preset bounds
+                const presetsContainer = document.createElement('div');
+                presetsContainer.className = 'bounds-presets';
+                presetsContainer.style.marginBottom = '10px';
+                
+                const createPresetButton = (label, bounds) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-primary btn-sm';
+                    btn.style.marginRight = '5px';
+                    btn.style.marginBottom = '5px';
+                    btn.textContent = label;
+                    btn.onclick = () => {
+                        updateConfigValue(key, bounds);
+                        updateCoordsDisplay(bounds);
+                        // Update manual input fields
+                        const inputs = manualContainer.querySelectorAll('input[type="number"]');
+                        if (inputs.length === 4 && bounds) {
+                            inputs[0].value = bounds.north;
+                            inputs[1].value = bounds.south;
+                            inputs[2].value = bounds.east;
+                            inputs[3].value = bounds.west;
+                        }
+                        // Update map rectangle
+                        if (window['boundsMap_' + key]) {
+                            window['boundsMap_' + key].setRectangle(bounds);
+                        }
+                    };
+                    return btn;
+                };
+                
+                // Attica bounds (Athens region)
+                const atticaBounds = {
+                    north: 38.35,
+                    south: 37.70, 
+                    east: 24.15,
+                    west: 23.25
+                };
+                
+                // Thessaloniki bounds (Central Macedonia)
+                const thessalonikiBounds = {
+                    north: 40.85,
+                    south: 40.45,
+                    east: 23.25,
+                    west: 22.65
+                };
+                
+                presetsContainer.appendChild(createPresetButton('🏛️ Set Attica Bounds', atticaBounds));
+                presetsContainer.appendChild(createPresetButton('🌆 Set Thessaloniki Bounds', thessalonikiBounds));
+                
+                const clearBtn = document.createElement('button');
+                clearBtn.type = 'button';
+                clearBtn.className = 'btn btn-outline-secondary btn-sm';
+                clearBtn.textContent = '🚫 Clear Bounds';
+                clearBtn.onclick = () => {
+                    updateConfigValue(key, null);
+                    updateCoordsDisplay(null);
+                    // Clear manual input fields
+                    const inputs = manualContainer.querySelectorAll('input[type="number"]');
+                    inputs.forEach(input => input.value = '');
+                    // Clear map rectangle
+                    if (window['boundsMap_' + key]) {
+                        window['boundsMap_' + key].clearRectangle();
+                    }
+                };
+                
+                presetsContainer.appendChild(clearBtn);
+                
+                // Manual input fields
+                const manualContainer = document.createElement('div');
+                manualContainer.className = 'bounds-manual';
+                manualContainer.style.marginTop = '15px';
+                manualContainer.style.padding = '10px';
+                manualContainer.style.border = '1px solid #dee2e6';
+                manualContainer.style.borderRadius = '4px';
+                manualContainer.style.backgroundColor = '#fafafa';
+                
+                const manualTitle = document.createElement('h6');
+                manualTitle.textContent = '✏️ Manual Bounds Entry';
+                manualTitle.style.marginBottom = '10px';
+                
+                const coordsGrid = document.createElement('div');
+                coordsGrid.style.display = 'grid';
+                coordsGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+                coordsGrid.style.gap = '10px';
+                
+                const createCoordInput = (label, field) => {
+                    const wrapper = document.createElement('div');
+                    const labelEl = document.createElement('label');
+                    labelEl.textContent = label;
+                    labelEl.style.fontSize = '12px';
+                    labelEl.style.fontWeight = 'bold';
+                    
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.step = '0.000001';
+                    input.className = 'form-input';
+                    input.style.fontSize = '12px';
+                    input.value = value && value[field] ? value[field] : '';
+                    input.placeholder = `${label} coordinate`;
+                    
+                    input.onchange = () => {
+                        // Get current bounds from config
+                        const currentBounds = currentConfigs[selectedExtension][key] || {};
+                        
+                        if (input.value === '') {
+                            // If clearing a field, set entire bounds to null
+                            updateConfigValue(key, null);
+                            updateCoordsDisplay(null);
+                            // Clear other inputs
+                            const otherInputs = manualContainer.querySelectorAll('input[type="number"]');
+                            otherInputs.forEach(inp => {
+                                if (inp !== input) inp.value = '';
+                            });
+                        } else {
+                            // Update the specific coordinate
+                            const newBounds = { ...currentBounds };
+                            newBounds[field] = parseFloat(input.value);
+                            
+                            // Only update if all 4 coordinates are filled
+                            if (newBounds.north !== undefined && newBounds.south !== undefined && 
+                                newBounds.east !== undefined && newBounds.west !== undefined) {
+                                updateConfigValue(key, newBounds);
+                                updateCoordsDisplay(newBounds);
+                            }
+                        }
+                    };
+                    
+                    wrapper.appendChild(labelEl);
+                    wrapper.appendChild(input);
+                    return wrapper;
+                };
+                
+                coordsGrid.appendChild(createCoordInput('North', 'north'));
+                coordsGrid.appendChild(createCoordInput('South', 'south'));
+                coordsGrid.appendChild(createCoordInput('East', 'east'));
+                coordsGrid.appendChild(createCoordInput('West', 'west'));
+                
+                manualContainer.appendChild(manualTitle);
+                manualContainer.appendChild(coordsGrid);
+                
+                boundsDisplay.appendChild(coordsText);
+                
+                // Assemble the container
+                container.appendChild(mapInstructions);
+                container.appendChild(mapContainer);
+                container.appendChild(boundsDisplay);
+                container.appendChild(presetsContainer);
+                container.appendChild(manualContainer);
+                
+                // Initialize map after DOM is ready
+                setTimeout(() => {
+                    initializeBoundsMap(mapContainer.id, key, value, updateCoordsDisplay, manualContainer);
+                }, 100);
+                
+                return container;
+            } else if (fieldType === 'centerBias') {
+                const container = document.createElement('div');
+                container.className = 'center-bias-container';
+                
+                // Create display
+                const display = document.createElement('div');
+                display.className = 'center-bias-display';
+                display.style.fontFamily = 'monospace';
+                display.style.padding = '10px';
+                display.style.backgroundColor = '#f8f9fa';
+                display.style.border = '1px solid #dee2e6';
+                display.style.borderRadius = '4px';
+                display.style.marginBottom = '15px';
+                
+                const updateCoordsDisplay = (centerBias) => {
+                    if (centerBias && centerBias.lat) {
+                        display.innerHTML = '🎯 <strong>Center Bias:</strong><br>' +
+                            'Latitude: ' + centerBias.lat.toFixed(6) + ' | Longitude: ' + centerBias.lng.toFixed(6) + '<br>' +
+                            'Radius: ' + centerBias.radius + ' meters';
+                    } else {
+                        display.innerHTML = '<em>🌐 No center bias - searches globally</em>';
+                    }
+                };
+                
+                updateCoordsDisplay(value);
+                
+                // Preset buttons
+                const presetsContainer = document.createElement('div');
+                presetsContainer.style.marginBottom = '15px';
+                
+                const createPresetButton = (label, centerBias) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-primary btn-sm';
+                    btn.style.marginRight = '5px';
+                    btn.style.marginBottom = '5px';
+                    btn.textContent = label;
+                    btn.onclick = () => {
+                        updateConfigValue(key, centerBias);
+                        updateCoordsDisplay(centerBias);
+                        // Update manual inputs
+                        const inputs = manualContainer.querySelectorAll('input[type="number"]');
+                        if (inputs.length === 3 && centerBias) {
+                            inputs[0].value = centerBias.lat;
+                            inputs[1].value = centerBias.lng;
+                            inputs[2].value = centerBias.radius;
+                        }
+                        // Update map if available
+                        if (window.centerBiasMaps && window.centerBiasMaps[key]) {
+                            window.centerBiasMaps[key].updateFromData(centerBias);
+                        }
+                    };
+                    return btn;
+                };
+                
+                // Athens center (Syntagma Square)
+                const athensCenter = { lat: 37.9755, lng: 23.7348, radius: 25000 };
+                // Thessaloniki center (White Tower)  
+                const thessalonikiCenter = { lat: 40.6264, lng: 22.9481, radius: 15000 };
+                
+                presetsContainer.appendChild(createPresetButton('🏛️ Athens Center (25km)', athensCenter));
+                presetsContainer.appendChild(createPresetButton('🌆 Thessaloniki Center (15km)', thessalonikiCenter));
+                
+                const clearBtn = document.createElement('button');
+                clearBtn.type = 'button';
+                clearBtn.className = 'btn btn-outline-secondary btn-sm';
+                clearBtn.textContent = '🚫 Clear Center Bias';
+                clearBtn.onclick = () => {
+                    updateConfigValue(key, null);
+                    updateCoordsDisplay(null);
+                    const inputs = manualContainer.querySelectorAll('input[type="number"]');
+                    inputs.forEach(input => input.value = '');
+                    // Update map if available
+                    if (window.centerBiasMaps && window.centerBiasMaps[key]) {
+                        window.centerBiasMaps[key].updateFromData(null);
+                    }
+                };
+                
+                presetsContainer.appendChild(clearBtn);
+                
+                // Map container
+                const mapContainer = document.createElement('div');
+                mapContainer.className = 'center-bias-map';
+                mapContainer.id = 'centerBiasMap_' + key + '_' + Date.now();
+                mapContainer.style.height = '350px';
+                mapContainer.style.border = '1px solid #dee2e6';
+                mapContainer.style.borderRadius = '4px';
+                mapContainer.style.marginBottom = '15px';
+                
+                // Manual input fields
+                const manualContainer = document.createElement('div');
+                manualContainer.className = 'center-bias-manual';
+                manualContainer.style.padding = '10px';
+                manualContainer.style.border = '1px solid #dee2e6';
+                manualContainer.style.borderRadius = '4px';
+                manualContainer.style.backgroundColor = '#fafafa';
+                
+                const manualTitle = document.createElement('h6');
+                manualTitle.textContent = '✏️ Manual Center Bias Entry';
+                manualTitle.style.marginBottom = '10px';
+                
+                const coordsGrid = document.createElement('div');
+                coordsGrid.style.display = 'grid';
+                coordsGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+                coordsGrid.style.gap = '10px';
+                
+                const createCoordInput = (label, field) => {
+                    const wrapper = document.createElement('div');
+                    const labelEl = document.createElement('label');
+                    labelEl.textContent = label;
+                    labelEl.style.fontSize = '12px';
+                    labelEl.style.fontWeight = 'bold';
+                    
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    if (field === 'radius') {
+                        input.step = '1000';
+                        input.placeholder = 'meters';
+                    } else {
+                        input.step = '0.000001';
+                        input.placeholder = 'decimal degrees';
+                    }
+                    input.className = 'form-input';
+                    input.style.fontSize = '12px';
+                    input.value = value && value[field] ? value[field] : '';
+                    
+                    input.onchange = () => {
+                        const currentCenterBias = currentConfigs[selectedExtension][key] || {};
+                        
+                        if (input.value === '') {
+                            updateConfigValue(key, null);
+                            updateCoordsDisplay(null);
+                            const otherInputs = manualContainer.querySelectorAll('input[type="number"]');
+                            otherInputs.forEach(inp => {
+                                if (inp !== input) inp.value = '';
+                            });
+                            // Update map
+                            if (window.centerBiasMaps && window.centerBiasMaps[key]) {
+                                window.centerBiasMaps[key].updateFromData(null);
+                            }
+                        } else {
+                            const newCenterBias = { ...currentCenterBias };
+                            newCenterBias[field] = field === 'radius' ? parseInt(input.value) : parseFloat(input.value);
+                            
+                            if (newCenterBias.lat !== undefined && newCenterBias.lng !== undefined && 
+                                newCenterBias.radius !== undefined) {
+                                updateConfigValue(key, newCenterBias);
+                                updateCoordsDisplay(newCenterBias);
+                                // Update map - use more efficient updateRadius if only radius changed
+                                if (window.centerBiasMaps && window.centerBiasMaps[key]) {
+                                    if (field === 'radius' && currentCenterBias.lat === newCenterBias.lat && 
+                                        currentCenterBias.lng === newCenterBias.lng) {
+                                        window.centerBiasMaps[key].updateRadius(newCenterBias.radius);
+                                    } else {
+                                        window.centerBiasMaps[key].updateFromData(newCenterBias);
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    
+                    wrapper.appendChild(labelEl);
+                    wrapper.appendChild(input);
+                    return wrapper;
+                };
+                
+                coordsGrid.appendChild(createCoordInput('Latitude', 'lat'));
+                coordsGrid.appendChild(createCoordInput('Longitude', 'lng'));
+                coordsGrid.appendChild(createCoordInput('Radius (m)', 'radius'));
+                
+                manualContainer.appendChild(manualTitle);
+                manualContainer.appendChild(coordsGrid);
+                
+                container.appendChild(display);
+                container.appendChild(presetsContainer);
+                container.appendChild(mapContainer);
+                container.appendChild(manualContainer);
+                
+                // Initialize map after DOM is ready
+                setTimeout(() => {
+                    initializeCenterBiasMap(mapContainer.id, key, value, updateCoordsDisplay, manualContainer);
+                }, 100);
+                
+                return container;
+            } else if (fieldType === 'array') {
+                const container = document.createElement('div');
+                container.className = 'tags-container';
+                
+                const tagsWrapper = document.createElement('div');
+                tagsWrapper.className = 'tags-wrapper';
+                
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = inputClass + ' tag-input';
+                input.placeholder = 'Enter area name and press Enter (e.g., Attica)';
+                
+                // Add missing key styling if needed
+                if (isMissingKey) {
+                    tagsWrapper.classList.add('missing-key');
+                }
+                
+                // Add tag on Enter
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const tagValue = input.value.trim();
+                        const currentValue = currentExtensionConfig[key] || [];
+                        if (tagValue && !currentValue.includes(tagValue)) {
+                            const newValue = [...currentValue, tagValue];
+                            updateConfigValue(key, newValue);
+                            input.value = '';
+                        }
+                    }
+                });
+                
+                // Add input to wrapper first
+                tagsWrapper.appendChild(input);
+                
+                // Render existing tags
+                const renderTags = () => {
+                    const existingTags = tagsWrapper.querySelectorAll('.tag');
+                    existingTags.forEach(tag => tag.remove());
+                    
+                    const currentValue = currentExtensionConfig[key] || [];
+                    if (Array.isArray(currentValue)) {
+                        currentValue.forEach((tag, index) => {
+                            const tagElement = document.createElement('span');
+                            tagElement.className = 'tag';
+                            tagElement.innerHTML = `
+                                ${tag}
+                                <button type="button" class="tag-remove" onclick="removeTag('${key}', ${index})">×</button>
+                            `;
+                            tagsWrapper.insertBefore(tagElement, input);
+                        });
+                    }
+                };
+                
+                // Now render tags
+                renderTags();
+                container.appendChild(tagsWrapper);
+                
+                // Store render function for external use
+                container.renderTags = renderTags;
+                
+                return container;
             } else if (key === 'soundPath') {
                 // Special handling for soundPath - add sound browser button
                 const container = document.createElement('div');
@@ -1852,6 +2584,8 @@ $currentConfig = $configManager->getConfig();
             if (key === 'callbackMode') return 'select';
             if (key === 'geocodingApiVersion') return 'select';
             if (key === 'autoCallCentersMode') return 'select';
+            if (key === 'bounds') return 'bounds';
+            if (key === 'centerBias') return 'centerBias';
             if (typeof value === 'number') return 'number';
             return 'text';
         }
@@ -1868,6 +2602,10 @@ $currentConfig = $configManager->getConfig();
                     return `<option value="1">1 - ${getTranslation('select_geocoding_api')}</option><option value="2">2 - ${getTranslation('select_places_api')}</option>`;
                 case 'autoCallCentersMode':
                     return `<option value="0">0 - ${getTranslation('select_all_disabled_operator')}</option><option value="1">1 - ${getTranslation('select_asap_calls_only')}</option><option value="2">2 - ${getTranslation('select_reservations_only')}</option><option value="3">3 - ${getTranslation('select_all_enabled')}</option>`;
+                case 'bounds':
+                    return ''; // Bounds will be handled by map interface
+                case 'centerBias':
+                    return ''; // CenterBias will be handled by custom interface
                 default:
                     return '';
             }
@@ -1875,6 +2613,20 @@ $currentConfig = $configManager->getConfig();
         
         function updateConfigValue(key, value) {
             currentExtensionConfig[key] = value;
+            // Re-render tags if this is an array field
+            const container = document.querySelector(`[data-key="${key}"] .tags-container`);
+            if (container && container.renderTags) {
+                container.renderTags();
+            }
+        }
+        
+        function removeTag(key, index) {
+            const currentValue = currentExtensionConfig[key] || [];
+            if (Array.isArray(currentValue) && index >= 0 && index < currentValue.length) {
+                const newValue = [...currentValue];
+                newValue.splice(index, 1);
+                updateConfigValue(key, newValue);
+            }
         }
         
         function saveConfiguration() {
@@ -1970,7 +2722,9 @@ $currentConfig = $configManager->getConfig();
                 geocodingApiVersion: 1,
                 initialMessageSound: "",
                 redirectToOperator: false,
-                autoCallCentersMode: 3
+                autoCallCentersMode: 3,
+                bounds: null,
+            centerBias: null
             };
             
             fetch('config_manager.php', {
@@ -2392,6 +3146,352 @@ $currentConfig = $configManager->getConfig();
                 uploadButton.textContent = originalText;
                 uploadButton.disabled = false;
             });
+        }
+        
+        // Map initialization function for bounds
+        function initializeBoundsMap(mapId, key, initialBounds, updateCoordsDisplay, manualContainer) {
+            // Initialize the map centered on Greece
+            const map = L.map(mapId).setView([38.5, 23.7], 6);
+            
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(map);
+            
+            let currentRectangle = null;
+            
+            // Function to update bounds from rectangle
+            const updateBoundsFromRectangle = (bounds) => {
+                const newBounds = {
+                    north: bounds.getNorth(),
+                    south: bounds.getSouth(),
+                    east: bounds.getEast(),
+                    west: bounds.getWest()
+                };
+                
+                // Update config value
+                updateConfigValue(key, newBounds);
+                updateCoordsDisplay(newBounds);
+                
+                // Update manual input fields
+                const inputs = manualContainer.querySelectorAll('input[type="number"]');
+                if (inputs.length === 4) {
+                    inputs[0].value = newBounds.north.toFixed(6);
+                    inputs[1].value = newBounds.south.toFixed(6);
+                    inputs[2].value = newBounds.east.toFixed(6);
+                    inputs[3].value = newBounds.west.toFixed(6);
+                }
+            };
+            
+            // If there are initial bounds, draw them
+            if (initialBounds && initialBounds.north) {
+                const bounds = [[initialBounds.south, initialBounds.west], [initialBounds.north, initialBounds.east]];
+                currentRectangle = L.rectangle(bounds, {
+                    color: '#2196F3',
+                    weight: 2,
+                    fillOpacity: 0.2
+                }).addTo(map);
+                
+                map.fitBounds(bounds);
+            }
+            
+            // Add drawing controls
+            const drawnItems = new L.FeatureGroup();
+            map.addLayer(drawnItems);
+            
+            const drawControl = new L.Control.Draw({
+                draw: {
+                    polygon: false,
+                    polyline: false,
+                    circle: false,
+                    marker: false,
+                    circlemarker: false,
+                    rectangle: {
+                        shapeOptions: {
+                            color: '#2196F3',
+                            weight: 2,
+                            fillOpacity: 0.2
+                        }
+                    }
+                },
+                edit: {
+                    featureGroup: drawnItems,
+                    remove: true
+                }
+            });
+            map.addControl(drawControl);
+            
+            // Handle rectangle creation
+            map.on(L.Draw.Event.CREATED, function(e) {
+                const layer = e.layer;
+                
+                // Remove existing rectangle
+                if (currentRectangle) {
+                    map.removeLayer(currentRectangle);
+                }
+                
+                currentRectangle = layer;
+                drawnItems.addLayer(layer);
+                
+                updateBoundsFromRectangle(layer.getBounds());
+            });
+            
+            // Handle rectangle editing
+            map.on(L.Draw.Event.EDITED, function(e) {
+                e.layers.eachLayer(function(layer) {
+                    updateBoundsFromRectangle(layer.getBounds());
+                });
+            });
+            
+            // Handle rectangle deletion
+            map.on(L.Draw.Event.DELETED, function(e) {
+                currentRectangle = null;
+                updateConfigValue(key, null);
+                updateCoordsDisplay(null);
+                
+                // Clear manual inputs
+                const inputs = manualContainer.querySelectorAll('input[type="number"]');
+                inputs.forEach(input => input.value = '');
+            });
+            
+            // Store map reference for preset buttons
+            window['boundsMap_' + key] = {
+                map: map,
+                setRectangle: function(bounds) {
+                    // Remove existing rectangle
+                    if (currentRectangle) {
+                        map.removeLayer(currentRectangle);
+                        drawnItems.removeLayer(currentRectangle);
+                    }
+                    
+                    // Create new rectangle
+                    const leafletBounds = [[bounds.south, bounds.west], [bounds.north, bounds.east]];
+                    currentRectangle = L.rectangle(leafletBounds, {
+                        color: '#2196F3',
+                        weight: 2,
+                        fillOpacity: 0.2
+                    }).addTo(map);
+                    
+                    drawnItems.addLayer(currentRectangle);
+                    map.fitBounds(leafletBounds);
+                },
+                clearRectangle: function() {
+                    if (currentRectangle) {
+                        map.removeLayer(currentRectangle);
+                        drawnItems.removeLayer(currentRectangle);
+                        currentRectangle = null;
+                    }
+                }
+            };
+        }
+        
+        function initializeCenterBiasMap(mapId, key, initialCenterBias, updateCoordsDisplay, manualContainer) {
+            // Initialize the map centered on Greece
+            const map = L.map(mapId).setView([38.5, 23.7], 6);
+            
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(map);
+            
+            let currentMarker = null;
+            let currentCircle = null;
+            let isDrawing = false;
+            
+            // Function to update centerBias from marker and circle
+            const updateCenterBiasFromMap = (latlng, radius) => {
+                const newCenterBias = {
+                    lat: latlng.lat,
+                    lng: latlng.lng,
+                    radius: radius
+                };
+                
+                // Update config value
+                updateConfigValue(key, newCenterBias);
+                updateCoordsDisplay(newCenterBias);
+                
+                // Update manual input fields
+                const inputs = manualContainer.querySelectorAll('input[type="number"]');
+                if (inputs.length === 3) {
+                    inputs[0].value = newCenterBias.lat.toFixed(6);
+                    inputs[1].value = newCenterBias.lng.toFixed(6);
+                    inputs[2].value = newCenterBias.radius;
+                }
+            };
+            
+            // Function to create/update marker and circle
+            const createCenterBias = (latlng, radius) => {
+                // Remove existing marker and circle
+                if (currentMarker) {
+                    map.removeLayer(currentMarker);
+                }
+                if (currentCircle) {
+                    map.removeLayer(currentCircle);
+                }
+                
+                // Create marker
+                currentMarker = L.marker(latlng, {
+                    draggable: true,
+                    icon: L.divIcon({
+                        className: 'center-bias-marker',
+                        html: '<div style="background-color: #ff6b6b; border: 2px solid white; border-radius: 50%; width: 16px; height: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    })
+                }).addTo(map);
+                
+                // Create circle
+                currentCircle = L.circle(latlng, {
+                    radius: radius,
+                    color: '#ff6b6b',
+                    weight: 2,
+                    fillOpacity: 0.1
+                }).addTo(map);
+                
+                // Make marker draggable and update circle on drag
+                currentMarker.on('dragend', function(e) {
+                    const newLatLng = e.target.getLatLng();
+                    const currentRadius = currentCircle.getRadius();
+                    currentCircle.setLatLng(newLatLng);
+                    updateCenterBiasFromMap(newLatLng, currentRadius);
+                });
+                
+                // Fit map to circle
+                map.fitBounds(currentCircle.getBounds());
+            };
+            
+            // If there's initial centerBias, draw it
+            if (initialCenterBias && initialCenterBias.lat) {
+                const latlng = L.latLng(initialCenterBias.lat, initialCenterBias.lng);
+                createCenterBias(latlng, initialCenterBias.radius);
+            }
+            
+            // Click to set center point
+            map.on('click', function(e) {
+                if (isDrawing) return;
+                
+                const defaultRadius = 10000; // 10km default
+                createCenterBias(e.latlng, defaultRadius);
+                updateCenterBiasFromMap(e.latlng, defaultRadius);
+            });
+            
+            // Store map reference and helper functions
+            if (!window.centerBiasMaps) {
+                window.centerBiasMaps = {};
+            }
+            
+            window.centerBiasMaps[key] = {
+                map: map,
+                slider: null,
+                valueSpan: null,
+                updateFromData: function(centerBias) {
+                    if (centerBias && centerBias.lat) {
+                        const latlng = L.latLng(centerBias.lat, centerBias.lng);
+                        createCenterBias(latlng, centerBias.radius);
+                        // Update slider and value display
+                        if (this.slider) {
+                            this.slider.value = centerBias.radius;
+                        }
+                        if (this.valueSpan) {
+                            this.valueSpan.textContent = centerBias.radius + 'm';
+                        }
+                    } else {
+                        // Clear marker and circle
+                        if (currentMarker) {
+                            map.removeLayer(currentMarker);
+                            currentMarker = null;
+                        }
+                        if (currentCircle) {
+                            map.removeLayer(currentCircle);
+                            currentCircle = null;
+                        }
+                        // Reset slider to default
+                        if (this.slider) {
+                            this.slider.value = 10000;
+                        }
+                        if (this.valueSpan) {
+                            this.valueSpan.textContent = '10000m';
+                        }
+                    }
+                },
+                clear: function() {
+                    if (currentMarker) {
+                        map.removeLayer(currentMarker);
+                        currentMarker = null;
+                    }
+                    if (currentCircle) {
+                        map.removeLayer(currentCircle);
+                        currentCircle = null;
+                    }
+                    // Reset slider to default
+                    if (this.slider) {
+                        this.slider.value = 10000;
+                    }
+                    if (this.valueSpan) {
+                        this.valueSpan.textContent = '10000m';
+                    }
+                },
+                updateRadius: function(newRadius) {
+                    if (currentCircle) {
+                        currentCircle.setRadius(newRadius);
+                        map.fitBounds(currentCircle.getBounds());
+                    }
+                    if (this.slider) {
+                        this.slider.value = newRadius;
+                    }
+                    if (this.valueSpan) {
+                        this.valueSpan.textContent = newRadius + 'm';
+                    }
+                }
+            };
+            
+            // Add custom controls
+            const customControl = L.control({ position: 'topright' });
+            customControl.onAdd = function(map) {
+                const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+                div.style.backgroundColor = 'white';
+                div.style.padding = '5px';
+                div.style.fontSize = '12px';
+                div.innerHTML = '<strong>🎯 Center Bias</strong><br>Click map to set center<br>Drag marker to move';
+                return div;
+            };
+            customControl.addTo(map);
+            
+            // Radius adjustment control
+            const radiusControl = L.control({ position: 'bottomright' });
+            radiusControl.onAdd = function(map) {
+                const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+                div.style.backgroundColor = 'white';
+                div.style.padding = '8px';
+                div.innerHTML = `
+                    <label style="font-size: 12px; font-weight: bold;">Radius (m):</label><br>
+                    <input type="range" id="radiusSlider_${key}" min="1000" max="50000" step="1000" value="${initialCenterBias?.radius || 10000}" style="width: 120px;">
+                    <br><span id="radiusValue_${key}" style="font-size: 11px;">${initialCenterBias?.radius || 10000}m</span>
+                `;
+                
+                const slider = div.querySelector(`#radiusSlider_${key}`);
+                const valueSpan = div.querySelector(`#radiusValue_${key}`);
+                
+                // Store references for external updates
+                window.centerBiasMaps[key].slider = slider;
+                window.centerBiasMaps[key].valueSpan = valueSpan;
+                
+                slider.addEventListener('input', function() {
+                    const newRadius = parseInt(this.value);
+                    valueSpan.textContent = newRadius + 'm';
+                    
+                    if (currentMarker && currentCircle) {
+                        currentCircle.setRadius(newRadius);
+                        map.fitBounds(currentCircle.getBounds());
+                        updateCenterBiasFromMap(currentMarker.getLatLng(), newRadius);
+                    }
+                });
+                
+                return div;
+            };
+            radiusControl.addTo(map);
         }
     </script>
 </body>
