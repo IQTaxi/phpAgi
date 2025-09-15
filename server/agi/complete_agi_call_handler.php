@@ -1142,12 +1142,15 @@ class AGICallHandler
     {
         $this->trackStep('operator_transfer');
         $this->logMessage("Redirecting to operator: {$this->phone_to_call}");
-        
+
+        // Play operator sound before transferring
+        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('operator') . '"');
+
         // Ensure call outcome is set if not already
         if ($this->analytics_data['call_outcome'] === 'in_progress') {
             $this->setCallOutcome('operator_transfer', 'Call transferred to operator');
         }
-        
+
         $this->finalizeCall();
         $this->agiCommand("EXEC \"Dial\" \"{$this->phone_to_call},20\"");
         $this->agiCommand('HANGUP');
