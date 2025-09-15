@@ -1595,10 +1595,14 @@ class AGICallHandler
 
         $url = "https://maps.googleapis.com/maps/api/geocode/json";
         
+        // Map current language to Google API language code
+        $lang_config = $this->getLanguageConfig();
+        $google_language = $lang_config[$this->current_language]['tts_code'] ?? 'el-GR';
+
         $params_array = [
             "address" => $address,
             "key" => $this->api_key,
-            "language" => "el-GR"
+            "language" => $google_language
         ];
         
         // Add center bias if configured
@@ -1679,7 +1683,7 @@ class AGICallHandler
         
         $data = [
             "textQuery" => $address,
-            "languageCode" => "el",
+            "languageCode" => $this->current_language,
             "regionCode" => "GR",
             "maxResultCount" => 1
         ];
@@ -2035,13 +2039,13 @@ class AGICallHandler
     private function parseDateFromText($text)
     {
         $this->trackDateParsingAPICall();
-        
+
         $url = "https://www.iqtaxi.com/DateRecognizers/api/Recognize/Date";
         $headers = ["Content-Type: application/json"];
         $body = [
             "input" => $text,
             "key" => $this->api_key,
-            "translateFrom" => "en",
+            "translateFrom" => $this->current_language,
             "translateTo" => "en",
             "matchLang" => "en-US"
         ];
