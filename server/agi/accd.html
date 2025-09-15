@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IqTaxi IVR Call Flow Demo</title>
+    <style>
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #f7f9fb;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            color: #1f2937;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            color: white;
+            padding: 32px 24px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        
+        .language-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .language-toggle:hover {
+            background: rgba(255,255,255,0.25);
+            border-color: rgba(255,255,255,0.5);
+            transform: translateY(-2px);
+        }
+        
+        .flow-container {
+            padding: 40px 32px;
+            background: #f7f9fb;
+        }
+        
+        .step {
+            background: white;
+            border: 2px solid #cbd5e1;
+            border-radius: 12px;
+            margin: 24px 0;
+            padding: 28px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+        }
+        
+        .step:hover {
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(59, 130, 246, 0.15);
+        }
+        
+        .step.active {
+            border-color: #1e40af;
+            background: #f0f7ff;
+            box-shadow: 0 4px 20px rgba(30, 64, 175, 0.1);
+        }
+        
+        .step-title {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .step-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 14px;
+            font-weight: 700;
+            font-size: 15px;
+            box-shadow: 0 2px 8px rgba(30, 64, 175, 0.3);
+        }
+        
+        .playback {
+            background: #e0f2fe;
+            border-left: 5px solid #0284c7;
+            padding: 18px;
+            margin: 18px 0;
+            border-radius: 8px;
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+        }
+        
+        .playback-title {
+            font-weight: 700;
+            color: #0c4a6e;
+            margin-bottom: 10px;
+            font-size: 1.05em;
+        }
+        
+        .options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+            margin: 24px 0;
+        }
+        
+        .option {
+            background: white;
+            border: 2px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 18px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            color: #374151;
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+        }
+        
+        .option:hover {
+            border-color: #3b82f6;
+            background: #f0f7ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
+            color: #1e40af;
+        }
+        
+        .condition {
+            background: #fef3c7;
+            border-left: 5px solid #d97706;
+            padding: 18px;
+            margin: 18px 0;
+            border-radius: 8px;
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+            color: #92400e;
+            font-weight: 500;
+        }
+        
+        .arrow {
+            text-align: center;
+            font-size: 1.8em;
+            color: #64748b;
+            margin: 20px 0;
+        }
+        
+        .language-selector {
+            background: #fecaca;
+            border: 2px solid #ef4444;
+            border-radius: 10px;
+            padding: 18px;
+            margin: 18px 0;
+            color: #dc2626;
+        }
+        
+        .config-info {
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 18px 0;
+            font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+            font-size: 13px;
+            border: 2px solid #cbd5e1;
+            color: #475569;
+        }
+        
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+            margin-bottom: 28px;
+            padding: 24px;
+            background: white;
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .legend-color {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            margin-right: 10px;
+            border: 1px solid #cbd5e1;
+        }
+        
+        .api-call {
+            background: #f0fdf4;
+            border-left: 5px solid #22c55e;
+            padding: 18px;
+            margin: 18px 0;
+            border-radius: 8px;
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+            color: #15803d;
+        }
+        
+        .end-state {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            font-weight: 700;
+            margin: 24px 0;
+            box-shadow: 0 4px 20px rgba(34, 197, 94, 0.25);
+        }
+        
+        .error-state {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            font-weight: 700;
+            margin: 24px 0;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.25);
+        }
+        
+        .user-path {
+            background: #f8fafc;
+            border: 2px solid #94a3b8;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px 0;
+        }
+        
+        .path-title {
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 16px;
+            font-size: 1.15em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="language-toggle" onclick="toggleLanguage()">
+                <span id="lang-toggle-text">🇬🇷 Ελληνικά</span>
+            </div>
+            <h1 id="main-title">🚕 IqTaxi IVR Call Flow Demo</h1>
+            <p id="main-subtitle">Interactive demonstration of the complete call handling system</p>
+        </div>
+        
+        <div class="flow-container">
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #e0f2fe;"></div>
+                    <span class="legend-text" data-en="Audio Playback" data-el="Αναπαραγωγή Ήχου">Audio Playback</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: white;"></div>
+                    <span class="legend-text" data-en="User Options" data-el="Επιλογές Χρήστη">User Options</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #fef3c7;"></div>
+                    <span class="legend-text" data-en="System Logic" data-el="Λογική Συστήματος">System Logic</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #f0fdf4;"></div>
+                    <span class="legend-text" data-en="API Calls" data-el="Κλήσεις API">API Calls</span>
+                </div>
+            </div>
+
+            <!-- STEP 1: Anonymous Caller Check -->
+            <div class="step" onclick="toggleStep(this)">
+                <div class="step-title">
+                    <div class="step-icon">1</div>
+                    <span class="step-text" data-en="Anonymous/Invalid Caller Detection" data-el="Εντοπισμός Ανώνυμου/Άκυρου Καλούντος">Anonymous/Invalid Caller Detection</span>
+                </div>
+                
+                <div class="condition">
+                    🚨 <strong class="condition-text" data-en="Critical Security Check - isAnonymousCaller():" data-el="Κρίσιμος Έλεγχος Ασφαλείας - isAnonymousCaller():">Critical Security Check - isAnonymousCaller():</strong><br>
+                    • empty($caller_num) - <span data-en="No caller ID" data-el="Δεν υπάρχει αναγνώριση καλούντος">No caller ID</span><br>
+                    • $caller_num === 'anonymous' - <span data-en="Explicitly anonymous" data-el="Ρητά ανώνυμος">Explicitly anonymous</span><br>
+                    • $caller_num === 'unknown' - <span data-en="Unknown caller" data-el="Άγνωστος καλών">Unknown caller</span><br>
+                    • strlen($caller_num) ≤ 5 - <span data-en="Too short (less than 6 digits)" data-el="Πολύ σύντομο (λιγότερο από 6 ψηφία)">Too short (less than 6 digits)</span><br>
+                    • $caller_num === '' - <span data-en="Empty string" data-el="Κενό string">Empty string</span>
+                </div>
+                
+                <div class="playback">
+                    <div class="playback-title">🔊 <span data-en="Anonymous Caller Message" data-el="Μήνυμα Ανώνυμου Καλούντος">Anonymous Caller Message</span></div>
+                    <strong data-en="Greek:" data-el="Ελληνικά:">Greek:</strong> "Λυπάμαι, δεν μπορούμε να σας εξυπηρετήσουμε με απόκρυψη αριθμού. Σας προωθώ για να μιλήσετε με εκπρόσωπο"<br>
+                    <strong data-en="English:" data-el="Αγγλικά:">English:</strong> "Sorry, we cannot serve you with a hidden number. I am connecting you to speak with a representative."
+                </div>
+                
+                <div class="error-state">
+                    ⚠️ <span data-en="IF ANONYMOUS → PLAY MESSAGE → TRANSFER TO OPERATOR" data-el="ΑΝ ΑΝΩΝΥΜΟΣ → ΑΝΑΠΑΡΑΓΩΓΗ ΜΗΝΥΜΑΤΟΣ → ΜΕΤΑΦΟΡΑ ΣΕ ΧΕΙΡΙΣΤΗ">IF ANONYMOUS → PLAY MESSAGE → TRANSFER TO OPERATOR</span><br>
+                    <span data-en="Call flow ends here for anonymous callers" data-el="Η ροή κλήσης τελειώνει εδώ για ανώνυμους καλούντες">Call flow ends here for anonymous callers</span>
+                </div>
+                
+                <div class="condition">
+                    ✅ <strong data-en="If Valid Caller ID:" data-el="Αν Έγκυρη Αναγνώριση Καλούντος:">If Valid Caller ID:</strong> <span data-en="Continue to configuration check" data-el="Συνέχεια στον έλεγχο διαμόρφωσης">Continue to configuration check</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- STEP 2: Configuration Check -->
+            <div class="step" onclick="toggleStep(this)">
+                <div class="step-title">
+                    <div class="step-icon">2</div>
+                    <span class="step-text" data-en="Call Initiation & Configuration Check" data-el="Έναρξη Κλήσης & Έλεγχος Διαμόρφωσης">Call Initiation & Configuration Check</span>
+                </div>
+                
+                <div class="config-info">
+                    <strong data-en="Configuration Example (Extension 4039):" data-el="Παράδειγμα Διαμόρφωσης (Εσωτερική 4039):">Configuration Example (Extension 4039):</strong><br>
+                    • initialMessageSound: "strike"<br>
+                    • redirectToOperator: false<br>
+                    • defaultLanguage: "el" (<span data-en="Greek" data-el="Ελληνικά">Greek</span>)<br>
+                    • callbackMode: 1<br>
+                    • autoCallCentersMode: 3 (<span data-en="Both ASAP & reservations allowed" data-el="Επιτρέπονται άμεσα & κρατήσεις">Both ASAP & reservations allowed</span>)<br>
+                    • strictDropoffLocation: false<br>
+                    • geocodingApiVersion: 1 (<span data-en="Google Maps Geocoding" data-el="Google Maps Geocoding">Google Maps Geocoding</span>)<br>
+                    • bounds: null (<span data-en="No geographic restrictions" data-el="Χωρίς γεωγραφικούς περιορισμούς">No geographic restrictions</span>)<br>
+                    • centerBias: null (<span data-en="No location bias" data-el="Χωρίς τοποθεσιακή προτίμηση">No location bias</span>)
+                </div>
+                
+                <div class="condition">
+                    ✅ <strong data-en="Check:" data-el="Έλεγχος:">Check:</strong> <span data-en="If initialMessageSound is configured → Play initial message" data-el="Αν έχει ρυθμιστεί initialMessageSound → Αναπαραγωγή αρχικού μηνύματος">If initialMessageSound is configured → Play initial message</span>
+                </div>
+                
+                <div class="condition">
+                    ⚠️ <strong data-en="Check:" data-el="Έλεγχος:">Check:</strong> <span data-en="If redirectToOperator = true → Transfer to operator immediately" data-el="Αν redirectToOperator = true → Μεταφορά σε χειριστή άμεσα">If redirectToOperator = true → Transfer to operator immediately</span>
+                </div>
+                
+                <div class="condition">
+                    🎛️ <strong data-en="autoCallCentersMode Check:" data-el="Έλεγχος autoCallCentersMode:">autoCallCentersMode Check:</strong><br>
+                    • <strong data-en="Mode 0:" data-el="Λειτουργία 0:">Mode 0:</strong> <span data-en="All services disabled → Transfer to operator" data-el="Όλες οι υπηρεσίες απενεργοποιημένες → Μεταφορά σε χειριστή">All services disabled → Transfer to operator</span><br>
+                    • <strong data-en="Mode 1:" data-el="Λειτουργία 1:">Mode 1:</strong> <span data-en="Only ASAP calls allowed (Press 2 → operator)" data-el="Μόνο άμεσες κλήσεις επιτρέπονται (Πάτημα 2 → χειριστής)">Only ASAP calls allowed (Press 2 → operator)</span><br>
+                    • <strong data-en="Mode 2:" data-el="Λειτουργία 2:">Mode 2:</strong> <span data-en="Only reservations allowed (Press 1 → operator)" data-el="Μόνο κρατήσεις επιτρέπονται (Πάτημα 1 → χειριστής)">Only reservations allowed (Press 1 → operator)</span><br>
+                    • <strong data-en="Mode 3:" data-el="Λειτουργία 3:">Mode 3:</strong> <span data-en="Both ASAP & reservations allowed (default)" data-el="Επιτρέπονται άμεσα & κρατήσεις (προεπιλογή)">Both ASAP & reservations allowed (default)</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- STEP 3: Welcome Message -->
+            <div class="step" onclick="toggleStep(this)">
+                <div class="step-title">
+                    <div class="step-icon">3</div>
+                    <span class="step-text" data-en="Welcome Message & Language Selection" data-el="Μήνυμα Καλωσορίσματος & Επιλογή Γλώσσας">Welcome Message & Language Selection</span>
+                </div>
+                
+                <div class="playback">
+                    <div class="playback-title">🔊 <span data-en="Welcome Message (Default: Greek)" data-el="Μήνυμα Καλωσορίσματος (Προεπιλογή: Ελληνικά)">Welcome Message (Default: Greek)</span></div>
+                    <strong data-en="Greek:" data-el="Ελληνικά:">Greek:</strong> "Καλησπέρα, καλώς ήρθατε στο ραδιοταξί IqTaxi. Πατήστε 1 για άμεση διαδρομή, πατήστε 2 για ραντεβού διαδρομής, ή πατήστε 3 για να μιλήσετε με εκπρόσωπο, Press nine for English."<br><br>
+                    <strong data-en="Translation:" data-el="Μετάφραση:">Translation:</strong> <span data-en="Good evening, welcome to taxi service IqTaxi. Press 1 for immediate trip, press 2 for trip reservation, or press 3 to speak with an operator, press 9 for English." data-el="Καλησπέρα, καλώς ήρθατε στην υπηρεσία ταξί IqTaxi. Πατήστε 1 για άμεσο ταξίδι, πατήστε 2 για κράτηση ταξιδιού, ή πατήστε 3 για να μιλήσετε με χειριστή, πατήστε 9 για Αγγλικά.">Good evening, welcome to taxi service IqTaxi. Press 1 for immediate trip, press 2 for trip reservation, or press 3 to speak with an operator, press 9 for English.</span>
+                </div>
+                
+                <div class="options">
+                    <div class="option" onclick="selectOption(this, '1')">
+                        <strong data-en="Press 1" data-el="Πατήστε 1">Press 1</strong><br>
+                        <span data-en="Immediate Trip" data-el="Άμεσο Ταξίδι">Immediate Trip</span>
+                    </div>
+                    <div class="option" onclick="selectOption(this, '2')">
+                        <strong data-en="Press 2" data-el="Πατήστε 2">Press 2</strong><br>
+                        <span data-en="Trip Reservation" data-el="Κράτηση Ταξιδιού">Trip Reservation</span>
+                    </div>
+                    <div class="option" onclick="selectOption(this, '3')">
+                        <strong data-en="Press 3" data-el="Πατήστε 3">Press 3</strong><br>
+                        <span data-en="Speak with Operator" data-el="Ομιλία με Χειριστή">Speak with Operator</span>
+                    </div>
+                    <div class="option" onclick="selectOption(this, '9')">
+                        <strong data-en="Press 9" data-el="Πατήστε 9">Press 9</strong><br>
+                        <span data-en="English Language" data-el="Αγγλική Γλώσσα">English Language</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- STEP 4: User Data Collection -->
+            <div class="step" onclick="toggleStep(this)" style="display: none;" id="user-data-step">
+                <div class="step-title">
+                    <div class="step-icon">4</div>
+                    <span class="step-text" data-en="User Data Collection & Validation" data-el="Συλλογή & Επαλήθευση Δεδομένων Χρήστη">User Data Collection & Validation</span>
+                </div>
+                
+                <div class="api-call">
+                    <strong>🔗 API Call:</strong> getUserFromAPI(caller_number)<br>
+                    <strong data-en="Purpose:" data-el="Σκοπός:">Purpose:</strong> <span data-en="Check if user exists and get stored information" data-el="Έλεγχος αν ο χρήστης υπάρχει και λήψη αποθηκευμένων πληροφοριών">Check if user exists and get stored information</span><br>
+                    <strong data-en="Response:" data-el="Απόκριση:">Response:</strong> <span data-en="name, pickup address, coordinates, doNotServe flag" data-el="όνομα, διεύθυνση παραλαβής, συντεταγμένες, σημαία doNotServe">name, pickup address, coordinates, doNotServe flag</span>
+                </div>
+                
+                <div class="condition">
+                    ⚠️ <strong data-en="Check:" data-el="Έλεγχος:">Check:</strong> <span data-en="If doNotServe = 1 → Transfer to operator (blocked user)" data-el="Αν doNotServe = 1 → Μεταφορά σε χειριστή (αποκλεισμένος χρήστης)">If doNotServe = 1 → Transfer to operator (blocked user)</span>
+                </div>
+
+                <!-- Two paths based on existing user data -->
+                <div class="user-path">
+                    <div class="path-title">👤 <span data-en="EXISTING USER PATH (has name AND pickup address):" data-el="ΔΙΑΔΡΟΜΗ ΥΠΑΡΧΟΝΤΟΣ ΧΡΗΣΤΗ (έχει όνομα ΚΑΙ διεύθυνση παραλαβής):">EXISTING USER PATH (has name AND pickup address):</span></div>
+                    
+                    <div class="playback">
+                        <div class="playback-title">🔊 <span data-en="Personalized Greeting with Address Confirmation" data-el="Προσωποποιημένος Χαιρετισμός με Επιβεβαίωση Διεύθυνσης">Personalized Greeting with Address Confirmation</span></div>
+                        <strong data-en="Greek TTS:" data-el="Ελληνικά TTS:">Greek TTS:</strong> "Γεια σας {name}. Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {address}? Πατήστε 1 για ναι, ή 2 για να εισάγετε νέα διεύθυνση παραλαβής."<br>
+                        <strong data-en="English TTS:" data-el="Αγγλικά TTS:">English TTS:</strong> "Hello {name}. Would you like to use the pickup address {address}? Press 1 for yes or 2 to enter a new pickup address."
+                    </div>
+                    
+                    <div class="options">
+                        <div class="option" onclick="selectExistingUser(this, '1')">
+                            <strong data-en="Press 1" data-el="Πατήστε 1">Press 1</strong><br>
+                            <span data-en="Keep Name + Address" data-el="Διατήρηση Ονόματος + Διεύθυνσης">Keep Name + Address</span><br>
+                            <small data-en="→ Go directly to destination" data-el="→ Πηγαίνετε απευθείας στον προορισμό">→ Go directly to destination</small>
+                        </div>
+                        <div class="option" onclick="selectExistingUser(this, '2')">
+                            <strong data-en="Press 2" data-el="Πατήστε 2">Press 2</strong><br>
+                            <span data-en="Keep Name, New Pickup" data-el="Διατήρηση Ονόματος, Νέα Παραλαβή">Keep Name, New Pickup</span><br>
+                            <small data-en="→ Collect new pickup address" data-el="→ Συλλογή νέας διεύθυνσης παραλαβής">→ Collect new pickup address</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="user-path">
+                    <div class="path-title">🆕 <span data-en="NEW USER PATH (missing name OR pickup address):" data-el="ΔΙΑΔΡΟΜΗ ΝΕΟΥ ΧΡΗΣΤΗ (λείπει όνομα Ή διεύθυνση παραλαβής):">NEW USER PATH (missing name OR pickup address):</span></div>
+                    <div class="condition">
+                        <span data-en="→ Collect missing data via speech recognition" data-el="→ Συλλογή δεδομένων που λείπουν μέσω αναγνώρισης ομιλίας">→ Collect missing data via speech recognition</span><br>
+                        <span data-en="→ Always collect: Name → Pickup → Destination" data-el="→ Πάντα συλλογή: Όνομα → Παραλαβή → Προορισμός">→ Always collect: Name → Pickup → Destination</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 5A: Name Collection (New Users) -->
+            <div class="step" onclick="toggleStep(this)" style="display: none;" id="name-step">
+                <div class="step-title">
+                    <div class="step-icon">5A</div>
+                    <span class="step-text" data-en="Name Collection (Speech Recognition)" data-el="Συλλογή Ονόματος (Αναγνώριση Ομιλίας)">Name Collection (Speech Recognition)</span>
+                </div>
+                
+                <div class="condition">
+                    <strong data-en="Only for NEW users or missing name data" data-el="Μόνο για ΝΕΟΥΣ χρήστες ή δεδομένα ονόματος που λείπουν">Only for NEW users or missing name data</strong>
+                </div>
+                
+                <div class="playback">
+                    <div class="playback-title">🔊 <span data-en="Name Request" data-el="Αίτημα Ονόματος">Name Request</span></div>
+                    <strong data-en="Greek:" data-el="Ελληνικά:">Greek:</strong> "Παρακαλώ πείτε μου το όνομα σας μετά τον χαρακτηριστικό ήχο."<br>
+                    <strong data-en="English:" data-el="Αγγλικά:">English:</strong> "Please say your name after the tone."
+                </div>
+                
+                <div class="api-call">
+                    <strong>🔗 Google Speech-to-Text API:</strong><br>
+                    • <span data-en="Records user speech (max 10 seconds)" data-el="Ηχογράφηση ομιλίας χρήστη (μέγιστο 10 δευτερόλεπτα)">Records user speech (max 10 seconds)</span><br>
+                    • <span data-en="Converts to text using Greek/English recognition" data-el="Μετατροπή σε κείμενο με αναγνώριση Ελληνικών/Αγγλικών">Converts to text using Greek/English recognition</span><br>
+                    • <span data-en="Max 3 retry attempts if recognition fails" data-el="Μέγιστο 3 προσπάθειες επανάληψης αν η αναγνώριση αποτύχει">Max 3 retry attempts if recognition fails</span>
+                </div>
+            </div>
+
+            <!-- STEP 5B: Pickup Address Collection -->
+            <div class="step" onclick="toggleStep(this)" style="display: none;" id="pickup-step">
+                <div class="step-title">
+                    <div class="step-icon">5B</div>
+                    <span class="step-text" data-en="Pickup Address Collection" data-el="Συλλογή Διεύθυνσης Παραλαβής">Pickup Address Collection</span>
+                </div>
+                
+                <div class="condition">
+                    <strong data-en="For: NEW users OR existing users who pressed 2 (new pickup)" data-el="Για: ΝΕΟΥΣ χρήστες Ή υπάρχοντες χρήστες που πάτησαν 2 (νέα παραλαβή)">For: NEW users OR existing users who pressed 2 (new pickup)</strong>
+                </div>
+                
+                <div class="playback">
+                    <div class="playback-title">🔊 <span data-en="Pickup Address Request" data-el="Αίτημα Διεύθυνσης Παραλαβής">Pickup Address Request</span></div>
+                    <strong data-en="Greek:" data-el="Ελληνικά:">Greek:</strong> "Παρακαλώ, πείτε μου τη διεύθυνση παραλαβής σας μετά τον χαρακτηριστικό ήχο, συμπεριλαμβανομένου και του νομού"<br>
+                    <strong data-en="English:" data-el="Αγγλικά:">English:</strong> "Please say your pickup address after the tone, including the area."
+                </div>
+                
+                <div class="api-call">
+                    <strong>🔗 <span data-en="Address Processing Chain:" data-el="Αλυσίδα Επεξεργασίας Διεύθυνσης:">Address Processing Chain:</span></strong><br>
+                    1. Google Speech-to-Text → <span data-en="Convert speech to text" data-el="Μετατροπή ομιλίας σε κείμενο">Convert speech to text</span><br>
+                    2. <span data-en="Geocoding API (configurable):" data-el="API Γεωκωδικοποίησης (ρυθμίσιμο):">Geocoding API (configurable):</span><br>
+                    &nbsp;&nbsp;• <span data-en="Version 1: Google Maps Geocoding API" data-el="Έκδοση 1: Google Maps Geocoding API">Version 1: Google Maps Geocoding API</span><br>
+                    &nbsp;&nbsp;• <span data-en="Version 2: Google Places API v1 (newer)" data-el="Έκδοση 2: Google Places API v1 (νεότερο)">Version 2: Google Places API v1 (newer)</span><br>
+                    3. <span data-en="Geographic Filtering:" data-el="Γεωγραφικό Φιλτράρισμα:">Geographic Filtering:</span><br>
+                    &nbsp;&nbsp;• <span data-en="bounds: Reject results outside defined area" data-el="bounds: Απόρριψη αποτελεσμάτων εκτός καθορισμένης περιοχής">bounds: Reject results outside defined area</span><br>
+                    &nbsp;&nbsp;• <span data-en="centerBias: Prefer results near center point" data-el="centerBias: Προτίμηση αποτελεσμάτων κοντά στο κέντρο">centerBias: Prefer results near center point</span><br>
+                    4. <span data-en="Validate location precision (ROOFTOP, RANGE_INTERPOLATED required for pickup)" data-el="Επαλήθευση ακρίβειας τοποθεσίας (απαιτούνται ROOFTOP, RANGE_INTERPOLATED για παραλαβή)">Validate location precision (ROOFTOP, RANGE_INTERPOLATED required for pickup)</span>
+                </div>
+            </div>
+
+            <!-- STEP 6: Destination Collection -->
+            <div class="step" onclick="toggleStep(this)" style="display: none;" id="destination-step">
+                <div class="step-title">
+                    <div class="step-icon">6</div>
+                    <span class="step-text" data-en="Destination Address Collection" data-el="Συλλογή Διεύθυνσης Προορισμού">Destination Address Collection</span>
+                </div>
+                
+                <div class="condition">
+                    <strong data-en="For ALL users - always required" data-el="Για ΌΛΟΥΣ τους χρήστες - πάντα απαιτείται">For ALL users - always required</strong>
+                </div>
+                
+                <div class="playback">
+                    <div class="playback-title">🔊 <span data-en="Destination Request" data-el="Αίτημα Προορισμού">Destination Request</span></div>
+                    <strong data-en="Greek:" data-el="Ελληνικά:">Greek:</strong> "Παρακαλώ, πείτε μου τη διεύθυνση προορισμού σας μετά τον χαρακτηριστικό ήχο, συμπεριλαμβανομένου και του νομού."<br>
+                    <strong data-en="English:" data-el="Αγγλικά:">English:</strong> "Please say your destination address after the tone, including the area."
+                </div>
+                
+                <div class="api-call">
+                    <strong>🔗 <span data-en="Same Processing as Pickup:" data-el="Ίδια Επεξεργασία με την Παραλαβή:">Same Processing as Pickup:</span></strong><br>
+                    • <span data-en="Speech recognition → Text → Geocoding → Validation" data-el="Αναγνώριση ομιλίας → Κείμενο → Geocoding → Επαλήθευση">Speech recognition → Text → Geocoding → Validation</span><br>
+                    • <span data-en="Less strict validation for dropoff:" data-el="Λιγότερο αυστηρή επαλήθευση για κατάθεση:">Less strict validation for dropoff:</span><br>
+                    &nbsp;&nbsp;• <span data-en="strictDropoffLocation = false: Accept all location types" data-el="strictDropoffLocation = false: Αποδοχή όλων των τύπων τοποθεσίας">strictDropoffLocation = false: Accept all location types</span><br>
+                    &nbsp;&nbsp;• <span data-en="strictDropoffLocation = true: Only ROOFTOP, RANGE_INTERPOLATED" data-el="strictDropoffLocation = true: Μόνο ROOFTOP, RANGE_INTERPOLATED">strictDropoffLocation = true: Only ROOFTOP, RANGE_INTERPOLATED</span>
+                </div>
+            </div>
+
+            <!-- STEP 7: Date/Time for Reservation -->
+            <div class="step" onclick="toggleStep(this)" style="display: none;" id="reservation-step">
+                <div class="step-title">
+                    <div class="step-icon">7</div>
+                    <span class="step-text" data-en="Reservation Date/Time (Only for Press 2)" data-el="Ημερομηνία/Ώρα Κράτησης (Μόνο για Πάτημα 2)">Reservation Date/Time (Only for Press 2)</span>
+                </div>
+                
+                <div class="playback">
+                    <div class="playback-title">🔊 <span data-en="Date/Time Request" data-el="Αίτημα Ημερομηνίας/Ώρας">Date/Time Request</span></div>
+                    <strong data-en="Greek:" data-el="Ελληνικά:">Greek:</strong> "Παρακαλώ πείτε μου για πότε θέλετε το ραντεβού μετά τον χαρακτηριστικό ήχο."<br>
+                    <strong data-en="English:" data-el="Αγγλικά:">English:</strong> "Please tell me when you want the reservation after the tone."
+                </div>
+                
+                <div class="api-call">
+                    <strong>🔗 <span data-en="Date Processing:" data-el="Επεξεργασία Ημερομηνίας:">Date Processing:</span></strong><br>
+                    • <span data-en="Speech-to-text for date/time" data-el="Ομιλία-σε-κείμενο για ημερομηνία/ώρα">Speech-to-text for date/time</span><br>
+                    • <span data-en="Natural language parsing API" data-el="API ανάλυσης φυσικής γλώσσας">Natural language parsing API</span><br>
+                    • <span data-en="Convert to timestamp within valid range (configured days)" data-el="Μετατροπή σε χρονοσήμα εντός έγκυρου εύρους (ρυθμισμένες ημέρες)">Convert to timestamp within valid range (configured days)</span>
+                </div>
+            </div>
+
+            <!-- STEP 8: Final Confirmation -->
+            <div class="step" onclick="toggleStep(this)" style="display: none;" id="confirmation-step">
+                <div class="step-title">
+                    <div class="step-icon">8</div>
+                    <span class="step-text" data-en="Information Confirmation" data-el="Επιβεβαίωση Πληροφοριών">Information Confirmation</span>
+                </div>
+                
+                <div class="playback">
+                    <div class="playback-title">🔊 <span data-en="Confirmation Options" data-el="Επιλογές Επιβεβαίωσης">Confirmation Options</span></div>
+                    <strong data-en="Greek:" data-el="Ελληνικά:">Greek:</strong> "Πατήστε 0 για να καταχωρίσετε την κλήση, πατήστε 1 για αλλαγή του ονόματός σας, πατήστε 2 για αλλαγή διεύθυνσης παραλαβής, ή πατήστε 3 για αλλαγή διεύθυνσης προορισμού."<br>
+                    <strong data-en="English:" data-el="Αγγλικά:">English:</strong> "Press 0 to register the call, press 1 to change your name, press 2 to change the pickup address, or press 3 to change the destination address."
+                </div>
+                
+                <div class="options">
+                    <div class="option" onclick="selectOption(this, '0')">
+                        <strong data-en="Press 0" data-el="Πατήστε 0">Press 0</strong><br>
+                        <span data-en="Register the Call" data-el="Καταχώριση της Κλήσης">Register the Call</span>
+                    </div>
+                    <div class="option" onclick="selectOption(this, '1')">
+                        <strong data-en="Press 1" data-el="Πατήστε 1">Press 1</strong><br>
+                        <span data-en="Change Name" data-el="Αλλαγή Ονόματος">Change Name</span>
+                    </div>
+                    <div class="option" onclick="selectOption(this, '2')">
+                        <strong data-en="Press 2" data-el="Πατήστε 2">Press 2</strong><br>
+                        <span data-en="Change Pickup" data-el="Αλλαγή Παραλαβής">Change Pickup</span>
+                    </div>
+                    <div class="option" onclick="selectOption(this, '3')">
+                        <strong data-en="Press 3" data-el="Πατήστε 3">Press 3</strong><br>
+                        <span data-en="Change Destination" data-el="Αλλαγή Προορισμού">Change Destination</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 9: Final Registration -->
+            <div class="step" onclick="toggleStep(this)" style="display: none;" id="registration-step">
+                <div class="step-title">
+                    <div class="step-icon">9</div>
+                    <span class="step-text" data-en="Call Registration & Completion" data-el="Καταχώριση Κλήσης & Ολοκλήρωση">Call Registration & Completion</span>
+                </div>
+                
+                <div class="api-call">
+                    <strong>🔗 <span data-en="Registration API Call:" data-el="Κλήση API Καταχώρισης:">Registration API Call:</span></strong><br>
+                    • POST to registerBaseUrl/register<br>
+                    • <span data-en="Send: name, pickup, destination, phone, coordinates, language" data-el="Αποστολή: όνομα, παραλαβή, προορισμός, τηλέφωνο, συντεταγμένες, γλώσσα">Send: name, pickup, destination, phone, coordinates, language</span><br>
+                    • <span data-en="For reservations: include timestamp" data-el="Για κρατήσεις: συμπεριλαμβάνεται χρονοσήμα">For reservations: include timestamp</span><br>
+                    • <span data-en="If callbackMode = 2: include callBackURL parameter" data-el="Αν callbackMode = 2: συμπεριλαμβάνεται παράμετρος callBackURL">If callbackMode = 2: include callBackURL parameter</span><br>
+                    • <span data-en="Receive: confirmation message, call status" data-el="Λήψη: μήνυμα επιβεβαίωσης, κατάσταση κλήσης">Receive: confirmation message, call status</span>
+                </div>
+
+                <!-- Two callback modes with detailed explanations -->
+                <div class="user-path">
+                    <div class="path-title">🔄 <span data-en="CALLBACK MODE 1 - Normal Mode (Read API Message & Hangup)" data-el="ΛΕΙΤΟΥΡΓΙΑ ΕΠΑΝΑKLΗΣΗΣ 1 - Κανονική Λειτουργία (Ανάγνωση Μηνύματος API & Κλείσιμο)">CALLBACK MODE 1 - Normal Mode (Read API Message & Hangup)</span></div>
+                    
+                    <div class="condition">
+                        <strong data-en="Configuration:" data-el="Διαμόρφωση:">Configuration:</strong> callbackMode = 1 (Default)
+                    </div>
+
+                    <div class="api-call">
+                        <strong data-en="Process:" data-el="Διαδικασία:">Process:</strong><br>
+                        1. <span data-en="Send registration to API" data-el="Αποστολή καταχώρισης στο API">Send registration to API</span><br>
+                        2. <span data-en="Receive immediate response with message" data-el="Λήψη άμεσης απόκρισης με μήνυμα">Receive immediate response with message</span><br>
+                        3. <span data-en="Convert API message to speech (TTS)" data-el="Μετατροπή μηνύματος API σε ομιλία (TTS)">Convert API message to speech (TTS)</span><br>
+                        4. <span data-en="Play message to caller" data-el="Αναπαραγωγή μηνύματος στον καλούντα">Play message to caller</span><br>
+                        5. <span data-en="Hang up call" data-el="Κλείσιμο κλήσης">Hang up call</span>
+                    </div>
+
+                    <div class="playback">
+                        <div class="playback-title">🔊 <span data-en="Example TTS Message" data-el="Παράδειγμα Μηνύματος TTS">Example TTS Message</span></div>
+                        <span data-en="Τhe API response message (e.g., 'Your call has been registered. You will be notified shortly.')" data-el="Το μήνυμα απόκρισης API (π.χ., 'Η κλήση σας καταχωρήθηκε. Θα ειδοποιηθείτε σύντομα.')">The API response message (e.g., "Your call has been registered. You will be notified shortly.")</span>
+                    </div>
+
+                    <div class="end-state">
+                        ✅ <span data-en="CALL ENDS HERE - User will receive updates via SMS/Push" data-el="Η ΚΛΗΣΗ ΤΕΛΕΙΩΝΕΙ ΕΔΩ - Ο χρήστης θα λάβει ενημερώσεις μέσω SMS/Push">CALL ENDS HERE - User will receive updates via SMS/Push</span>
+                    </div>
+                </div>
+
+                <!-- Mode 2: Callback with status monitoring -->
+                <div class="user-path">
+                    <div class="path-title">📞 <span data-en="CALLBACK MODE 2 - Status Monitoring (Wait for Callback & Read Status/CarNo)" data-el="ΛΕΙΤΟΥΡΓΙΑ ΕΠΑΝΑKLΗΣΗΣ 2 - Παρακολούθηση Κατάστασης (Αναμονή Επανάκλησης & Ανάγνωση Κατάστασης/Αρ.Αυτοκινήτου)">CALLBACK MODE 2 - Status Monitoring (Wait for Callback & Read Status/CarNo)</span></div>
+                    
+                    <div class="condition">
+                        <strong data-en="Configuration:" data-el="Διαμόρφωση:">Configuration:</strong> callbackMode = 2<br>
+                        <strong data-en="Required:" data-el="Απαιτείται:">Required:</strong> callbackUrl + repeatTimes settings
+                    </div>
+
+                    <div class="api-call">
+                        <strong data-en="Phase 1 - Registration:" data-el="Φάση 1 - Καταχώριση:">Phase 1 - Registration:</strong><br>
+                        1. <span data-en="Send registration to API with callBackURL" data-el="Αποστολή καταχώρισης στο API με callBackURL">Send registration to API with callBackURL</span><br>
+                        2. <span data-en="Play 'waiting for registration' message" data-el="Αναπαραγωγή μηνύματος 'αναμονή καταχώρισης'">Play "waiting for registration" message</span><br>
+                        3. <span data-en="Wait for server to create register_info.json file" data-el="Αναμονή για δημιουργία αρχείου register_info.json από τον server">Wait for server to create register_info.json file</span>
+                    </div>
+
+                    <div class="api-call">
+                        <strong data-en="Phase 2 - Status Monitoring:" data-el="Φάση 2 - Παρακολούθηση Κατάστασης:">Phase 2 - Status Monitoring:</strong><br>
+                        1. <span data-en="Read register_info.json every 3 seconds" data-el="Ανάγνωση register_info.json κάθε 3 δευτερόλεπτα">Read register_info.json every 3 seconds</span><br>
+                        2. <span data-en="Monitor 'status' and 'carNo' fields" data-el="Παρακολούθηση πεδίων 'status' και 'carNo'">Monitor "status" and "carNo" fields</span><br>
+                        3. <span data-en="Generate TTS for status changes" data-el="Δημιουργία TTS για αλλαγές κατάστασης">Generate TTS for status changes</span><br>
+                        4. <span data-en="Announce driver assignment and updates" data-el="Ανακοίνωση ανάθεσης οδηγού και ενημερώσεων">Announce driver assignment and updates</span>
+                    </div>
+
+                    <div class="condition">
+                        <strong data-en="Status Codes Monitoring:" data-el="Παρακολούθηση Κωδικών Κατάστασης:">Status Codes Monitoring:</strong><br>
+                        • <strong>-1:</strong> <span data-en="Searching for taxi" data-el="Αναζήτηση ταξί">Searching for taxi</span><br>
+                        • <strong>10:</strong> <span data-en="Driver accepted (announce carNo)" data-el="Οδηγός δέχτηκε (ανακοίνωση carNo)">Driver accepted (announce carNo)</span><br>
+                        • <strong>1:</strong> <span data-en="Driver approaching" data-el="Οδηγός πλησιάζει">Driver approaching</span><br>
+                        • <strong>2:</strong> <span data-en="Driver arrived" data-el="Οδηγός έφτασε">Driver arrived</span><br>
+                        • <strong>3:</strong> <span data-en="Passenger picked up" data-el="Επιβάτης παραλήφθηκε">Passenger picked up</span><br>
+                        • <strong>8:</strong> <span data-en="Trip completed" data-el="Ταξίδι ολοκληρώθηκε">Trip completed</span><br>
+                        • <strong>20:</strong> <span data-en="No taxi found → Transfer to operator" data-el="Δεν βρέθηκε ταξί → Μεταφορά σε χειριστή">No taxi found → Transfer to operator</span>
+                    </div>
+
+                    <div class="playback">
+                        <div class="playback-title">🔊 <span data-en="Example Status Announcements (TTS)" data-el="Παράδειγμα Ανακοινώσεων Κατάστασης (TTS)">Example Status Announcements (TTS)</span></div>
+                        <strong data-en="Driver Assignment:" data-el="Ανάθεση Οδηγού:">Driver Assignment:</strong> "Ο οδηγός με αυτοκίνητο αριθμός {carNo} δέχτηκε την κλήση σας και θα είναι σύντομα κοντά σας"<br>
+                        <strong data-en="Status Update:" data-el="Ενημέρωση Κατάστασης:">Status Update:</strong> "Το ταξί {carNo} έρχεται προς εσάς"<br>
+                        <strong data-en="No Taxi:" data-el="Δεν Υπάρχει Ταξί:">No Taxi:</strong> "Δεν βρέθηκε διαθέσιμο ταξί. Σας μεταφέρω σε εκπρόσωπο"
+                    </div>
+
+                    <div class="end-state">
+                        ✅ <span data-en="CALL ENDS when final status reached (trip completed/cancelled)" data-el="Η ΚΛΗΣΗ ΤΕΛΕΙΩΝΕΙ όταν φτάσει η τελική κατάσταση (ταξίδι ολοκληρώθηκε/ακυρώθηκε)">CALL ENDS when final status reached (trip completed/cancelled)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Handling & Hangup Detection -->
+            <div class="step error-state" onclick="toggleStep(this)">
+                <div class="step-title">
+                    <div class="step-icon">⚠️</div>
+                    <span data-en="Error Handling, Hangup Detection & Fallbacks" data-el="Χειρισμός Σφαλμάτων, Εντοπισμός Κλεισίματος & Εφεδρικές Λύσεις">Error Handling, Hangup Detection & Fallbacks</span>
+                </div>
+                
+                <div class="condition">
+                    <strong>📞 <span data-en="Hangup Detection (Continuous Monitoring):" data-el="Εντοπισμός Κλεισίματος (Συνεχής Παρακολούθηση):">Hangup Detection (Continuous Monitoring):</strong><br>
+                    • <span data-en="Before each operation: Check channel status" data-el="Πριν από κάθε λειτουργία: Έλεγχος κατάστασης καναλιού">Before each operation: Check channel status</span><br>
+                    • <span data-en="Monitor AGI responses for hangup codes (result=-1, 511)" data-el="Παρακολούθηση απαντήσεων AGI για κωδικούς κλεισίματος (result=-1, 511)">Monitor AGI responses for hangup codes (result=-1, 511)</span><br>
+                    • <span data-en="Signal handler for SIGHUP (system hangup)" data-el="Χειριστής σημάτων για SIGHUP (κλείσιμο συστήματος)">Signal handler for SIGHUP (system hangup)</span><br>
+                    • <span data-en="Channel status 6 = down/hangup, Status 0 = unavailable" data-el="Κατάσταση καναλιού 6 = κλειστό, Κατάσταση 0 = μη διαθέσιμο">Channel status 6 = down/hangup, Status 0 = unavailable</span><br>
+                    • <span data-en="Immediate call termination and analytics logging" data-el="Άμεσος τερματισμός κλήσης και καταγραφή αναλυτικών">Immediate call termination and analytics logging</span>
+                </div>
+
+                <div class="condition">
+                    <strong data-en="Common Error Scenarios:" data-el="Συνήθη Σενάρια Σφαλμάτων:">Common Error Scenarios:</strong><br>
+                    • <span data-en="Anonymous caller → Play message, transfer to operator" data-el="Ανώνυμος καλών → Αναπαραγωγή μηνύματος, μεταφορά σε χειριστή">Anonymous caller → Play message, transfer to operator</span><br>
+                    • <span data-en="Extension not configured → Transfer to operator" data-el="Εσωτερική μη ρυθμισμένη → Μεταφορά σε χειριστή">Extension not configured → Transfer to operator</span><br>
+                    • <span data-en="Service disabled by autoCallCentersMode → Transfer to operator" data-el="Υπηρεσία απενεργοποιημένη από autoCallCentersMode → Μεταφορά σε χειριστή">Service disabled by autoCallCentersMode → Transfer to operator</span><br>
+                    • <span data-en="Speech recognition failures (3 attempts) → Transfer to operator" data-el="Αποτυχίες αναγνώρισης ομιλίας (3 προσπάθειες) → Μεταφορά σε χειριστή">Speech recognition failures (3 attempts) → Transfer to operator</span><br>
+                    • <span data-en="Invalid addresses (3 attempts) → Transfer to operator" data-el="Άκυρες διευθύνσεις (3 προσπάθειες) → Μεταφορά σε χειριστή">Invalid addresses (3 attempts) → Transfer to operator</span><br>
+                    • <span data-en="Address outside bounds → Transfer to operator" data-el="Διεύθυνση εκτός ορίων → Μεταφορά σε χειριστή">Address outside bounds → Transfer to operator</span><br>
+                    • <span data-en="API failures → Transfer to operator" data-el="Αποτυχίες API → Μεταφορά σε χειριστή">API failures → Transfer to operator</span><br>
+                    • <span data-en="Network timeouts → Transfer to operator" data-el="Χρονικά όρια δικτύου → Μεταφορά σε χειριστή">Network timeouts → Transfer to operator</span><br>
+                    • <span data-en="User hangup → Immediate termination, analytics saved" data-el="Κλείσιμο από χρήστη → Άμεσος τερματισμός, αποθήκευση αναλυτικών">User hangup → Immediate termination, analytics saved</span>
+                </div>
+                
+                <div class="playback">
+                    <div class="playback-title">🔊 <span data-en="Error Messages" data-el="Μηνύματα Σφαλμάτων">Error Messages</span></div>
+                    • <strong>invalid_input:</strong> "Δεν μπορέσαμε να κατανοήσουμε αυτό που μας είπατε. Παρακαλώ δοκιμάστε ξανά μετά τον χαρακτηριστικό ήχο."<br>
+                    • <strong>invalid_address:</strong> "Δεν βρέθηκε η διεύθυνση, παρακαλώ προσπαθήστε ξανά."<br>
+                    • <strong>anonymous:</strong> "Λυπάμαι, δεν μπορούμε να σας εξυπηρετήσουμε με απόκρυψη αριθμού. Σας προωθώ για να μιλήσετε με εκπρόσωπο"
+                </div>
+            </div>
+
+            <!-- Analytics & Monitoring -->
+            <div class="step" onclick="toggleStep(this)">
+                <div class="step-title">
+                    <div class="step-icon">📊</div>
+                    <span data-en="Advanced Analytics & Real-time Monitoring" data-el="Προχωρημένα Αναλυτικά Στοιχεία & Παρακολούθηση Πραγματικού Χρόνου">Advanced Analytics & Real-time Monitoring</span>
+                </div>
+                
+                <div class="api-call">
+                    <strong>📈 <span data-en="Comprehensive Analytics Tracking:" data-el="Περιεκτική Παρακολούθηση Αναλυτικών Στοιχείων:">Comprehensive Analytics Tracking:</span></strong><br>
+                    • <span data-en="Call duration and processing times per step" data-el="Διάρκεια κλήσης και χρόνοι επεξεργασίας ανά βήμα">Call duration and processing times per step</span><br>
+                    • <span data-en="API call counts (STT, TTS, Geocoding, Registration)" data-el="Μετρητές κλήσεων API (STT, TTS, Geocoding, Καταχώριση)">API call counts (STT, TTS, Geocoding, Registration)</span><br>
+                    • <span data-en="User retry attempts and failure points by step" data-el="Προσπάθειες επανάληψης χρηστών και σημεία αποτυχίας ανά βήμα">User retry attempts and failure points by step</span><br>
+                    • <span data-en="Language usage statistics and change patterns" data-el="Στατιστικά χρήσης γλώσσας και μοτίβα αλλαγών">Language usage statistics and change patterns</span><br>
+                    • <span data-en="Success/failure rates by extension and configuration" data-el="Ποσοστά επιτυχίας/αποτυχίας ανά εσωτερική και διαμόρφωση">Success/failure rates by extension and configuration</span><br>
+                    • <span data-en="Geographic data analysis and popular routes" data-el="Ανάλυση γεωγραφικών δεδομένων και δημοφιλείς διαδρομές">Geographic data analysis and popular routes</span><br>
+                    • <span data-en="TTS provider performance comparison (Google vs Edge)" data-el="Σύγκριση απόδοσης παρόχων TTS (Google vs Edge)">TTS provider performance comparison (Google vs Edge)</span><br>
+                    • <span data-en="Geocoding API version performance (v1 vs v2)" data-el="Απόδοση εκδόσεων API γεωκωδικοποίησης (v1 vs v2)">Geocoding API version performance (v1 vs v2)</span>
+                </div>
+                
+                <div class="config-info">
+                    <strong data-en="Real-time Data Storage:" data-el="Αποθήκευση Δεδομένων Πραγματικού Χρόνου:">Real-time Data Storage:</strong><br>
+                    • <span data-en="Progress JSON files for live monitoring dashboards" data-el="Αρχεία Progress JSON για πίνακες παρακολούθησης ζωντανά">Progress JSON files for live monitoring dashboards</span><br>
+                    • <span data-en="Complete call logs with millisecond timestamps" data-el="Πλήρη αρχεία κλήσεων με χρονοσήματα χιλιοστών">Complete call logs with millisecond timestamps</span><br>
+                    • <span data-en="Audio recordings for quality assurance and training" data-el="Ηχογραφήσεις για διασφάλιση ποιότητας και εκπαίδευση">Audio recordings for quality assurance and training</span><br>
+                    • <span data-en="Database analytics with real-time updates for reporting" data-el="Αναλυτικά στοιχεία βάσης δεδομένων με ενημερώσεις πραγματικού χρόνου για αναφορές">Database analytics with real-time updates for reporting</span><br>
+                    • <span data-en="Call outcome tracking with detailed failure reasons" data-el="Παρακολούθηση αποτελεσμάτων κλήσεων με λεπτομερείς λόγους αποτυχίας">Call outcome tracking with detailed failure reasons</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentChoice = null;
+        let currentLanguage = 'en';
+        
+        function toggleLanguage() {
+            currentLanguage = currentLanguage === 'en' ? 'el' : 'en';
+            updateLanguage();
+        }
+        
+        function updateLanguage() {
+            const langToggle = document.getElementById('lang-toggle-text');
+            const mainTitle = document.getElementById('main-title');
+            const mainSubtitle = document.getElementById('main-subtitle');
+            
+            if (currentLanguage === 'el') {
+                langToggle.textContent = '🇺🇸 English';
+                mainTitle.textContent = '🚕 Επίδειξη Ροής Κλήσεων IqTaxi IVR';
+                mainSubtitle.textContent = 'Διαδραστική επίδειξη του πλήρους συστήματος χειρισμού κλήσεων';
+            } else {
+                langToggle.textContent = '🇬🇷 Ελληνικά';
+                mainTitle.textContent = '🚕 IqTaxi IVR Call Flow Demo';
+                mainSubtitle.textContent = 'Interactive demonstration of the complete call handling system';
+            }
+            
+            // Update all translatable elements
+            document.querySelectorAll('[data-' + currentLanguage + ']').forEach(element => {
+                const translation = element.getAttribute('data-' + currentLanguage);
+                if (translation) {
+                    element.textContent = translation;
+                }
+            });
+        }
+        
+        function toggleStep(element) {
+            element.classList.toggle('active');
+        }
+        
+        function selectOption(element, choice) {
+            // Remove previous selections
+            document.querySelectorAll('.option').forEach(opt => {
+                opt.style.background = '#fff3cd';
+                opt.style.color = 'black';
+            });
+            
+            // Highlight selected option
+            element.style.background = '#28a745';
+            element.style.color = 'white';
+            
+            currentChoice = choice;
+            
+            // Show relevant next steps based on choice
+            showRelevantSteps(choice);
+        }
+        
+        function selectExistingUser(element, choice) {
+            selectOption(element, choice);
+            
+            // Show different paths for existing users
+            if (choice === '1') {
+                // Press 1: Keep name + address, go directly to destination
+                document.getElementById('name-step').style.display = 'none';
+                document.getElementById('pickup-step').style.display = 'none';
+                document.getElementById('destination-step').style.display = 'block';
+                if (currentChoice === '2') { // If reservation
+                    document.getElementById('reservation-step').style.display = 'block';
+                }
+                document.getElementById('confirmation-step').style.display = 'block';
+                document.getElementById('registration-step').style.display = 'block';
+            } else if (choice === '2') {
+                // Press 2: Keep name, collect new pickup
+                document.getElementById('name-step').style.display = 'none';
+                document.getElementById('pickup-step').style.display = 'block';
+                document.getElementById('destination-step').style.display = 'block';
+                if (currentChoice === '2') { // If reservation
+                    document.getElementById('reservation-step').style.display = 'block';
+                }
+                document.getElementById('confirmation-step').style.display = 'block';
+                document.getElementById('registration-step').style.display = 'block';
+            }
+        }
+        
+        function showRelevantSteps(choice) {
+            // Hide all conditional steps first
+            const steps = ['user-data-step', 'name-step', 'pickup-step', 'destination-step', 
+                          'reservation-step', 'confirmation-step', 'registration-step'];
+            steps.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) element.style.display = 'none';
+            });
+            
+            // Show relevant steps based on user choice
+            switch(choice) {
+                case '9':
+                    // Language change - would show welcome message again in English
+                    break;
+                case '3':
+                    // Transfer to operator - end flow
+                    break;
+                case '1':
+                case '2':
+                    document.getElementById('user-data-step').style.display = 'block';
+                    document.getElementById('name-step').style.display = 'block';
+                    document.getElementById('pickup-step').style.display = 'block';
+                    document.getElementById('destination-step').style.display = 'block';
+                    if (choice === '2') {
+                        document.getElementById('reservation-step').style.display = 'block';
+                    }
+                    document.getElementById('confirmation-step').style.display = 'block';
+                    document.getElementById('registration-step').style.display = 'block';
+                    break;
+                case '0':
+                    document.getElementById('registration-step').style.display = 'block';
+                    break;
+            }
+            
+            // Smooth scroll to next visible step
+            setTimeout(() => {
+                const nextStep = document.querySelector('.step[style*="block"]:not(.active)');
+                if (nextStep) {
+                    nextStep.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateLanguage();
+            const steps = document.querySelectorAll('.step');
+            steps[0].classList.add('active'); // Show first step by default
+        });
+    </script>
+</body>
+</html>
