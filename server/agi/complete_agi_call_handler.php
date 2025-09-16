@@ -2087,10 +2087,13 @@ class AGICallHandler
         }
 
         $result = json_decode($response, true);
-        if (!$result || empty($result['bestMatch'])) {
-            $this->logMessage("No date match found in response");
+        if (!$result) {
+            $this->logMessage("No valid JSON response from date parsing service");
             return null;
         }
+
+        // Log the full response for debugging
+        $this->logMessage("Date parsing response: " . json_encode($result));
 
         return $result;
     }
@@ -2358,27 +2361,10 @@ class AGICallHandler
                 $this->stopMusicOnHold();
 
                 if ($parsed_date) {
-                    // Check if we have multiple matches (typically AM/PM ambiguity)
-                    if (isset($parsed_date['formattedBestMatches']) &&
-                        is_array($parsed_date['formattedBestMatches']) &&
-                        count($parsed_date['formattedBestMatches']) >= 2) {
+                    // Check if bestMatch has a value (valid single match)
+                    if (!empty($parsed_date['bestMatch'])) {
+                        $this->logMessage("Valid bestMatch found: " . $parsed_date['bestMatch']);
 
-                        $this->logMessage("Multiple date matches found, asking user to select");
-                        $selected_date = $this->selectFromMultipleDates($parsed_date);
-
-                        if ($selected_date && !$this->isInvalidTime($selected_date)) {
-                            if ($this->confirmReservationTime($selected_date)) {
-                                return true;
-                            }
-                        } else if ($this->isInvalidTime($selected_date)) {
-                            // Invalid time - play invalid_date
-                            if ($try < $this->max_retries) {
-                                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
-                            }
-                        }
-                    }
-                    // Single match case
-                    else if (!empty($parsed_date['formattedBestMatch'])) {
                         // Check if this is an invalid time (like midnight from date-only input)
                         if ($this->isInvalidTime($parsed_date)) {
                             $this->logMessage("Invalid time detected (likely date without time): {$parsed_date['formattedBestMatch']}");
@@ -2391,10 +2377,74 @@ class AGICallHandler
                                 return true;
                             }
                         }
-                    } else {
-                        // Speech detected but no valid date found - play invalid_date
-                        if ($try < $this->max_retries) {
-                            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                    }
+                    // bestMatch is null, check if bestMatches has content
+                    else if (empty($parsed_date['bestMatch'])) {
+                        $this->logMessage("bestMatch is null, checking bestMatches array");
+
+                        // Check if we have bestMatches array with content
+                        if (isset($parsed_date['bestMatches']) &&
+                            is_array($parsed_date['bestMatches']) &&
+                            !empty($parsed_date['bestMatches'])) {
+
+                            $matches_count = count($parsed_date['bestMatches']);
+                            $this->logMessage("Found {$matches_count} matches in bestMatches array");
+
+                            // If we have exactly 2 matches, ask user to choose
+                            if ($matches_count >= 2) {
+                                $this->logMessage("Multiple date matches found, asking user to select");
+                                $selected_date = $this->selectFromMultipleDates($parsed_date);
+
+                                if ($selected_date) {
+                                    $this->logMessage("Selected date data: " . json_encode($selected_date));
+                                    $isInvalid = $this->isInvalidTime($selected_date);
+                                    $this->logMessage("Is selected date invalid? " . ($isInvalid ? "YES" : "NO"));
+
+                                    if (!$isInvalid) {
+                                        if ($this->confirmReservationTime($selected_date)) {
+                                            return true;
+                                        }
+                                    } else {
+                                        // Invalid time - play invalid_date
+                                        $this->logMessage("Playing invalid_date sound because selected date is invalid");
+                                        if ($try < $this->max_retries) {
+                                            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                                        }
+                                    }
+                                } else {
+                                    $this->logMessage("selectFromMultipleDates returned null");
+                                    if ($try < $this->max_retries) {
+                                        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                                    }
+                                }
+                            }
+                            // If we have only 1 match in bestMatches, try to use it
+                            else if ($matches_count == 1) {
+                                $this->logMessage("Single match in bestMatches, attempting to use it");
+                                // Create a parsed_date structure with the single match
+                                $single_match_data = [
+                                    'bestMatch' => $parsed_date['bestMatches'][0],
+                                    'formattedBestMatch' => $parsed_date['formattedBestMatches'][0] ?? $parsed_date['bestMatches'][0],
+                                    'bestMatchUnixTimestamp' => $parsed_date['bestMatchesUnixTimestamps'][0] ?? null
+                                ];
+
+                                if (!$this->isInvalidTime($single_match_data)) {
+                                    if ($this->confirmReservationTime($single_match_data)) {
+                                        return true;
+                                    }
+                                } else {
+                                    // Invalid time - play invalid_date
+                                    if ($try < $this->max_retries) {
+                                        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                                    }
+                                }
+                            }
+                        } else {
+                            // Both bestMatch and bestMatches are empty - user needs to re-say
+                            $this->logMessage("Both bestMatch and bestMatches are empty - user needs to re-say");
+                            if ($try < $this->max_retries) {
+                                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                            }
                         }
                     }
                 } else {
@@ -2478,13 +2528,17 @@ class AGICallHandler
 
             if ($choice == "1" && isset($matches[0])) {
                 return [
+                    'bestMatch' => $parsed_date['bestMatches'][0] ?? null,
                     'formattedBestMatch' => $matches[0],
-                    'bestMatchUnixTimestamp' => $timestamps[0] ?? null
+                    'bestMatchUnixTimestamp' => $timestamps[0] ?? null,
+                    'bestMatches' => [$parsed_date['bestMatches'][0] ?? null]
                 ];
             } else if ($choice == "2" && isset($matches[1])) {
                 return [
+                    'bestMatch' => $parsed_date['bestMatches'][1] ?? null,
                     'formattedBestMatch' => $matches[1],
-                    'bestMatchUnixTimestamp' => $timestamps[1] ?? null
+                    'bestMatchUnixTimestamp' => $timestamps[1] ?? null,
+                    'bestMatches' => [$parsed_date['bestMatches'][1] ?? null]
                 ];
             }
         }
