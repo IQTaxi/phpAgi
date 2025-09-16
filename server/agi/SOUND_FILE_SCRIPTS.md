@@ -3,11 +3,11 @@
 ## 1. Welcome Message
 **File:** `welcome_iqtaxi`
 
-**Greek:** "Καλησπέρα, καλώς ήρθατε στο ραδιοταξί IqTaxi. Πατήστε 1 για άμεση διαδρομή, πατήστε 2 για ραντεβού διαδρομής, ή πατήστε 3 για να μιλήσετε με εκπρόσωπο, Press nine for English."
+**Greek:** "Καλησπέρα, καλώς ήρθατε στο ραδιοταξί IqTaxi. Πατήστε 1 για άμεση διαδρομή, πατήστε 2 για ραντεβού, ή πατήστε 3 για να μιλήσετε με εκπρόσωπο, Press nine for English."
 
-**Bulgarian:** "Добър вечер, добре дошли в радиотакси IqTaxi. Натиснете 1 за незабавно пътуване, натиснете 2 за резервация на пътуване, или натиснете 3, за да говорите с оператор, Press nine for English."
+**Bulgarian:** "Добър вечер, добре дошли в радиотакси IqTaxi. Натиснете 1 за незабавно пътуване, натиснете 2 за резервация, или натиснете 3, за да говорите с оператор, Press nine for English."
 
-**English:** "Good evening, welcome to taxi service IqTaxi. Press 1 for immediate trip, press 2 for trip reservation, or press 3 to speak with an operator, press 9 for Spanish."
+**English:** "Good evening, welcome to taxi service IqTaxi. Press 1 for immediate trip, press 2 for reservation, or press 3 to speak with an operator, press 9 for Spanish."
 
 ---
 
@@ -80,7 +80,7 @@
 ## 8. Invalid Input Message
 **File:** `invalid_input`
 
-**Greek:** "Δεν μπορέσαμε να κατανοήσουμε αυτό που μας είπατε. Παρακαλώ δοκιμάστε ξανά μετά τον χαρακτηριστικό ήχο."
+**Greek:** "Δεν μπορέσαμε να κατανοήσουμε αυτό που μας είπατε. Παρακαλώ δοκιμάστε ξανά."
 
 **Bulgarian:** "Не можахме да разберем това, което ни казахте. Моля, опитайте отново след сигнала."
 
@@ -107,3 +107,47 @@
 **Bulgarian:** "Адресът не е намерен, моля опитайте отново."
 
 **English:** "The address was not found, please try again."
+
+---
+
+## 11. Invalid Name Message
+**File:** `invalid_name`
+
+**Greek:** "Δεν κατάλαβα το όνομά σας. Παρακαλώ πείτε μόνο το όνομά σας καθαρά."
+
+**Bulgarian:** "Не разбрах името ви. Моля, кажете само името си ясно."
+
+**English:** "I didn't understand your name. Please say only your name clearly."
+
+---
+
+## 12. Invalid Date/Time Message
+**File:** `invalid_date`
+
+**Greek:** "Η ώρα που είπατε δεν είναι έγκυρη. Παρακαλώ πείτε μια συγκεκριμένη ώρα, όπως αύριο στις 3 το απόγευμα ή την Δευτέρα στις 10 το πρωί."
+
+**Bulgarian:** "Часът, който казахте, не е валиден. Моля, кажете конкретен час, като утре в 3 следобед или в понedelник в 10 сутринта."
+
+**English:** "The time you said is not valid. Please say a specific time, like tomorrow at 3 PM or Monday at 10 AM."
+
+---
+
+## 13. Operator Transfer Message
+**File:** `operator`
+
+**Greek:** "Θα σας μεταφέρω τώρα σε έναν εκπρόσωπο. Παρακαλώ περιμένετε."
+
+**Bulgarian:** "Ще ви прехвърля сега към представител. Моля, изчакайте."
+
+**English:** "I will now transfer you to a representative. Please wait."
+
+---
+
+## 14. Waiting for Registration Message
+**File:** `waiting_register`
+
+**Greek:** "Παρακαλώ περιμένετε ενώ καταχωρούμε την κλήση σας."
+
+**Bulgarian:** "Моля, изчакайте, докато регистрираме повикването ви."
+
+**English:** "Please wait while we register your call."

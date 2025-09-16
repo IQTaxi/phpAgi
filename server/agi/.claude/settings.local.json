@@ -8,7 +8,8 @@
       "Read(/C:\\/**)",
       "Bash(grep:*)",
       "Bash(php:*)",
-      "WebFetch(domain:maps.googleapis.com)"
+      "WebFetch(domain:maps.googleapis.com)",
+      "Bash(dir \"C:\\Users\\billy\\Documents\\phpAgi\\server\\html\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\billy\\Documents\\phpAgi\\server",

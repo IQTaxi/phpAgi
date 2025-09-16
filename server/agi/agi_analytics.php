@@ -205,6 +205,9 @@ class AGIAnalytics {
                 'call_flow' => 'Ροή Κλήσης',
                 'timeline' => 'Χρονολόγιο',
                 'recordings' => 'Ηχογραφήσεις',
+                'user_recordings' => 'Ηχογραφήσεις Χρήστη',
+                'system_recordings' => 'Ηχογραφήσεις Συστήματος',
+                'user_input_audio' => 'Ηχογραφημένη Είσοδος Χρήστη',
                 'technical_details' => 'Τεχνικές Λεπτομέρειες',
                 'call_start' => 'Έναρξη Κλήσης',
                 'call_end' => 'Τέλος Κλήσης',
@@ -293,6 +296,10 @@ class AGIAnalytics {
                 'pickup_address_recording' => 'Ηχογράφηση Διεύθυνσης Παραλαβής',
                 'destination_recording' => 'Ηχογράφηση Προορισμού',
                 'reservation_time_recording' => 'Ηχογράφηση Ώρας Κράτησης',
+                'user_said_name' => 'Πελάτης είπε το όνομά του',
+                'user_said_pickup' => 'Πελάτης είπε τη διεύθυνση παραλαβής',
+                'user_said_destination' => 'Πελάτης είπε τη διεύθυνση προορισμού',
+                'user_said_reservation' => 'Πελάτης είπε την ώρα κράτησης',
                 'welcome_message' => 'Μήνυμα Καλωσορίσματος',
                 'dtmf_input_recording' => 'Ηχογράφηση Εισαγωγής DTMF',
                 'call_recording' => 'Ηχογράφηση Κλήσης',
@@ -431,6 +438,9 @@ class AGIAnalytics {
                 'call_flow' => 'Call Flow',
                 'timeline' => 'Timeline',
                 'recordings' => 'Recordings',
+                'user_recordings' => 'User Recordings',
+                'system_recordings' => 'System Recordings',
+                'user_input_audio' => 'User Voice Input',
                 'technical_details' => 'Technical Details',
                 'call_start' => 'Call Start',
                 'call_end' => 'Call End',
@@ -519,6 +529,10 @@ class AGIAnalytics {
                 'pickup_address_recording' => 'Pickup Address Recording',
                 'destination_recording' => 'Destination Recording',
                 'reservation_time_recording' => 'Reservation Time Recording',
+                'user_said_name' => 'Customer said their name',
+                'user_said_pickup' => 'Customer said pickup address',
+                'user_said_destination' => 'Customer said destination',
+                'user_said_reservation' => 'Customer said reservation time',
                 'welcome_message' => 'Welcome Message',
                 'dtmf_input_recording' => 'DTMF Input Recording',
                 'call_recording' => 'Call Recording',
@@ -2034,10 +2048,11 @@ class AGIAnalytics {
         if (empty($recordingPath) || !is_dir($recordingPath)) {
             return [];
         }
-        
+
         $recordings = [];
         $patterns = ['*.wav', '*.mp3', '*.ogg'];
-        
+
+        // First get system recordings from main directory
         foreach ($patterns as $pattern) {
             $files = glob($recordingPath . '/' . $pattern);
             foreach ($files as $file) {
@@ -2050,11 +2065,34 @@ class AGIAnalytics {
                     'created' => date('Y-m-d H:i:s', filemtime($file)),
                     'url' => $this->getAudioURL($file),
                     'type' => $this->getRecordingType($filename),
-                    'attempt' => $this->getRecordingAttempt($filename)
+                    'attempt' => $this->getRecordingAttempt($filename),
+                    'is_user_input' => false
                 ];
             }
         }
-        
+
+        // Now get user input recordings from recordings subdirectory
+        $userRecordingsPath = $recordingPath . '/recordings';
+        if (is_dir($userRecordingsPath)) {
+            foreach ($patterns as $pattern) {
+                $files = glob($userRecordingsPath . '/' . $pattern);
+                foreach ($files as $file) {
+                    $filename = basename($file);
+                    $recordings[] = [
+                        'filename' => $filename,
+                        'path' => $file,
+                        'size' => filesize($file),
+                        'duration' => $this->getAudioDuration($file),
+                        'created' => date('Y-m-d H:i:s', filemtime($file)),
+                        'url' => $this->getAudioURL($file),
+                        'type' => $this->getRecordingType($filename),
+                        'attempt' => $this->getRecordingAttempt($filename),
+                        'is_user_input' => true
+                    ];
+                }
+            }
+        }
+
         return $recordings;
     }
     
@@ -2144,15 +2182,24 @@ class AGIAnalytics {
     
     private function getRecordingType($filename) {
         $lower = strtolower($filename);
-        
+
+        // Check for confirmation files first (like pickup_confirm.wav)
         if (strpos($lower, 'confirm') !== false) return 'confirmation';
+
+        // Check for specific user recording patterns (name_1.wav, pickup_2.wav, etc.)
+        if (preg_match('/^name_\d+\./i', $filename)) return 'name';
+        if (preg_match('/^pickup_\d+\./i', $filename)) return 'pickup';
+        if (preg_match('/^dest_\d+\./i', $filename)) return 'destination';
+        if (preg_match('/^reservation_\d+\./i', $filename)) return 'reservation';
+
+        // Check for other patterns
         if (strpos($lower, 'name') !== false) return 'name';
-        if (strpos($lower, 'pickup') !== false) return 'pickup';
+        if (strpos($lower, 'pickup') !== false && strpos($lower, 'confirm') === false) return 'pickup';
         if (strpos($lower, 'dest') !== false) return 'destination';
         if (strpos($lower, 'reservation') !== false || strpos($lower, 'date') !== false) return 'reservation';
         if (strpos($lower, 'welcome') !== false || strpos($lower, 'greeting') !== false) return 'welcome';
         if (strpos($lower, 'dtmf') !== false || strpos($lower, 'choice') !== false) return 'dtmf';
-        
+
         return 'other';
     }
     
@@ -5460,38 +5507,7 @@ class AGIAnalytics {
                 applyFilters();
             });
             
-            // Auto-apply filters on input change (with debounce)
-            let filterTimeout;
-            
-            function setupAutoFilters() {
-                console.log('Setting up auto-filters...');
-                const inputs = document.querySelectorAll('#filterForm input, #filterForm select');
-                console.log('Found filter inputs:', inputs.length);
-                
-                inputs.forEach((input, index) => {
-                    console.log(`Setting up listeners for input ${index}:`, input.name, input.type);
-                    
-                    input.addEventListener('input', function() {
-                        console.log('Input event on:', this.name, 'value:', this.value);
-                        showFilterStatus('Typing...', 'text-warning');
-                        clearTimeout(filterTimeout);
-                        filterTimeout = setTimeout(() => {
-                            showFilterStatus('Applying filters...', 'text-info');
-                            applyFilters();
-                        }, 500); // 500ms debounce
-                    });
-                    
-                    input.addEventListener('change', function() {
-                        console.log('Change event on:', this.name, 'value:', this.value);
-                        showFilterStatus('Applying filters...', 'text-info');
-                        clearTimeout(filterTimeout);
-                        applyFilters();
-                    });
-                });
-            }
-            
-            // Initialize auto-filters
-            setupAutoFilters();
+            // Removed auto-apply filters - filters are now only applied when user clicks "Apply Filters" button
             
             // Clear filters
             document.getElementById('clearFilters').addEventListener('click', function() {
@@ -6284,64 +6300,144 @@ class AGIAnalytics {
         // Global variable to store current call ID
         var currentCallId = null;
 
+        // Get user recording description
+        function getUserRecordingDescription(filename, type, attempt) {
+            attempt = attempt || 1;
+
+            // Determine language - fallback to Greek if LANG is not available
+            var currentLang = (typeof LANG !== 'undefined' && LANG.current) ? LANG.current : 'el';
+            var attemptText = '';
+            if (attempt > 1) {
+                if (typeof LANG !== 'undefined' && LANG.translations && LANG.translations.attempt) {
+                    attemptText = ' - ' + LANG.translations.attempt + ' ' + attempt;
+                } else {
+                    attemptText = currentLang === 'el' ? ' - Προσπάθεια ' + attempt : ' - Attempt ' + attempt;
+                }
+            }
+
+            // Default titles if translations are missing
+            var defaultTitles = {
+                name: currentLang === 'el' ? 'Πελάτης είπε το όνομά του' : 'Customer said their name',
+                pickup: currentLang === 'el' ? 'Πελάτης είπε τη διεύθυνση παραλαβής' : 'Customer said pickup address',
+                destination: currentLang === 'el' ? 'Πελάτης είπε τη διεύθυνση προορισμού' : 'Customer said destination',
+                reservation: currentLang === 'el' ? 'Πελάτης είπε την ώρα κράτησης' : 'Customer said reservation time',
+                default: currentLang === 'el' ? 'Ηχογραφημένη Είσοδος Χρήστη' : 'User Voice Input'
+            };
+
+            switch (type) {
+                case 'name':
+                    return {
+                        title: defaultTitles.name + attemptText,
+                        description: currentLang === 'el' ?
+                            'Ο πελάτης είπε το όνομά του. Αυτή η ηχογράφηση χρησιμοποιείται για αναγνώριση ομιλίας και επιβεβαίωση ταυτότητας.' :
+                            'Customer said their name. This recording is used for speech recognition and identity confirmation.'
+                    };
+                case 'pickup':
+                    return {
+                        title: defaultTitles.pickup + attemptText,
+                        description: currentLang === 'el' ?
+                            'Ο πελάτης είπε τη διεύθυνση παραλαβής. Επεξεργάζεται για τον προσδιορισμό της ακριβούς τοποθεσίας.' :
+                            'Customer said the pickup address. Processed to determine exact location.'
+                    };
+                case 'destination':
+                case 'dest':
+                    return {
+                        title: defaultTitles.destination + attemptText,
+                        description: currentLang === 'el' ?
+                            'Ο πελάτης είπε τον προορισμό του ταξιδιού. Χρησιμοποιείται για τον υπολογισμό της διαδρομής.' :
+                            'Customer said the destination of the trip. Used for route calculation.'
+                    };
+                case 'reservation':
+                    return {
+                        title: defaultTitles.reservation + attemptText,
+                        description: currentLang === 'el' ?
+                            'Ο πελάτης είπε την ημερομηνία και ώρα κράτησης για μελλοντικό ταξίδι.' :
+                            'Customer said the reservation date and time for a future trip.'
+                    };
+                default:
+                    return {
+                        title: defaultTitles.default + attemptText,
+                        description: currentLang === 'el' ?
+                            'Ηχογραφημένη απάντηση του πελάτη.' :
+                            'Customer voice input recording.'
+                    };
+            }
+        }
+
         // Get recording description based on filename and type
         function getRecordingDescription(filename, type, attempt) {
             attempt = attempt || 1;
-            var attemptText = attempt > 1 ? ' (' + LANG.translations.attempt + ' ' + attempt + ')' : '';
-            
+
+            // Determine language - fallback to Greek if LANG is not available
+            var currentLang = (typeof LANG !== 'undefined' && LANG.current) ? LANG.current : 'el';
+            var attemptText = '';
+            if (attempt > 1) {
+                if (typeof LANG !== 'undefined' && LANG.translations && LANG.translations.attempt) {
+                    attemptText = ' (' + LANG.translations.attempt + ' ' + attempt + ')';
+                } else {
+                    attemptText = currentLang === 'el' ? ' (Προσπάθεια ' + attempt + ')' : ' (Attempt ' + attempt + ')';
+                }
+            }
+
+            // Default values if translations are missing
+            var defaultConfirmationTitle = currentLang === 'el' ? 'Ήχος Επιβεβαίωσης' : 'Confirmation Audio';
+            var defaultConfirmationDesc = currentLang === 'el' ?
+                'Μήνυμα επιβεβαίωσης που δημιουργήθηκε από το σύστημα για επαλήθευση των στοιχείων κράτησης.' :
+                'System-generated confirmation message for booking verification.';
+
             switch (type) {
                 case 'confirmation':
                     return {
-                        title: LANG.translations.confirmation_audio + attemptText,
-                        description: LANG.translations.system_generated_confirmation
+                        title: defaultConfirmationTitle + attemptText,
+                        description: defaultConfirmationDesc
                     };
                 case 'name':
                     return {
-                        title: LANG.translations.customer_name_recording + attemptText,
-                        description: LANG.current === 'el' ? 
-                            'Ηχογραφημένο όνομα του πελάτη κατά τη διάρκεια της κλήσης. Χρησιμοποιείται για αναγνώριση και εξατομίκευση στο σύστημα κράτησης ταξί.' : 
+                        title: (currentLang === 'el' ? 'Ηχογράφηση Ονόματος Πελάτη' : 'Customer Name Recording') + attemptText,
+                        description: currentLang === 'el' ?
+                            'Ηχογραφημένο όνομα του πελάτη κατά τη διάρκεια της κλήσης. Χρησιμοποιείται για αναγνώριση και εξατομίκευση στο σύστημα κράτησης ταξί.' :
                             'Customer\'s spoken name recorded during the call. Used for identification and personalization in the taxi booking system.'
                     };
                 case 'pickup':
                     return {
-                        title: LANG.translations.pickup_address_recording + attemptText,
-                        description: LANG.current === 'el' ? 
-                            'Προφορική τοποθεσία παραλαβής του πελάτη. Επεξεργάζεται μέσω αναγνώρισης ομιλίας και γεωκωδικοποίησης για τον ακριβή προσδιορισμό των συντεταγμένων.' : 
+                        title: (currentLang === 'el' ? 'Ηχογράφηση Διεύθυνσης Παραλαβής' : 'Pickup Address Recording') + attemptText,
+                        description: currentLang === 'el' ?
+                            'Προφορική τοποθεσία παραλαβής του πελάτη. Επεξεργάζεται μέσω αναγνώρισης ομιλίας και γεωκωδικοποίησης για τον ακριβή προσδιορισμό των συντεταγμένων.' :
                             'Customer\'s spoken pickup location. Processed through speech-to-text and geocoding to determine exact pickup coordinates.'
                     };
                 case 'destination':
                     return {
-                        title: LANG.translations.destination_recording + attemptText,
-                        description: LANG.current === 'el' ? 
-                            'Προφορική διεύθυνση προορισμού του πελάτη. Επεξεργάζεται για τον προσδιορισμό της τοποθεσίας παράδοσης για την κράτηση ταξί.' : 
+                        title: (currentLang === 'el' ? 'Ηχογράφηση Προορισμού' : 'Destination Recording') + attemptText,
+                        description: currentLang === 'el' ?
+                            'Προφορική διεύθυνση προορισμού του πελάτη. Επεξεργάζεται για τον προσδιορισμό της τοποθεσίας παράδοσης για την κράτηση ταξί.' :
                             'Customer\'s spoken destination address. Processed to determine the drop-off location for the taxi booking.'
                     };
                 case 'reservation':
                     return {
-                        title: LANG.translations.reservation_time_recording + attemptText,
-                        description: LANG.current === 'el' ? 
-                            'Προτιμώμενη ώρα του πελάτη για την κράτηση ταξί. Επεξεργάζεται για την εξαγωγή πληροφοριών ημερομηνίας και ώρας.' : 
+                        title: (currentLang === 'el' ? 'Ηχογράφηση Ώρας Κράτησης' : 'Reservation Time Recording') + attemptText,
+                        description: currentLang === 'el' ?
+                            'Προτιμώμενη ώρα του πελάτη για την κράτηση ταξί. Επεξεργάζεται για την εξαγωγή πληροφοριών ημερομηνίας και ώρας.' :
                             'Customer\'s preferred time for taxi booking. Processed to extract date and time information for scheduled pickup.'
                     };
                 case 'welcome':
                     return {
-                        title: LANG.translations.welcome_message + attemptText,
-                        description: LANG.current === 'el' ? 
-                            'Μήνυμα καλωσορίσματος του συστήματος που παίζει στην αρχή της κλήσης για να καθοδηγήσει τους πελάτες.' : 
+                        title: (currentLang === 'el' ? 'Μήνυμα Καλωσορίσματος' : 'Welcome Message') + attemptText,
+                        description: currentLang === 'el' ?
+                            'Μήνυμα καλωσορίσματος του συστήματος που παίζει στην αρχή της κλήσης για να καθοδηγήσει τους πελάτες.' :
                             'System greeting played at the start of the call to guide customers through the booking process.'
                     };
                 case 'dtmf':
                     return {
-                        title: LANG.translations.dtmf_input_recording + attemptText,
-                        description: LANG.current === 'el' ? 
-                            'Ηχογράφηση των επιλογών πλήκτρων του πελάτη κατά τη διάρκεια της πλοήγησης στο διαδραστικό μενού.' : 
+                        title: (currentLang === 'el' ? 'Ηχογράφηση Εισαγωγής DTMF' : 'DTMF Input Recording') + attemptText,
+                        description: currentLang === 'el' ?
+                            'Ηχογράφηση των επιλογών πλήκτρων του πελάτη κατά τη διάρκεια της πλοήγησης στο διαδραστικό μενού.' :
                             'Recording of customer\'s button press choices during interactive menu navigation.'
                     };
                 default:
                     return {
-                        title: LANG.translations.call_recording + attemptText,
-                        description: LANG.current === 'el' ? 
-                            'Ηχογράφηση από τη συνεδρία κλήσης του πελάτη. Περιέχει προφορική αλληλεπίδραση με το αυτοματοποιημένο σύστημα κράτησης ταξί.' : 
+                        title: (currentLang === 'el' ? 'Ηχογράφηση Κλήσης' : 'Call Recording') + attemptText,
+                        description: currentLang === 'el' ?
+                            'Ηχογράφηση από τη συνεδρία κλήσης του πελάτη. Περιέχει προφορική αλληλεπίδραση με το αυτοματοποιημένο σύστημα κράτησης ταξί.' :
                             'Audio recording from the customer call session. Contains spoken interaction with the automated taxi booking system.'
                     };
             }
@@ -6461,45 +6557,103 @@ class AGIAnalytics {
                 }
             }
             
-            // Add recordings section
+            // Add recordings section - separate user and system recordings
             if (call.recordings && call.recordings.length > 0) {
-                html += '<h4 style="margin: 1.5rem 0 1rem;"><i class="fas fa-microphone"></i> ' + LANG.translations.recordings + '</h4>';
-                // Sort recordings by type and attempt for better organization
-                var sortedRecordings = call.recordings.sort(function(a, b) {
-                    var typeOrder = ['welcome', 'name', 'pickup', 'destination', 'reservation', 'confirmation', 'dtmf', 'other'];
-                    var aIndex = typeOrder.indexOf(a.type) !== -1 ? typeOrder.indexOf(a.type) : 999;
-                    var bIndex = typeOrder.indexOf(b.type) !== -1 ? typeOrder.indexOf(b.type) : 999;
-                    if (aIndex !== bIndex) return aIndex - bIndex;
-                    return (a.attempt || 1) - (b.attempt || 1);
-                });
-                
-                for (var i = 0; i < sortedRecordings.length; i++) {
-                    var recording = sortedRecordings[i];
-                    var sizeKB = (recording.size / 1024).toFixed(1);
-                    var description = getRecordingDescription(recording.filename, recording.type, recording.attempt);
-                    var icon = getRecordingIcon(recording.filename, recording.type);
-                    
-                    html += '<div class="recording-item">' +
-                               '<div class="recording-header">' +
-                                   '<div class="recording-info">' +
-                                       '<span class="recording-icon">' + icon + '</span>' +
-                                       '<div class="recording-details">' +
-                                           '<strong class="recording-title">' + description.title + '</strong>' +
-                                           '<div class="recording-meta">' +
-                                               '<span class="recording-filename">' + recording.filename + '</span>' +
-                                               '<span class="recording-size">' + sizeKB + ' ' + LANG.translations.kb_size + '</span>' +
-                                               (recording.duration ? '<span class="recording-duration">' + formatAudioDuration(recording.duration) + '</span>' : '') +
-                                               (recording.attempt > 1 ? '<span class="recording-attempt">' + LANG.translations.attempt + ' ' + recording.attempt + '</span>' : '') +
+                // Separate user input recordings from system recordings
+                var userRecordings = [];
+                var systemRecordings = [];
+
+                for (var i = 0; i < call.recordings.length; i++) {
+                    if (call.recordings[i].is_user_input) {
+                        userRecordings.push(call.recordings[i]);
+                    } else {
+                        systemRecordings.push(call.recordings[i]);
+                    }
+                }
+
+                // Display User Recordings first if any
+                if (userRecordings.length > 0) {
+                    html += '<h4 style="margin: 1.5rem 0 1rem; color: #4caf50;"><i class="fas fa-user-circle"></i> ' + ((typeof LANG !== 'undefined' && LANG.translations && LANG.translations.user_recordings) ? LANG.translations.user_recordings : 'Ηχογραφήσεις Χρήστη') + '</h4>';
+
+                    // Sort user recordings by type and attempt
+                    var sortedUserRecordings = userRecordings.sort(function(a, b) {
+                        var typeOrder = ['name', 'pickup', 'destination', 'reservation'];
+                        var aIndex = typeOrder.indexOf(a.type) !== -1 ? typeOrder.indexOf(a.type) : 999;
+                        var bIndex = typeOrder.indexOf(b.type) !== -1 ? typeOrder.indexOf(b.type) : 999;
+                        if (aIndex !== bIndex) return aIndex - bIndex;
+                        return (a.attempt || 1) - (b.attempt || 1);
+                    });
+
+                    for (var i = 0; i < sortedUserRecordings.length; i++) {
+                        var recording = sortedUserRecordings[i];
+                        var sizeKB = (recording.size / 1024).toFixed(1);
+                        var description = getUserRecordingDescription(recording.filename, recording.type, recording.attempt);
+                        var icon = '🎤';
+
+                        html += '<div class="recording-item" style="border-left: 3px solid #4caf50;">' +
+                                   '<div class="recording-header">' +
+                                       '<div class="recording-info">' +
+                                           '<span class="recording-icon">' + icon + '</span>' +
+                                           '<div class="recording-details">' +
+                                               '<strong class="recording-title">' + description.title + '</strong>' +
+                                               '<div class="recording-meta">' +
+                                                   '<span class="recording-filename">' + recording.filename + '</span>' +
+                                                   '<span class="recording-size">' + sizeKB + ' ' + ((typeof LANG !== 'undefined' && LANG.translations && LANG.translations.kb_size) ? LANG.translations.kb_size : 'KB') + '</span>' +
+                                                   (recording.duration ? '<span class="recording-duration">' + formatAudioDuration(recording.duration) + '</span>' : '') +
+                                                   (recording.attempt > 1 ? '<span class="recording-attempt" style="background: #ff9800; color: white; padding: 2px 6px; border-radius: 3px;">' + ((typeof LANG !== 'undefined' && LANG.translations && LANG.translations.attempt) ? LANG.translations.attempt : 'Προσπάθεια') + ' ' + recording.attempt + '</span>' : '') +
+                                               '</div>' +
                                            '</div>' +
                                        '</div>' +
                                    '</div>' +
-                               '</div>' +
-                               '<div class="recording-description">' + description.description + '</div>' +
-                               '<audio controls class="recording-player" preload="none">' +
-                                   '<source src="?action=audio&file=' + encodeURIComponent(recording.path) + '" type="audio/wav">' +
-                                   LANG.translations.audio_not_supported +
-                               '</audio>' +
-                           '</div>';
+                                   '<div class="recording-description" style="color: #666; font-style: italic;">' + description.description + '</div>' +
+                                   '<audio controls class="recording-player" preload="none" style="width: 100%; margin-top: 10px;">' +
+                                       '<source src="?action=audio&file=' + encodeURIComponent(recording.path) + '" type="audio/wav">' +
+                                       ((typeof LANG !== 'undefined' && LANG.translations && LANG.translations.audio_not_supported) ? LANG.translations.audio_not_supported : 'Ο φυλλομετρητής σας δεν υποστηρίζει το στοιχείο ήχου.') +
+                                   '</audio>' +
+                               '</div>';
+                    }
+                }
+
+                // Display System Recordings if any
+                if (systemRecordings.length > 0) {
+                    html += '<h4 style="margin: 1.5rem 0 1rem;"><i class="fas fa-microphone"></i> ' + ((typeof LANG !== 'undefined' && LANG.translations && LANG.translations.system_recordings) ? LANG.translations.system_recordings : 'Ηχογραφήσεις Συστήματος') + '</h4>';
+
+                    // Sort system recordings by type
+                    var sortedSystemRecordings = systemRecordings.sort(function(a, b) {
+                        var typeOrder = ['welcome', 'confirmation', 'dtmf', 'other'];
+                        var aIndex = typeOrder.indexOf(a.type) !== -1 ? typeOrder.indexOf(a.type) : 999;
+                        var bIndex = typeOrder.indexOf(b.type) !== -1 ? typeOrder.indexOf(b.type) : 999;
+                        if (aIndex !== bIndex) return aIndex - bIndex;
+                        return (a.attempt || 1) - (b.attempt || 1);
+                    });
+
+                    for (var i = 0; i < sortedSystemRecordings.length; i++) {
+                        var recording = sortedSystemRecordings[i];
+                        var sizeKB = (recording.size / 1024).toFixed(1);
+                        var description = getRecordingDescription(recording.filename, recording.type, recording.attempt);
+                        var icon = getRecordingIcon(recording.filename, recording.type);
+
+                        html += '<div class="recording-item">' +
+                                   '<div class="recording-header">' +
+                                       '<div class="recording-info">' +
+                                           '<span class="recording-icon">' + icon + '</span>' +
+                                           '<div class="recording-details">' +
+                                               '<strong class="recording-title">' + description.title + '</strong>' +
+                                               '<div class="recording-meta">' +
+                                                   '<span class="recording-filename">' + recording.filename + '</span>' +
+                                                   '<span class="recording-size">' + sizeKB + ' ' + ((typeof LANG !== 'undefined' && LANG.translations && LANG.translations.kb_size) ? LANG.translations.kb_size : 'KB') + '</span>' +
+                                                   (recording.duration ? '<span class="recording-duration">' + formatAudioDuration(recording.duration) + '</span>' : '') +
+                                               '</div>' +
+                                           '</div>' +
+                                       '</div>' +
+                                   '</div>' +
+                                   '<div class="recording-description">' + description.description + '</div>' +
+                                   '<audio controls class="recording-player" preload="none">' +
+                                       '<source src="?action=audio&file=' + encodeURIComponent(recording.path) + '" type="audio/wav">' +
+                                       ((typeof LANG !== 'undefined' && LANG.translations && LANG.translations.audio_not_supported) ? LANG.translations.audio_not_supported : 'Ο φυλλομετρητής σας δεν υποστηρίζει το στοιχείο ήχου.') +
+                                   '</audio>' +
+                               '</div>';
+                    }
                 }
             }
             
