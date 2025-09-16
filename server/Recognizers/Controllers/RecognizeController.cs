@@ -4,6 +4,8 @@ using Microsoft.Recognizers.Text;
 using Microsoft.Recognizers.Text.DateTime;
 using Recognizers.Models;
 using System.Net.Http;
+using System.Runtime.Serialization.Json;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Recognizers.Controllers
@@ -12,45 +14,51 @@ namespace Recognizers.Controllers
     [ApiController]
     public class RecognizeController : ControllerBase
     {
+        public static JsonSerializerOptions jsonSettings = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+        };
+
         [HttpGet]
         public IActionResult Get()
         {
             return Ok("Hello from RecognizeController!");
         }
 
-        [HttpPost]
-        public async Task<RecognizeResponse> DateFree([FromBody] RecognizeRequest input)
-        {
-            int checkTranslation = 0;
-            string translation = "";
-            string text = input.input;
-            RecognizeResponse recognizeResponse = new RecognizeResponse
-            {
-                InputText = input.input,
-                TranslationText = "",
-                Matches = new List<ModelResult>()
-            };
-            while (checkTranslation<TranslateBaseUrls.Length && translation.Length == 0)
-            {
-                TranslateResponse translateData = await GetTranslationFree(input.input, input.translateFrom,input.translateTo);
-                if (translateData == null || string.IsNullOrEmpty(translateData.translation))
-                {
-                    ++checkTranslation;
-                    continue;
-                }
-                else
-                {
-                    translation = translateData.translation;
-                    recognizeResponse.TranslationText = translation;
-                    text = translation;
-                    break;
-                }
-            }
+        //[HttpPost]
+        //public async Task<RecognizeResponse> DateFree([FromBody] RecognizeRequest input)
+        //{
+        //    int checkTranslation = 0;
+        //    string translation = "";
+        //    string text = input.input;
+        //    RecognizeResponse recognizeResponse = new RecognizeResponse
+        //    {
+        //        InputText = input.input,
+        //        TranslationText = "",
+        //        Matches = new List<ModelResult>()
+        //    };
+        //    while (checkTranslation<TranslateBaseUrls.Length && translation.Length == 0)
+        //    {
+        //        TranslateResponse translateData = await GetTranslationFree(input.input, input.translateFrom,input.translateTo);
+        //        if (translateData == null || string.IsNullOrEmpty(translateData.translation))
+        //        {
+        //            ++checkTranslation;
+        //            continue;
+        //        }
+        //        else
+        //        {
+        //            translation = translateData.translation;
+        //            recognizeResponse.TranslationText = translation;
+        //            text = translation;
+        //            break;
+        //        }
+        //    }
 
-            recognizeResponse.Matches= DateTimeRecognizer.RecognizeDateTime(text, input.matchLang, DateTimeOptions.CalendarMode);
+        //    recognizeResponse.Matches= DateTimeRecognizer.RecognizeDateTime(text, input.matchLang, DateTimeOptions.CalendarMode);
 
-            return recognizeResponse;
-        }
+        //    return recognizeResponse;
+        //}
 
         int lastUsedIndex = -1;
         private static string[] TranslateBaseUrls = new string[]
@@ -76,22 +84,22 @@ namespace Recognizers.Controllers
             return lastUsedIndex;
         }
 
-        private async Task<TranslateResponse> GetTranslationFree([FromQuery] string query, [FromQuery] string fromLang, [FromQuery] string toLang)
-        {
-            using var httpClient = new HttpClient();
-            // Replace with your actual endpoint
-            string baseUrl = TranslateBaseUrls[getTranslationAPIIndex()];
-            string url = $"{baseUrl}/api/v1/{Uri.EscapeDataString(fromLang)}/{Uri.EscapeDataString(toLang)}/{Uri.EscapeDataString(query)}";
-            var response = await httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-            string responseText = await response.Content.ReadAsStringAsync();
-            TranslateResponse result = System.Text.Json.JsonSerializer.Deserialize<TranslateResponse>(responseText, new System.Text.Json.JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
-            });
-            return result;
-        }
+        //private async Task<TranslateResponse> GetTranslationFree([FromQuery] string query, [FromQuery] string fromLang, [FromQuery] string toLang)
+        //{
+        //    using var httpClient = new HttpClient();
+        //    // Replace with your actual endpoint
+        //    string baseUrl = TranslateBaseUrls[getTranslationAPIIndex()];
+        //    string url = $"{baseUrl}/api/v1/{Uri.EscapeDataString(fromLang)}/{Uri.EscapeDataString(toLang)}/{Uri.EscapeDataString(query)}";
+        //    var response = await httpClient.GetAsync(url);
+        //    response.EnsureSuccessStatusCode();
+        //    string responseText = await response.Content.ReadAsStringAsync();
+        //    TranslateResponse result = System.Text.Json.JsonSerializer.Deserialize<TranslateResponse>(responseText, new System.Text.Json.JsonSerializerOptions
+        //    {
+        //        PropertyNameCaseInsensitive = true,
+        //        NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+        //    });
+        //    return result;
+        //}
 
         private static string GreekToEnglishTime(string greekWord)
         {
@@ -157,6 +165,12 @@ namespace Recognizers.Controllers
             return s;
         }
 
+        class TranslateResponseGoogleWrap
+        {
+            public TranslateResponseGoogle? data { get; set; }
+            public bool isOK { get; set; }
+        }
+
         [HttpPost]
         public async Task<RecognizeResponse> Date([FromBody] RecognizeRequest input)
         {
@@ -169,13 +183,13 @@ namespace Recognizers.Controllers
                 TranslationText = "",
                 Matches = new List<ModelResult>()
             };
-            TranslateResponseGoogle translateData = await GetTranslationGoogle(text, input.translateFrom, input.translateTo,input.key);
-            if (translateData != null && (!string.IsNullOrEmpty(translateData.translation)))
+            TranslateResponseGoogleWrap translateData = await GetTranslationGoogle(text, input.translateFrom, input.translateTo,input.key);
+            if (translateData?.data != null && (!string.IsNullOrEmpty(translateData?.data?.translation)))
             {
-                recognizeResponse.TranslationText = translateData.translation;
-                text = translateData.translation;
+                recognizeResponse.TranslationText = translateData.data.translation;
+                text = translateData.data.translation;
             }
-
+            recognizeResponse.Locale = input.translateFrom;
             recognizeResponse.Matches = DateTimeRecognizer.RecognizeDateTime(text, input.matchLang, DateTimeOptions.CalendarMode);
 
             return recognizeResponse;
@@ -195,7 +209,7 @@ namespace Recognizers.Controllers
             return await Date(req);
         }
 
-        private async Task<TranslateResponseGoogle> GetTranslationGoogle(string query, string fromLang, string toLang,string key)
+        private async Task<TranslateResponseGoogleWrap> GetTranslationGoogle(string query, string fromLang, string toLang,string key)
         {
             using var httpClient = new HttpClient();
             // Replace with your actual endpoint
@@ -207,12 +221,18 @@ namespace Recognizers.Controllers
             var responseStream = await response.Content.ReadAsStreamAsync();
             using var reader = new System.IO.StreamReader(responseStream, System.Text.Encoding.UTF8);
             string responseText = await reader.ReadToEndAsync();
-            TranslateResponseGoogle result = System.Text.Json.JsonSerializer.Deserialize<TranslateResponseGoogle>(responseText, new System.Text.Json.JsonSerializerOptions
+            TranslateResponseGoogleWrap responseGoogleWrap = new TranslateResponseGoogleWrap
             {
-                PropertyNameCaseInsensitive = true,
-                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
-            });
-            return result;
+                isOK = false
+            };
+            if (responseText != null)
+            {
+                responseGoogleWrap.isOK = true;
+                responseGoogleWrap.data = JsonSerializer.Deserialize<TranslateResponseGoogle>(responseText, jsonSettings);
+                return responseGoogleWrap;
+            }
+
+            return responseGoogleWrap;
         }
     }
 }
