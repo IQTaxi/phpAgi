@@ -46,6 +46,7 @@ class AGICallHandlerConfig
         "initialMessageSound" => "strike",
         "redirectToOperator" => false,
         "autoCallCentersMode" => 3,
+        "maxRetries" => 5,
         "bounds" => null,
         "centerBias" => null
     ],
@@ -67,6 +68,7 @@ class AGICallHandlerConfig
         "initialMessageSound" => "strike",
         "redirectToOperator" => false,
         "autoCallCentersMode" => 3,
+        "maxRetries" => 5,
         "bounds" => null,
         "centerBias" => null
     ],
@@ -88,6 +90,7 @@ class AGICallHandlerConfig
         "initialMessageSound" => "strike",
         "redirectToOperator" => false,
         "autoCallCentersMode" => 3,
+        "maxRetries" => 5,
         "bounds" => null,
         "centerBias" => null
     ],
@@ -109,6 +112,7 @@ class AGICallHandlerConfig
         "initialMessageSound" => "strike",
         "redirectToOperator" => false,
         "autoCallCentersMode" => 3,
+        "maxRetries" => 5,
         "bounds" => null,
         "centerBias" => null
     ],
@@ -130,6 +134,7 @@ class AGICallHandlerConfig
 		"initialMessageSound" => "strike",
 		"redirectToOperator" => false,
 		"autoCallCentersMode" => 3,
+		"maxRetries" => 5,
 		"bounds" => null,
 		"centerBias" => null
     ]

@@ -147,6 +147,7 @@ class AGICallHandler
             $this->initial_message_sound = $config['initialMessageSound'] ?? '';
             $this->redirect_to_operator = $config['redirectToOperator'] ?? false;
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
+            $this->max_retries = intval($config['maxRetries'] ?? 3);
         }
     }
 
@@ -678,20 +679,25 @@ class AGICallHandler
                 'en' => 'The reservation is for {time}, press 0 to confirm or 1 to try again',
                 'bg' => 'Резервацията е за {time}, натиснете 0 за потвърждение или 1, за да опитате отново'
             ],
+            'reservation_time_selection' => [
+                'el' => 'Εντοπίστηκαν πολλαπλές ώρες. Πατήστε 1 για {time1} ή πατήστε 2 για {time2}',
+                'en' => 'Multiple times detected. Press 1 for {time1} or press 2 for {time2}',
+                'bg' => 'Открити са множество часове. Натиснете 1 за {time1} или натиснете 2 за {time2}'
+            ],
             'registration_error' => [
                 'el' => 'Κάτι πήγε στραβά με την καταχώρηση της διαδρομής σας',
                 'en' => 'Something went wrong with registering your route',
                 'bg' => 'Нещо се обърка с регистрирането на вашия маршрут'
             ],
             'automated_call_comment' => [
-                'el' => '[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]',
-                'en' => '[AUTOMATED CALL]',
-                'bg' => '[АВТОМАТИЗИРАНО ОБАЖДАНЕ]'
+                'el' => '',
+                'en' => '',
+                'bg' => ''
             ],
             'automated_reservation_comment' => [
-                'el' => '[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΡΑΤΗΣΗ - {time}]',
-                'en' => '[AUTOMATED RESERVATION - {time}]',
-                'bg' => '[АВТОМАТИЗИРАНА РЕЗЕРВАЦИЯ - {time}]'
+                'el' => '',
+                'en' => '',
+                'bg' => ''
             ]
         ];
 
@@ -1225,10 +1231,22 @@ class AGICallHandler
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
+        $this->logMessage("User API HTTP code: {$http_code}");
+        if ($response) {
+            $this->logMessage("User API response: " . substr($response, 0, 500) . (strlen($response) > 500 ? '...' : ''));
+        } else {
+            $this->logMessage("User API response: empty/failed");
+        }
+
         if ($http_code !== 200 || !$response) return [];
 
         $data = json_decode($response, true);
-        if (!$data || $data['result']['result'] !== 'SUCCESS') return [];
+        if (!$data || $data['result']['result'] !== 'SUCCESS') {
+            $this->logMessage("User API failed or returned non-SUCCESS result");
+            return [];
+        }
+
+        $this->logMessage("User API success - returning user data");
 
         return $this->parseUserAPIResponse($data['response']);
     }
@@ -1568,7 +1586,7 @@ class AGICallHandler
         $bounds = $this->config[$this->extension]['bounds'] ?? null;
         
         // Log which API and filters are being used
-        $api_name = $geocoding_version == 2 ? 'Google Places API v1' : 'Google Geocoding API v1';
+        $api_name = $geocoding_version == 2 ? 'Google Places API v1 (NEW)' : 'Google Maps Geocoding API v1 (LEGACY)';
         $bounds_filter = empty($bounds) ? 'No geographic restrictions' : 'Bounds: ' . json_encode($bounds);
         $this->logMessage("🗺️ GEOCODING: Using {$api_name} | {$bounds_filter} | Address: {$address}", 'INFO', 'GEOCODING');
         
@@ -2070,10 +2088,13 @@ class AGICallHandler
         }
 
         $result = json_decode($response, true);
-        if (!$result || empty($result['bestMatch'])) {
-            $this->logMessage("No date match found in response");
+        if (!$result) {
+            $this->logMessage("No valid JSON response from date parsing service");
             return null;
         }
+
+        // Log the full response for debugging
+        $this->logMessage("Date parsing response: " . json_encode($result));
 
         return $result;
     }
@@ -2104,7 +2125,7 @@ class AGICallHandler
 
             $recording_file = "{$this->filebase}/recordings/name_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
-            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
+            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP s=2");
             $this->logMessage("Record result: {$record_result}");
             
             // Check if recording failed due to dead channel
@@ -2135,12 +2156,17 @@ class AGICallHandler
                 $this->logMessage("Name successfully captured: {$this->name_result}");
                 $this->updateAnalyticsRecord(); // Batch update after name collection
                 return true;
+            } elseif (!empty($name)) {
+                // Name detected but too short - play invalid_name
+                $this->logMessage("Name rejected - too short");
+                if ($try < $this->max_retries) {
+                    $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_name') . '"');
+                }
             } else {
-                $this->logMessage("Name rejected - empty or too short");
-            }
-
-            if ($try < $this->max_retries) {
-                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                // No speech detected - play invalid_input
+                if ($try < $this->max_retries) {
+                    $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                }
             }
         }
 
@@ -2172,7 +2198,7 @@ class AGICallHandler
 
             $recording_file = "{$this->filebase}/recordings/pickup_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
-            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
+            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP s=2");
             $this->logMessage("Record result: {$record_result}");
             
             // Check if recording failed due to dead channel
@@ -2202,13 +2228,18 @@ class AGICallHandler
                     $this->logMessage("Pickup successfully captured: {$this->pickup_result}");
                     $this->updateAnalyticsRecord(); // Batch update after pickup collection
                     return true;
+                } else {
+                    // Geocoding failed - invalid address
+                    if ($try < $this->max_retries) {
+                        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_address') . '"');
+                    }
                 }
             } else {
                 $this->stopMusicOnHold();
-            }
-
-            if ($try < $this->max_retries) {
-                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                // No speech detected - invalid input
+                if ($try < $this->max_retries) {
+                    $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                }
             }
         }
 
@@ -2240,7 +2271,7 @@ class AGICallHandler
 
             $recording_file = "{$this->filebase}/recordings/dest_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
-            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
+            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP s=2");
             $this->logMessage("Record result: {$record_result}");
             
             // Check if recording failed due to dead channel
@@ -2270,13 +2301,18 @@ class AGICallHandler
                     $this->logMessage("Destination successfully captured: {$this->dest_result}");
                     $this->updateAnalyticsRecord(); // Batch update after destination collection
                     return true;
+                } else {
+                    // Geocoding failed - invalid address
+                    if ($try < $this->max_retries) {
+                        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_address') . '"');
+                    }
                 }
             } else {
                 $this->stopMusicOnHold();
-            }
-
-            if ($try < $this->max_retries) {
-                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                // No speech detected - invalid input
+                if ($try < $this->max_retries) {
+                    $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                }
             }
         }
 
@@ -2308,7 +2344,7 @@ class AGICallHandler
 
             $recording_file = "{$this->filebase}/recordings/reservation_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
-            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
+            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP s=2");
             $this->logMessage("Record result: {$record_result}");
             
             // Check if recording failed due to dead channel
@@ -2325,17 +2361,105 @@ class AGICallHandler
                 $parsed_date = $this->parseDateFromText(trim($reservation_speech));
                 $this->stopMusicOnHold();
 
-                if ($parsed_date && !empty($parsed_date['formattedBestMatch'])) {
-                    if ($this->confirmReservationTime($parsed_date)) {
-                        return true;
+                if ($parsed_date) {
+                    // Check if bestMatch has a value (valid single match)
+                    if (!empty($parsed_date['bestMatch'])) {
+                        $this->logMessage("Valid bestMatch found: " . $parsed_date['bestMatch']);
+
+                        // Check if this is an invalid time (like midnight from date-only input)
+                        if ($this->isInvalidTime($parsed_date)) {
+                            $this->logMessage("Invalid time detected (likely date without time): {$parsed_date['formattedBestMatch']}");
+                            // Invalid time - play invalid_date
+                            if ($try < $this->max_retries) {
+                                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                            }
+                        } else {
+                            if ($this->confirmReservationTime($parsed_date)) {
+                                return true;
+                            }
+                        }
+                    }
+                    // bestMatch is null, check if bestMatches has content
+                    else if (empty($parsed_date['bestMatch'])) {
+                        $this->logMessage("bestMatch is null, checking bestMatches array");
+
+                        // Check if we have bestMatches array with content
+                        if (isset($parsed_date['bestMatches']) &&
+                            is_array($parsed_date['bestMatches']) &&
+                            !empty($parsed_date['bestMatches'])) {
+
+                            $matches_count = count($parsed_date['bestMatches']);
+                            $this->logMessage("Found {$matches_count} matches in bestMatches array");
+
+                            // If we have exactly 2 matches, ask user to choose
+                            if ($matches_count >= 2) {
+                                $this->logMessage("Multiple date matches found, asking user to select");
+                                $selected_date = $this->selectFromMultipleDates($parsed_date);
+
+                                if ($selected_date) {
+                                    $this->logMessage("Selected date data: " . json_encode($selected_date));
+                                    $isInvalid = $this->isInvalidTime($selected_date);
+                                    $this->logMessage("Is selected date invalid? " . ($isInvalid ? "YES" : "NO"));
+
+                                    if (!$isInvalid) {
+                                        if ($this->confirmReservationTime($selected_date)) {
+                                            return true;
+                                        }
+                                    } else {
+                                        // Invalid time - play invalid_date
+                                        $this->logMessage("Playing invalid_date sound because selected date is invalid");
+                                        if ($try < $this->max_retries) {
+                                            $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                                        }
+                                    }
+                                } else {
+                                    $this->logMessage("selectFromMultipleDates returned null");
+                                    if ($try < $this->max_retries) {
+                                        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                                    }
+                                }
+                            }
+                            // If we have only 1 match in bestMatches, try to use it
+                            else if ($matches_count == 1) {
+                                $this->logMessage("Single match in bestMatches, attempting to use it");
+                                // Create a parsed_date structure with the single match
+                                $single_match_data = [
+                                    'bestMatch' => $parsed_date['bestMatches'][0],
+                                    'formattedBestMatch' => $parsed_date['formattedBestMatches'][0] ?? $parsed_date['bestMatches'][0],
+                                    'bestMatchUnixTimestamp' => $parsed_date['bestMatchesUnixTimestamps'][0] ?? null
+                                ];
+
+                                if (!$this->isInvalidTime($single_match_data)) {
+                                    if ($this->confirmReservationTime($single_match_data)) {
+                                        return true;
+                                    }
+                                } else {
+                                    // Invalid time - play invalid_date
+                                    if ($try < $this->max_retries) {
+                                        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                                    }
+                                }
+                            }
+                        } else {
+                            // Both bestMatch and bestMatches are empty - user needs to re-say
+                            $this->logMessage("Both bestMatch and bestMatches are empty - user needs to re-say");
+                            if ($try < $this->max_retries) {
+                                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
+                            }
+                        }
+                    }
+                } else {
+                    // Speech detected but date parsing completely failed - play invalid_date
+                    if ($try < $this->max_retries) {
+                        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_date') . '"');
                     }
                 }
             } else {
                 $this->stopMusicOnHold();
-            }
-
-            if ($try < $this->max_retries) {
-                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                // No speech detected - play invalid_input
+                if ($try < $this->max_retries) {
+                    $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                }
             }
         }
 
@@ -2366,6 +2490,75 @@ class AGICallHandler
                 $this->saveJson("reservationStamp", $this->reservation_timestamp);
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    private function selectFromMultipleDates($parsed_date)
+    {
+        // Check if we have multiple matches
+        if (!isset($parsed_date['formattedBestMatches']) || !is_array($parsed_date['formattedBestMatches'])) {
+            return null;
+        }
+
+        $matches = $parsed_date['formattedBestMatches'];
+        $timestamps = $parsed_date['bestMatchesUnixTimestamps'] ?? [];
+
+        // If we don't have exactly 2 matches, return null
+        if (count($matches) != 2) {
+            return null;
+        }
+
+        // Prepare the selection text
+        $selection_text = str_replace(
+            ['{time1}', '{time2}'],
+            [$matches[0], $matches[1]],
+            $this->getLocalizedText('reservation_time_selection')
+        );
+
+        $selection_file = "{$this->filebase}/selectdate";
+
+        $this->startMusicOnHold();
+        $tts_success = $this->callTTS($selection_text, $selection_file);
+        $this->stopMusicOnHold();
+
+        if ($tts_success) {
+            $choice = $this->readDTMF($selection_file, 1, 10);
+            $this->logMessage("User date selection choice: {$choice}");
+
+            if ($choice == "1" && isset($matches[0])) {
+                return [
+                    'bestMatch' => $parsed_date['bestMatches'][0] ?? null,
+                    'formattedBestMatch' => $matches[0],
+                    'bestMatchUnixTimestamp' => $timestamps[0] ?? null,
+                    'bestMatches' => [$parsed_date['bestMatches'][0] ?? null]
+                ];
+            } else if ($choice == "2" && isset($matches[1])) {
+                return [
+                    'bestMatch' => $parsed_date['bestMatches'][1] ?? null,
+                    'formattedBestMatch' => $matches[1],
+                    'bestMatchUnixTimestamp' => $timestamps[1] ?? null,
+                    'bestMatches' => [$parsed_date['bestMatches'][1] ?? null]
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    private function isInvalidTime($parsed_date)
+    {
+        // Valid time input should have bestMatch AND bestMatches with content
+        if (!isset($parsed_date['bestMatch'])) {
+            return true;
+        }
+
+        // If bestMatches is null or empty, it means date-only input (invalid)
+        if (!isset($parsed_date['bestMatches']) ||
+            $parsed_date['bestMatches'] === null ||
+            empty($parsed_date['bestMatches'])) {
+            return true;
         }
 
         return false;
@@ -2538,6 +2731,11 @@ class AGICallHandler
 
     private function handleNormalMode($result)
     {
+        // Set success outcome BEFORE playing the message (in case user hangs up during playback)
+        if (!$result['callOperator']) {
+            $this->setCallOutcome('success');
+        }
+
         if (!empty($result['msg'])) {
             $register_file = "{$this->filebase}/register";
             $this->logMessage("Generating TTS for message: {$result['msg']}");
@@ -2752,6 +2950,11 @@ class AGICallHandler
         $result = $this->registerCall();
         $this->stopMusicOnHold();
 
+        // Set success outcome BEFORE playing the message (in case user hangs up during playback)
+        if (!$result['callOperator']) {
+            $this->setCallOutcome('success');
+        }
+
         if (!empty($result['msg'])) {
             $register_file = "{$this->filebase}/register";
             $this->logMessage("Generating TTS for message: {$result['msg']}");
@@ -2774,7 +2977,6 @@ class AGICallHandler
             $this->redirectToOperator();
         } else {
             $this->logMessage("Reservation registration successful - ending call normally");
-            $this->setCallOutcome('success');
             $this->finalizeCall();
             $this->agiCommand('EXEC Wait "1"');
             $this->agiCommand('HANGUP');
