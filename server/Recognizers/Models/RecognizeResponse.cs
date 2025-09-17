@@ -13,43 +13,24 @@ namespace Recognizers.Models
             return (long)(date.ToUniversalTime() - LinuxDateTimeEpoch).TotalSeconds;
         }
 
+        public void setMatches(List<ModelResult> modelResults)
+        {
+            Matches = modelResults;
+        }
+
         public string Locale { get; set; }  = "el-GR";
         public string InputText { get; set; }
         public string FilterText { get; set; }
         public string TranslationText { get; set; }
-        public List<ModelResult> Matches { get; set; }        
+        private List<ModelResult> Matches { get; set; }  = new List<ModelResult>();
 
         public DateTime? BestMatch { 
             get
             {
-                if (Matches == null)
+                DateTime[] matches = BestMatches;
+                if (matches == null || matches.Length!=1)
                     return null;
-                DateTime? res = null;
-                foreach (var match in Matches)
-                {
-                    if (match?.Resolution != null &&
-                        match.Resolution.TryGetValue("values", out var valuesObj) &&
-                        valuesObj is IEnumerable<object> valuesEnumerable)
-                    {
-                        foreach (var valueItem in valuesEnumerable)
-                        {
-                            if (valueItem is IDictionary<string, string> valueDict)
-                            {
-                                DateTime dateTime;
-                                if (valueDict.TryGetValue("value", out var dateValueObj) &&
-                                    dateValueObj is string dateValueStr &&
-                                    DateTime.TryParse(dateValueStr, out dateTime))
-                                {
-                                    if ((res == null || dateTime > res) && dateTime>DateTime.Now && dateTime<DateTime.Now.AddMonths(6))
-                                    {
-                                        res = dateTime;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                return res;
+                return matches[0];
             }
         }
 

@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Recognizers.Text;
 using Microsoft.Recognizers.Text.DateTime;
 using Recognizers.Models;
@@ -14,92 +15,18 @@ namespace Recognizers.Controllers
     [ApiController]
     public class RecognizeController : ControllerBase
     {
+        private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
+
+        public RecognizeController(Microsoft.Extensions.Configuration.IConfiguration configuration)
+        {
+            _configuration = configuration;
+        }
+
         public static JsonSerializerOptions jsonSettings = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
             NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
         };
-
-        [HttpGet]
-        public IActionResult Get()
-        {
-            return Ok("Hello from RecognizeController!");
-        }
-
-        //[HttpPost]
-        //public async Task<RecognizeResponse> DateFree([FromBody] RecognizeRequest input)
-        //{
-        //    int checkTranslation = 0;
-        //    string translation = "";
-        //    string text = input.input;
-        //    RecognizeResponse recognizeResponse = new RecognizeResponse
-        //    {
-        //        InputText = input.input,
-        //        TranslationText = "",
-        //        Matches = new List<ModelResult>()
-        //    };
-        //    while (checkTranslation<TranslateBaseUrls.Length && translation.Length == 0)
-        //    {
-        //        TranslateResponse translateData = await GetTranslationFree(input.input, input.translateFrom,input.translateTo);
-        //        if (translateData == null || string.IsNullOrEmpty(translateData.translation))
-        //        {
-        //            ++checkTranslation;
-        //            continue;
-        //        }
-        //        else
-        //        {
-        //            translation = translateData.translation;
-        //            recognizeResponse.TranslationText = translation;
-        //            text = translation;
-        //            break;
-        //        }
-        //    }
-
-        //    recognizeResponse.Matches= DateTimeRecognizer.RecognizeDateTime(text, input.matchLang, DateTimeOptions.CalendarMode);
-
-        //    return recognizeResponse;
-        //}
-
-        int lastUsedIndex = -1;
-        private static string[] TranslateBaseUrls = new string[]
-        {
-            "https://lingva.ml",
-            "https://lingva.lunar.icu",
-            "https://translate.plausibility.cloud"
-        };
-
-        int getTranslationAPIIndex()
-        {
-            if (lastUsedIndex < 0)
-            {
-                Random rnd = new Random();
-                lastUsedIndex = rnd.Next(0, TranslateBaseUrls.Length-1);
-                
-            }
-            else
-            {
-                lastUsedIndex = (lastUsedIndex + 1) % TranslateBaseUrls.Length;
-            }
-                
-            return lastUsedIndex;
-        }
-
-        //private async Task<TranslateResponse> GetTranslationFree([FromQuery] string query, [FromQuery] string fromLang, [FromQuery] string toLang)
-        //{
-        //    using var httpClient = new HttpClient();
-        //    // Replace with your actual endpoint
-        //    string baseUrl = TranslateBaseUrls[getTranslationAPIIndex()];
-        //    string url = $"{baseUrl}/api/v1/{Uri.EscapeDataString(fromLang)}/{Uri.EscapeDataString(toLang)}/{Uri.EscapeDataString(query)}";
-        //    var response = await httpClient.GetAsync(url);
-        //    response.EnsureSuccessStatusCode();
-        //    string responseText = await response.Content.ReadAsStringAsync();
-        //    TranslateResponse result = System.Text.Json.JsonSerializer.Deserialize<TranslateResponse>(responseText, new System.Text.Json.JsonSerializerOptions
-        //    {
-        //        PropertyNameCaseInsensitive = true,
-        //        NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
-        //    });
-        //    return result;
-        //}
 
         private static string GreekToEnglishTime(string greekWord)
         {
@@ -180,8 +107,7 @@ namespace Recognizers.Controllers
             {
                 InputText = input.input,
                 FilterText = text,
-                TranslationText = "",
-                Matches = new List<ModelResult>()
+                TranslationText = ""
             };
             TranslateResponseGoogleWrap translateData = await GetTranslationGoogle(text, input.translateFrom, input.translateTo,input.key);
             if (translateData?.data != null && (!string.IsNullOrEmpty(translateData?.data?.translation)))
@@ -189,8 +115,9 @@ namespace Recognizers.Controllers
                 recognizeResponse.TranslationText = translateData.data.translation;
                 text = translateData.data.translation;
             }
-            recognizeResponse.Locale = input.translateFrom;
-            recognizeResponse.Matches = DateTimeRecognizer.RecognizeDateTime(text, input.matchLang, DateTimeOptions.CalendarMode);
+            var forceLocale = _configuration["forceLocale"];
+            recognizeResponse.Locale = !string.IsNullOrEmpty(forceLocale) ? forceLocale : input.translateFrom;
+            recognizeResponse.setMatches(DateTimeRecognizer.RecognizeDateTime(text, input.matchLang, DateTimeOptions.CalendarMode));
 
             return recognizeResponse;
         }
