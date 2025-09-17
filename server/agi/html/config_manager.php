@@ -1656,6 +1656,7 @@ $currentConfig = $configManager->getConfig();
             initialMessageSound: '',
             redirectToOperator: false,
             autoCallCentersMode: 3,
+            maxRetries: 5,
             bounds: null,
             centerBias: null
         };
@@ -1680,6 +1681,7 @@ $currentConfig = $configManager->getConfig();
                 'initialMessageSound': 'Initial Message Sound',
                 'redirectToOperator': 'Redirect To Operator',
                 'autoCallCentersMode': 'Auto Call Centers Mode',
+                'maxRetries': 'Max Retries',
                 'bounds': 'Geographic Bounds',
                 'centerBias': 'Center Bias',
                 // Tooltips
@@ -1700,6 +1702,7 @@ $currentConfig = $configManager->getConfig();
                 'initialMessageSound_tooltip': 'Sound file name to play before welcome message',
                 'redirectToOperator_tooltip': 'Automatically redirect to operator after initial message',
                 'autoCallCentersMode_tooltip': 'Call center mode: 0=All disabled (redirect to operator), 1=ASAP calls only, 2=Reservations only, 3=All enabled',
+                'maxRetries_tooltip': 'Maximum number of retry attempts for name, pickup, destination and reservation collection',
                 'bounds_tooltip': 'Set geographic bounds for post-processing validation. Results outside bounds will be rejected. Leave empty to accept all areas.',
                 'centerBias_tooltip': 'Set center point and radius to bias API search results. Enter coordinates and radius in meters.',
                 // Messages
@@ -1774,6 +1777,7 @@ $currentConfig = $configManager->getConfig();
                 'initialMessageSound': 'Ήχος Αρχικού Μηνύματος',
                 'redirectToOperator': 'Ανακατεύθυνση σε Χειριστή',
                 'autoCallCentersMode': 'Λειτουργία Αυτόματου Call Center',
+                'maxRetries': 'Μέγιστες Επαναλήψεις',
                 'bounds': 'Γεωγραφικά Όρια',
                 'centerBias': 'Κεντρική Προκατάληψη',
                 // Tooltips
@@ -1794,6 +1798,7 @@ $currentConfig = $configManager->getConfig();
                 'initialMessageSound_tooltip': 'Όνομα αρχείου ήχου που θα παιχτεί πριν το μήνυμα καλωσορίσματος',
                 'redirectToOperator_tooltip': 'Αυτόματη ανακατεύθυνση σε χειριστή μετά το αρχικό μήνυμα',
                 'autoCallCentersMode_tooltip': 'Λειτουργία call center: 0=Όλα απενεργοποιημένα (ανακατεύθυνση σε χειριστή), 1=Μόνο άμεσες κλήσεις, 2=Μόνο κρατήσεις, 3=Όλα ενεργοποιημένα',
+                'maxRetries_tooltip': 'Μέγιστος αριθμός επαναλήψεων για συλλογή ονόματος, παραλαβής, προορισμού και κράτησης',
                 'bounds_tooltip': 'Ορίστε γεωγραφικά όρια για επικύρωση αποτελεσμάτων. Αποτελέσματα εκτός ορίων θα απορρίπτονται. Αφήστε κενό για αποδοχή όλων των περιοχών.',
                 'centerBias_tooltip': 'Ορίστε κεντρικό σημείο και ακτίνα για προκατάληψη αποτελεσμάτων API. Εισάγετε συντεταγμένες και ακτίνα σε μέτρα.',
                 // Messages
@@ -2723,6 +2728,7 @@ $currentConfig = $configManager->getConfig();
                 initialMessageSound: "",
                 redirectToOperator: false,
                 autoCallCentersMode: 3,
+                maxRetries: 5,
                 bounds: null,
             centerBias: null
             };

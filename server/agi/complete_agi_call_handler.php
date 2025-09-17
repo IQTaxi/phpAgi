@@ -147,6 +147,7 @@ class AGICallHandler
             $this->initial_message_sound = $config['initialMessageSound'] ?? '';
             $this->redirect_to_operator = $config['redirectToOperator'] ?? false;
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
+            $this->max_retries = intval($config['maxRetries'] ?? 3);
         }
     }
 
@@ -689,14 +690,14 @@ class AGICallHandler
                 'bg' => 'Нещо се обърка с регистрирането на вашия маршрут'
             ],
             'automated_call_comment' => [
-                'el' => '[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΛΗΣΗ]',
-                'en' => '[AUTOMATED CALL]',
-                'bg' => '[АВТОМАТИЗИРАНО ОБАЖДАНЕ]'
+                'el' => '',
+                'en' => '',
+                'bg' => ''
             ],
             'automated_reservation_comment' => [
-                'el' => '[ΑΥΤΟΜΑΤΟΠΟΙΗΜΕΝΗ ΚΡΑΤΗΣΗ - {time}]',
-                'en' => '[AUTOMATED RESERVATION - {time}]',
-                'bg' => '[АВТОМАТИЗИРАНА РЕЗЕРВАЦИЯ - {time}]'
+                'el' => '',
+                'en' => '',
+                'bg' => ''
             ]
         ];
 
@@ -2124,7 +2125,7 @@ class AGICallHandler
 
             $recording_file = "{$this->filebase}/recordings/name_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
-            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
+            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP s=2");
             $this->logMessage("Record result: {$record_result}");
             
             // Check if recording failed due to dead channel
@@ -2197,7 +2198,7 @@ class AGICallHandler
 
             $recording_file = "{$this->filebase}/recordings/pickup_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
-            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
+            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP s=2");
             $this->logMessage("Record result: {$record_result}");
             
             // Check if recording failed due to dead channel
@@ -2270,7 +2271,7 @@ class AGICallHandler
 
             $recording_file = "{$this->filebase}/recordings/dest_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
-            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
+            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP s=2");
             $this->logMessage("Record result: {$record_result}");
             
             // Check if recording failed due to dead channel
@@ -2343,7 +2344,7 @@ class AGICallHandler
 
             $recording_file = "{$this->filebase}/recordings/reservation_{$try}";
             $this->logMessage("Starting recording to: {$recording_file}");
-            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP");
+            $record_result = $this->agiCommand("RECORD FILE \"{$recording_file}\" wav \"#\" 10000 0 BEEP s=2");
             $this->logMessage("Record result: {$record_result}");
             
             // Check if recording failed due to dead channel
