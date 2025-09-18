@@ -155,6 +155,24 @@ class AGICallHandler
     {
         if (!isset($this->config[$this->extension])) {
             $this->logMessage("Extension {$this->extension} not found in config");
+
+            // Set a fallback operator number since config wasn't loaded for this extension
+            if (empty($this->phone_to_call)) {
+                // Try to use any available extension's failCallTo as fallback
+                $fallback_extension = array_key_first($this->config);
+                if ($fallback_extension && isset($this->config[$fallback_extension]['failCallTo'])) {
+                    $this->phone_to_call = $this->config[$fallback_extension]['failCallTo'];
+                    $this->logMessage("Using fallback operator number: {$this->phone_to_call}");
+                } else {
+                    // Ultimate fallback - log error and hang up
+                    $this->logMessage("No fallback operator number available - hanging up");
+                    $this->setCallOutcome('error', 'Extension not found and no fallback operator');
+                    $this->finalizeCall();
+                    $this->agiCommand('HANGUP');
+                    exit(0);
+                }
+            }
+
             $this->redirectToOperator();
             exit(0); // Exit with success code after transferring to operator
         }
@@ -1198,6 +1216,32 @@ class AGICallHandler
         }
         
         return '';
+    }
+
+    /**
+     * Read DTMF input without exiting on timeout (for retry scenarios)
+     * Returns: string (input), empty string (timeout), or null (hangup)
+     */
+    private function readDTMFWithoutExit($prompt_file, $digits = 1, $timeout = 10)
+    {
+        $response = $this->agiCommand("EXEC \"Read\" \"USER_CHOICE,{$prompt_file},{$digits},,1,{$timeout}\"");
+
+        // Check if the EXEC command failed due to hangup
+        if (strpos($response, '200 result=-1') !== false) {
+            $this->logMessage("Hangup detected during DTMF input");
+            return null; // Return null to indicate hangup
+        }
+
+        $choice_response = $this->agiCommand("GET VARIABLE USER_CHOICE");
+
+        if (preg_match('/200 result=1 \((.+)\)/', $choice_response, $matches)) {
+            return $matches[1];
+        }
+
+        // If no input was received, it's just a timeout - don't check channel status
+        // as it can be unreliable after a timeout
+        $this->logMessage("No DTMF input received - timeout");
+        return ''; // Return empty string for timeout (no input)
     }
 
     private function removeDiacritics($text)
@@ -2531,8 +2575,16 @@ class AGICallHandler
         $this->stopMusicOnHold();
 
         if ($tts_success) {
-            $choice = $this->readDTMF($confirm_file, 1, 10);
+            $choice = $this->readDTMFWithoutExit($confirm_file, 1, 10);
             $this->logMessage("User reservation time choice: {$choice}");
+
+            // Check for hangup
+            if ($choice === null) {
+                $this->logMessage("Hangup detected during reservation time confirmation");
+                $this->setCallOutcome('hangup', 'User hung up during reservation time confirmation');
+                $this->finalizeCall();
+                exit(0);
+            }
 
             if ($choice == "0") {
                 $this->logMessage("User confirmed reservation time: {$this->reservation_result}");
@@ -2574,8 +2626,16 @@ class AGICallHandler
         $this->stopMusicOnHold();
 
         if ($tts_success) {
-            $choice = $this->readDTMF($selection_file, 1, 10);
+            $choice = $this->readDTMFWithoutExit($selection_file, 1, 10);
             $this->logMessage("User date selection choice: {$choice}");
+
+            // Check for hangup
+            if ($choice === null) {
+                $this->logMessage("Hangup detected during date selection");
+                $this->setCallOutcome('hangup', 'User hung up during date selection');
+                $this->finalizeCall();
+                exit(0);
+            }
 
             if ($choice == "1" && isset($matches[0])) {
                 return [
@@ -2627,8 +2687,16 @@ class AGICallHandler
             $this->logMessage("Confirmation attempt {$try}/3");
 
             if ($this->generateAndPlayConfirmation()) {
-                $choice = $this->readDTMF($this->getSoundFile('options'), 1, 10);
+                $choice = $this->readDTMFWithoutExit($this->getSoundFile('options'), 1, 10);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
+
+                // Check for hangup
+                if ($choice === null) {
+                    $this->logMessage("Hangup detected during confirmation");
+                    $this->setCallOutcome('hangup', 'User hung up during confirmation');
+                    $this->finalizeCall();
+                    return;
+                }
 
                 if ($choice == "0") {
                     $this->processConfirmedCall();
@@ -2915,8 +2983,16 @@ class AGICallHandler
                 return false;
             }
             
-            $choice = $this->readDTMF($confirm_file, 1, 10);
+            $choice = $this->readDTMFWithoutExit($confirm_file, 1, 10);
             $this->logMessage("User pickup address choice: {$choice}");
+
+            // Check for hangup
+            if ($choice === null) {
+                $this->logMessage("Hangup detected during pickup address confirmation");
+                $this->setCallOutcome('hangup', 'User hung up during pickup address confirmation');
+                $this->finalizeCall();
+                exit(0);
+            }
 
             if ($choice == "1") {
                 $this->logMessage("User confirmed existing pickup address");
@@ -2940,8 +3016,16 @@ class AGICallHandler
             $this->logMessage("Reservation confirmation attempt {$try}/3");
 
             if ($this->generateAndPlayReservationConfirmation()) {
-                $choice = $this->readDTMF($this->getSoundFile('options'), 1, 10);
+                $choice = $this->readDTMFWithoutExit($this->getSoundFile('options'), 1, 10);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
+
+                // Check for hangup
+                if ($choice === null) {
+                    $this->logMessage("Hangup detected during reservation confirmation");
+                    $this->setCallOutcome('hangup', 'User hung up during reservation confirmation');
+                    $this->finalizeCall();
+                    return;
+                }
 
                 if ($choice == "0") {
                     $this->processConfirmedReservation();
@@ -3401,32 +3485,71 @@ class AGICallHandler
         if (!empty($this->initial_message_sound)) {
             $this->playInitialMessage();
         }
-        
+
         // Check if we should redirect to operator (after initial message or immediately if no initial message)
         if ($this->redirect_to_operator) {
             $this->logMessage("Redirecting to operator as configured");
             $this->redirectToOperator();
-            return '';
-        }
-        
-        $this->logMessage("Playing welcome message");
-        $user_choice = $this->readDTMF($this->getSoundFile('welcome'), 1, 5);
-        $this->logMessage("User choice: {$user_choice}", 'INFO', 'USER_INPUT');
-
-        if ($user_choice == "9") {
-            $this->logMessage("User selected language change to English");
-            $this->current_language = 'en';
-            $this->setLanguage('en', true);
-            $this->saveJson("language", $this->current_language);
-            
-            $user_choice = $this->readDTMF($this->getSoundFile('welcome'), 1, 5);
-            $this->logMessage("User choice after language change: {$user_choice}", 'INFO', 'USER_INPUT');
-        } else {
-            $this->setLanguage($this->current_language, false);
+            // This line should never be reached since redirectToOperator() hangs up
+            return 'operator_redirect';
         }
 
-        $this->setInitialChoice($user_choice);
-        return $user_choice;
+        // Try up to 3 times to get user input
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $this->logMessage("Playing welcome message (attempt {$attempt}/3)");
+            $user_choice = $this->readDTMFWithoutExit($this->getSoundFile('welcome'), 1, 10);
+            $this->logMessage("User choice: {$user_choice}", 'INFO', 'USER_INPUT');
+
+            if ($user_choice === null) {
+                // Channel hangup detected
+                $this->logMessage("Channel hangup detected during welcome message");
+                $this->setCallOutcome('hangup', 'User hung up during welcome message');
+                $this->finalizeCall();
+                return '';
+            }
+
+            if ($user_choice !== '') {
+                // Got valid input, process it
+                if ($user_choice == "9") {
+                    $this->logMessage("User selected language change to English");
+                    $this->current_language = 'en';
+                    $this->setLanguage('en', true);
+                    $this->saveJson("language", $this->current_language);
+
+                    // Try again with English
+                    $user_choice = $this->readDTMFWithoutExit($this->getSoundFile('welcome'), 1, 10);
+                    $this->logMessage("User choice after language change: {$user_choice}", 'INFO', 'USER_INPUT');
+
+                    if ($user_choice === null) {
+                        $this->setCallOutcome('hangup', 'User hung up after language change');
+                        $this->finalizeCall();
+                        return '';
+                    }
+                } else {
+                    $this->setLanguage($this->current_language, false);
+                }
+
+                if ($user_choice !== '') {
+                    $this->setInitialChoice($user_choice);
+                    return $user_choice;
+                }
+            }
+
+            // No input received, wait a moment before retrying
+            if ($attempt < 3) {
+                $this->logMessage("No input received, retrying welcome message...");
+                // Optional: play a beep to indicate retry
+                $this->agiCommand('EXEC Playback "beep"');
+                sleep(1); // Brief pause before retry
+            }
+        }
+
+        // After 3 attempts with no input, redirect to operator
+        $this->logMessage("No input received after 3 attempts, redirecting to operator");
+        $this->setCallOutcome('operator_transfer', 'No input received after multiple attempts');
+        $this->redirectToOperator();
+        // This line should never be reached since redirectToOperator() exits
+        return 'operator_redirect';
     }
 
     private function playInitialMessage()
