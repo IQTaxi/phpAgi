@@ -24,6 +24,12 @@
 // Object with lat, lng, radius = Bias API results toward a center point
 // Example: ["lat" => 37.9755, "lng" => 23.7348, "radius" => 50000] (radius in meters)
 // Used by both Google Geocoding API v1 and Places API v2 to bias location results
+//
+// boundsRestrictionMode configuration:
+// null or 0 = No restriction (bounds and centerBias are not applied)
+// 1 = Apply bounds and centerBias only to pickup location
+// 2 = Apply bounds and centerBias only to dropoff location
+// 3 = Apply bounds and centerBias to both pickup and dropoff locations
 
 class AGICallHandlerConfig
 {
@@ -48,7 +54,8 @@ class AGICallHandlerConfig
         "autoCallCentersMode" => 3,
         "maxRetries" => 5,
         "bounds" => null,
-        "centerBias" => null
+        "centerBias" => null,
+        "boundsRestrictionMode" => null
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -70,7 +77,8 @@ class AGICallHandlerConfig
         "autoCallCentersMode" => 3,
         "maxRetries" => 5,
         "bounds" => null,
-        "centerBias" => null
+        "centerBias" => null,
+        "boundsRestrictionMode" => null
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -92,7 +100,8 @@ class AGICallHandlerConfig
         "autoCallCentersMode" => 3,
         "maxRetries" => 5,
         "bounds" => null,
-        "centerBias" => null
+        "centerBias" => null,
+        "boundsRestrictionMode" => null
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -114,7 +123,8 @@ class AGICallHandlerConfig
         "autoCallCentersMode" => 3,
         "maxRetries" => 5,
         "bounds" => null,
-        "centerBias" => null
+        "centerBias" => null,
+        "boundsRestrictionMode" => null
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -136,7 +146,9 @@ class AGICallHandlerConfig
 		"autoCallCentersMode" => 3,
 		"maxRetries" => 5,
 		"bounds" => null,
-		"centerBias" => null
+		"centerBias" => null,
+		"boundsRestrictionMode" => null,
+		"requireLocality" => false
     ]
 ];
 }

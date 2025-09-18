@@ -690,14 +690,14 @@ class AGICallHandler
                 'bg' => 'Нещо се обърка с регистрирането на вашия маршрут'
             ],
             'automated_call_comment' => [
-                'el' => '',
-                'en' => '',
-                'bg' => ''
+                'el' => '[ΨΗΦΙΑΚΗ ΚΛΗΣΗ]',
+                'en' => '[AUTOMATED CALL]',
+                'bg' => '[АВТОМАТИЗИРАНО ОБАЖДАНЕ]'
             ],
             'automated_reservation_comment' => [
-                'el' => '',
-                'en' => '',
-                'bg' => ''
+                'el' => '[ΨΗΦΙΑΚΗ ΚΡΑΤΗΣΗ]',
+                'en' => '[AUTOMATED RESERVATION]',
+                'bg' => '[АВТОМАТИЗИРАНА РЕЗЕРВАЦИЯ]'
             ]
         ];
 
@@ -1583,26 +1583,50 @@ class AGICallHandler
     {
         // Check which API version to use from config
         $geocoding_version = $this->config[$this->extension]['geocodingApiVersion'] ?? 1;
-        $bounds = $this->config[$this->extension]['bounds'] ?? null;
-        
+        $boundsRestrictionMode = $this->config[$this->extension]['boundsRestrictionMode'] ?? null;
+
+        // Check if bounds/centerBias should be applied based on boundsRestrictionMode
+        $applyRestrictions = false;
+        if ($boundsRestrictionMode !== null && $boundsRestrictionMode !== 0) {
+            if ($boundsRestrictionMode == 1 && $is_pickup) {
+                // Apply only to pickup
+                $applyRestrictions = true;
+            } elseif ($boundsRestrictionMode == 2 && !$is_pickup) {
+                // Apply only to dropoff
+                $applyRestrictions = true;
+            } elseif ($boundsRestrictionMode == 3) {
+                // Apply to both
+                $applyRestrictions = true;
+            }
+        }
+
+        // Get bounds and centerBias only if restrictions should be applied
+        $bounds = $applyRestrictions ? ($this->config[$this->extension]['bounds'] ?? null) : null;
+        $centerBias = $applyRestrictions ? ($this->config[$this->extension]['centerBias'] ?? null) : null;
+
         // Log which API and filters are being used
         $api_name = $geocoding_version == 2 ? 'Google Places API v1 (NEW)' : 'Google Maps Geocoding API v1 (LEGACY)';
-        $bounds_filter = empty($bounds) ? 'No geographic restrictions' : 'Bounds: ' . json_encode($bounds);
-        $this->logMessage("🗺️ GEOCODING: Using {$api_name} | {$bounds_filter} | Address: {$address}", 'INFO', 'GEOCODING');
-        
+        $location_type = $is_pickup ? 'PICKUP' : 'DROPOFF';
+        $bounds_filter = empty($bounds) ? 'No bounds' : 'Bounds: ' . json_encode($bounds);
+        $center_filter = empty($centerBias) ? 'No center bias' : 'Center bias: ' . json_encode($centerBias);
+        $restriction_mode = $boundsRestrictionMode === null || $boundsRestrictionMode === 0 ? 'Disabled' :
+            "Mode {$boundsRestrictionMode} (1=pickup only, 2=dropoff only, 3=both)";
+
+        $this->logMessage("🗺️ GEOCODING [{$location_type}]: Using {$api_name} | Restriction: {$restriction_mode} | {$bounds_filter} | {$center_filter} | Address: {$address}", 'INFO', 'GEOCODING');
+
         if ($geocoding_version == 2) {
             // Use new Google Places API v1
-            return $this->getLatLngFromGooglePlacesV1($address, $is_pickup);
+            return $this->getLatLngFromGooglePlacesV1($address, $is_pickup, $bounds, $centerBias);
         } else {
             // Use legacy Google Maps Geocoding API
-            return $this->getLatLngFromGoogleGeocoding($address, $is_pickup);
+            return $this->getLatLngFromGoogleGeocoding($address, $is_pickup, $bounds, $centerBias);
         }
     }
     
     /**
      * Geocode address using Google Maps Geocoding API (legacy/version 1)
      */
-    private function getLatLngFromGoogleGeocoding($address, $is_pickup = true)
+    private function getLatLngFromGoogleGeocoding($address, $is_pickup = true, $bounds = null, $centerBias = null)
     {
         // Handle special cases first
         if ($this->handleSpecialAddresses($address, $is_pickup)) {
@@ -1623,8 +1647,7 @@ class AGICallHandler
             "language" => $google_language
         ];
         
-        // Add center bias if configured
-        $centerBias = $this->config[$this->extension]['centerBias'] ?? null;
+        // Add center bias if provided
         if (!empty($centerBias) && isset($centerBias['lat']) && isset($centerBias['lng']) && isset($centerBias['radius'])) {
             // Use location bias to prefer results near center point
             $params_array["location"] = "{$centerBias['lat']},{$centerBias['lng']}";
@@ -1657,18 +1680,17 @@ class AGICallHandler
         $result = $data['results'][0];
         $this->logMessage("📍 GEOCODING API: Found place: " . $result['formatted_address'] . " at Lat: " . $result['geometry']['location']['lat'] . ", Lng: " . $result['geometry']['location']['lng'], 'DEBUG', 'GEOCODING');
         
-        // Check if result is within bounds if bounds are configured
-        $bounds = $this->config[$this->extension]['bounds'] ?? null;
+        // Check if result is within bounds if bounds are provided
         if (!empty($bounds)) {
             $lat = $result['geometry']['location']['lat'];
             $lng = $result['geometry']['location']['lng'];
-            
-            if ($lat < $bounds['south'] || $lat > $bounds['north'] || 
+
+            if ($lat < $bounds['south'] || $lat > $bounds['north'] ||
                 $lng < $bounds['west'] || $lng > $bounds['east']) {
                 $this->logMessage("🚫 GEOCODING API: Result outside bounds", 'INFO', 'GEOCODING');
                 $this->logMessage("   Location: Lat: {$lat}, Lng: {$lng}", 'DEBUG', 'GEOCODING');
                 $this->logMessage("   Bounds: N:{$bounds['north']} S:{$bounds['south']} E:{$bounds['east']} W:{$bounds['west']}", 'DEBUG', 'GEOCODING');
-                $this->logMessage("   Check: Lat in range? " . ($lat >= $bounds['south'] && $lat <= $bounds['north'] ? 'YES' : 'NO') . 
+                $this->logMessage("   Check: Lat in range? " . ($lat >= $bounds['south'] && $lat <= $bounds['north'] ? 'YES' : 'NO') .
                                   ", Lng in range? " . ($lng >= $bounds['west'] && $lng <= $bounds['east'] ? 'YES' : 'NO'), 'DEBUG', 'GEOCODING');
                 return null;
             } else {
@@ -1682,7 +1704,7 @@ class AGICallHandler
     /**
      * Geocode address using Google Places API v1 (new/version 2)
      */
-    private function getLatLngFromGooglePlacesV1($address, $is_pickup = true)
+    private function getLatLngFromGooglePlacesV1($address, $is_pickup = true, $bounds = null, $centerBias = null)
     {
         // Handle special cases first
         if ($this->handleSpecialAddresses($address, $is_pickup)) {
@@ -1706,8 +1728,7 @@ class AGICallHandler
             "maxResultCount" => 1
         ];
         
-        // Add center bias if configured
-        $centerBias = $this->config[$this->extension]['centerBias'] ?? null;
+        // Add center bias if provided
         if (!empty($centerBias) && isset($centerBias['lat']) && isset($centerBias['lng']) && isset($centerBias['radius'])) {
             // Use locationBias with circle to prefer results near center point
             $data["locationBias"] = [
@@ -1769,25 +1790,24 @@ class AGICallHandler
         $place = $result['places'][0];
         $this->logMessage("📍 PLACES API: Found place: " . $place['formattedAddress'] . " at Lat: " . $place['location']['latitude'] . ", Lng: " . $place['location']['longitude'], 'DEBUG', 'GEOCODING');
         
-        // Check if result is within bounds if bounds are configured
-        $bounds = $this->config[$this->extension]['bounds'] ?? null;
+        // Check if result is within bounds if bounds are provided
         if (!empty($bounds) && isset($place['location'])) {
             $lat = $place['location']['latitude'];
             $lng = $place['location']['longitude'];
-            
-            if ($lat < $bounds['south'] || $lat > $bounds['north'] || 
+
+            if ($lat < $bounds['south'] || $lat > $bounds['north'] ||
                 $lng < $bounds['west'] || $lng > $bounds['east']) {
                 $this->logMessage("🚫 PLACES API: Result outside bounds", 'INFO', 'GEOCODING');
                 $this->logMessage("   Location: Lat: {$lat}, Lng: {$lng}", 'DEBUG', 'GEOCODING');
                 $this->logMessage("   Bounds: N:{$bounds['north']} S:{$bounds['south']} E:{$bounds['east']} W:{$bounds['west']}", 'DEBUG', 'GEOCODING');
-                $this->logMessage("   Check: Lat in range? " . ($lat >= $bounds['south'] && $lat <= $bounds['north'] ? 'YES' : 'NO') . 
+                $this->logMessage("   Check: Lat in range? " . ($lat >= $bounds['south'] && $lat <= $bounds['north'] ? 'YES' : 'NO') .
                                   ", Lng in range? " . ($lng >= $bounds['west'] && $lng <= $bounds['east'] ? 'YES' : 'NO'), 'DEBUG', 'GEOCODING');
                 return null;
             } else {
                 $this->logMessage("✅ PLACES API: Result within bounds", 'DEBUG', 'GEOCODING');
             }
         }
-        
+
         // Convert Places API response to match expected format
         return $this->validatePlacesApiResult($place, $is_pickup);
     }

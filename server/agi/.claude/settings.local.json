@@ -11,7 +11,8 @@
       "WebFetch(domain:maps.googleapis.com)",
       "Bash(dir \"C:\\Users\\billy\\Documents\\phpAgi\\server\\html\")",
       "WebSearch",
-      "WebFetch(domain:project-osrm.org)"
+      "WebFetch(domain:project-osrm.org)",
+      "Bash(dir:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\billy\\Documents\\phpAgi\\server",
