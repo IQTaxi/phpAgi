@@ -427,11 +427,12 @@ class AGICallHandler
         $this->updateAnalyticsRecord();
     }
     
-    private function trackRegistrationAPICall($successful = false, $result = '', $responseTime = 0)
+    private function trackRegistrationAPICall($successful = false, $result = '', $responseTime = 0, $registrationId = null)
     {
         $this->analytics_data['registration_api_calls']++;
         $this->analytics_data['successful_registration'] = $successful ? 1 : 0;
         $this->analytics_data['registration_result'] = $result;
+        $this->analytics_data['registration_id'] = $registrationId;
         $this->analytics_data['api_response_time'] = intval($responseTime);
         $this->updateAnalyticsRecord();
     }
@@ -1987,7 +1988,15 @@ class AGICallHandler
         
         // Track registration API call
         $successful = !$result['callOperator'];
-        $this->trackRegistrationAPICall($successful, $result['msg'], $responseTime);
+
+        // Extract registration ID from response
+        $registrationId = null;
+        if (isset($response)) {
+            $responseData = json_decode($response, true);
+            $registrationId = $responseData['response']['id'] ?? null;
+        }
+
+        $this->trackRegistrationAPICall($successful, $result['msg'], $responseTime, $registrationId);
 
         return $result;
     }

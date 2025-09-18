@@ -28,7 +28,7 @@ class AGIAnalytics {
         'host' => '127.0.0.1',
         'dbname' => 'asterisk',
         'primary_user' => 'freepbxuser',
-        'primary_pass' => 'WXS/NCr0WnbY',
+        'primary_pass' => 'nFDuTRLJSY0n',
         'fallback_user' => 'root',
         'fallback_pass' => '',
         'port' => '3306',
@@ -45,6 +45,7 @@ class AGIAnalytics {
         $this->connectDatabase();
         $this->createTableIfNeeded();
         $this->createIndexesIfNeeded();
+        $this->ensureRegistrationIdColumn();
     }
     
     /**
@@ -690,11 +691,13 @@ class AGIAnalytics {
             `callback_mode` INT(11) DEFAULT 1,
             `days_valid` INT(11) DEFAULT 7,
             `user_name` VARCHAR(255),
+            `registration_id` VARCHAR(50),
             `registration_result` TEXT,
             `api_response_time` INT(11) DEFAULT 0,
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_call_id (call_id),
+            INDEX idx_registration_id (registration_id),
             INDEX idx_phone_number (phone_number),
             INDEX idx_extension (extension),
             INDEX idx_call_start_time (call_start_time),
@@ -732,7 +735,33 @@ class AGIAnalytics {
             }
         }
     }
-    
+
+    /**
+     * Ensure registration_id column exists
+     */
+    private function ensureRegistrationIdColumn() {
+        try {
+            // Check if column exists
+            $stmt = $this->db->prepare("SHOW COLUMNS FROM {$this->table} LIKE 'registration_id'");
+            $stmt->execute();
+            $column = $stmt->fetch();
+
+            if (!$column) {
+                // Column doesn't exist, create it
+                $sql = "ALTER TABLE {$this->table} ADD COLUMN registration_id VARCHAR(50) AFTER user_name";
+                $this->db->exec($sql);
+                error_log("Analytics: registration_id column added successfully");
+
+                // Create index for the new column
+                $indexSql = "CREATE INDEX idx_registration_id ON {$this->table} (registration_id)";
+                $this->db->exec($indexSql);
+                error_log("Analytics: idx_registration_id index created successfully");
+            }
+        } catch (PDOException $e) {
+            error_log("Analytics: Failed to ensure registration_id column: " . $e->getMessage());
+        }
+    }
+
     /**
      * Main request handler
      */
@@ -834,6 +863,9 @@ class AGIAnalytics {
                 break;
             case 'call':
                 $this->apiGetCall();
+                break;
+            case 'call_by_registration_id':
+                $this->apiGetCallByRegistrationId();
                 break;
             case 'search':
                 $this->apiSearch();
@@ -1000,7 +1032,34 @@ class AGIAnalytics {
         
         $this->sendResponse($call);
     }
-    
+
+    /**
+     * Get call by registration ID from registration_result JSON
+     */
+    private function apiGetCallByRegistrationId() {
+        $registration_id = $_GET['registration_id'] ?? '';
+
+        if (empty($registration_id)) {
+            $this->sendErrorResponse('registration_id required', 400);
+            return;
+        }
+
+        $sql = "SELECT * FROM {$this->table} WHERE registration_id = ? ORDER BY id DESC LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$registration_id]);
+        $call = $stmt->fetch();
+
+        if (!$call) {
+            $this->sendErrorResponse('Call not found', 404);
+            return;
+        }
+
+        // Enhance with additional data
+        $call = $this->enhanceCallData($call, true);
+
+        $this->sendResponse($call);
+    }
+
     /**
      * Advanced search functionality
      */
@@ -1530,7 +1589,7 @@ class AGIAnalytics {
             'stt_processing_time', 'geocoding_processing_time', 'total_processing_time',
             'successful_registration', 'operator_transfer_reason', 'error_messages',
             'recording_path', 'log_file_path', 'progress_json_path', 'tts_provider',
-            'callback_mode', 'days_valid', 'user_name', 'registration_result',
+            'callback_mode', 'days_valid', 'user_name', 'registration_id', 'registration_result',
             'api_response_time', 'created_at', 'updated_at'
         ];
         
@@ -2403,7 +2462,7 @@ class AGIAnalytics {
                 $row['total_processing_time'], $row['successful_registration'] ? 'Yes' : 'No',
                 $row['operator_transfer_reason'], $row['error_messages'], $row['recording_path'],
                 $row['log_file_path'], $row['progress_json_path'], $row['tts_provider'], 
-                $row['callback_mode'], $row['days_valid'], $row['user_name'], $row['registration_result'],
+                $row['callback_mode'], $row['days_valid'], $row['user_name'], $row['registration_id'], $row['registration_result'],
                 $row['api_response_time'], $row['created_at'], $row['updated_at']
             ];
             
@@ -5291,8 +5350,18 @@ class AGIAnalytics {
             setupEventListeners();
             loadDateOptions();
             startLiveDurationUpdater();
-            
+
             // Auto-filters are set up in setupEventListeners
+
+            // Check for id parameter to auto-open call details
+            const urlParams = new URLSearchParams(window.location.search);
+            const registrationId = urlParams.get('id');
+            if (registrationId) {
+                // Small delay to ensure dashboard is loaded
+                setTimeout(function() {
+                    showCallDetailByRegistrationId(registrationId);
+                }, 1000);
+            }
         });
         
         // Time offset between client and server (in milliseconds)
@@ -5839,17 +5908,21 @@ class AGIAnalytics {
         
         // Render status badge
         function renderStatusBadge(status) {
+            if (!status) {
+                status = 'unknown';
+            }
+
             var badges = {
                 'success': 'badge-success',
-                'hangup': 'badge-danger', 
+                'hangup': 'badge-danger',
                 'operator_transfer': 'badge-warning',
                 'error': 'badge-danger',
                 'in_progress': 'badge-info'
             };
-            
+
             var badgeClass = badges[status] || 'badge-info';
             var displayName = status.replace('_', ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
-            
+
             return '<span class="badge ' + badgeClass + '">' + displayName + '</span>';
         }
         
@@ -6490,7 +6563,27 @@ class AGIAnalytics {
                     body.innerHTML = '<div style="color: var(--danger); text-align: center; padding: 2rem;">Failed to load call details</div>';
                 });
         }
-        
+
+        // Show call detail by registration ID
+        function showCallDetailByRegistrationId(registrationId) {
+            var modal = document.getElementById('callDetailModal');
+            var body = document.getElementById('callDetailBody');
+
+            body.innerHTML = '<div class="loading"><div class="spinner"></div>Loading call details...</div>';
+            modal.classList.add('show');
+
+            fetch('?endpoint=call_by_registration_id&registration_id=' + encodeURIComponent(registrationId))
+                .then(function(response) { return response.json(); })
+                .then(function(call) {
+                    currentCallId = call.call_id; // Set for other operations
+                    renderCallDetail(call);
+                })
+                .catch(function(error) {
+                    console.error('Error loading call detail by registration ID:', error);
+                    body.innerHTML = '<div style="color: var(--danger); text-align: center; padding: 2rem;">Failed to load call details</div>';
+                });
+        }
+
         // Render call detail
         function renderCallDetail(call) {
             var body = document.getElementById('callDetailBody');
