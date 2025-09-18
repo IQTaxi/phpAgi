@@ -1383,14 +1383,13 @@ class AGICallHandler
         curl_close($ch);
         
         $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
-        $this->trackTTSCall('google', $processingTime);
 
         if ($http_code !== 200 || !$response) return false;
 
         $result = json_decode($response, true);
         if (!$result || !isset($result['audioContent'])) return false;
 
-        $processingTime = (microtime(true) - $startTime) * 1000;
+        // Track TTS call only once at the end of successful processing
         $this->trackTTSCall('google', $processingTime);
 
         return $this->processAudioFile($result['audioContent'], $output_file);
@@ -1547,7 +1546,6 @@ class AGICallHandler
         curl_close($ch);
         
         $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
-        $this->trackSTTCall($processingTime);
 
         if ($http_code !== 200 || !$response) {
             $this->logMessage("STT: HTTP error: {$http_code}");
@@ -1567,7 +1565,7 @@ class AGICallHandler
             }
         }
 
-        $processingTime = (microtime(true) - $startTime) * 1000;
+        // Track STT call only once at the end of successful processing
         $this->trackSTTCall($processingTime);
 
         return trim($this->filterProfanity($transcript));
@@ -3490,8 +3488,8 @@ class AGICallHandler
         if ($this->redirect_to_operator) {
             $this->logMessage("Redirecting to operator as configured");
             $this->redirectToOperator();
-            // This line should never be reached since redirectToOperator() hangs up
-            return 'operator_redirect';
+            // Safety exit in case redirectToOperator somehow doesn't hang up
+            exit(0);
         }
 
         // Try up to 3 times to get user input
@@ -3548,8 +3546,8 @@ class AGICallHandler
         $this->logMessage("No input received after 3 attempts, redirecting to operator");
         $this->setCallOutcome('operator_transfer', 'No input received after multiple attempts');
         $this->redirectToOperator();
-        // This line should never be reached since redirectToOperator() exits
-        return 'operator_redirect';
+        // Safety exit in case redirectToOperator somehow doesn't hang up
+        exit(0);
     }
 
     private function playInitialMessage()
