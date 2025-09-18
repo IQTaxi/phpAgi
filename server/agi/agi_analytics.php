@@ -913,9 +913,9 @@ class AGIAnalytics {
         // Handle general search field
         if (!empty($_GET['search'])) {
             $searchTerm = $_GET['search'];
-            $where[] = '(phone_number LIKE ? OR call_id LIKE ? OR unique_id LIKE ? OR user_name LIKE ? OR pickup_address LIKE ? OR destination_address LIKE ?)';
+            $where[] = '(phone_number LIKE ? OR call_id LIKE ? OR unique_id LIKE ? OR user_name LIKE ? OR pickup_address LIKE ? OR destination_address LIKE ? OR registration_id LIKE ?)';
             $searchPattern = "%{$searchTerm}%";
-            $params = array_merge($params, [$searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern]);
+            $params = array_merge($params, [$searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern]);
         }
         
         // Advanced filtering
@@ -1072,20 +1072,21 @@ class AGIAnalytics {
             return;
         }
         
-        $sql = "SELECT * FROM {$this->table} WHERE 
-                phone_number LIKE ? OR 
-                call_id LIKE ? OR 
-                unique_id LIKE ? OR 
-                user_name LIKE ? OR 
-                pickup_address LIKE ? OR 
-                destination_address LIKE ? OR 
-                extension LIKE ?
-                ORDER BY call_start_time DESC 
+        $sql = "SELECT * FROM {$this->table} WHERE
+                phone_number LIKE ? OR
+                call_id LIKE ? OR
+                unique_id LIKE ? OR
+                user_name LIKE ? OR
+                pickup_address LIKE ? OR
+                destination_address LIKE ? OR
+                extension LIKE ? OR
+                registration_id LIKE ?
+                ORDER BY call_start_time DESC
                 LIMIT {$limit}";
-        
+
         $searchTerm = "%{$query}%";
         $stmt = $this->db->prepare($sql);
-        $stmt->execute(array_fill(0, 7, $searchTerm));
+        $stmt->execute(array_fill(0, 8, $searchTerm));
         $calls = $stmt->fetchAll();
         
         foreach ($calls as &$call) {
@@ -5355,11 +5356,11 @@ class AGIAnalytics {
 
             // Check for id parameter to auto-open call details
             const urlParams = new URLSearchParams(window.location.search);
-            const registrationId = urlParams.get('id');
-            if (registrationId) {
+            const callId = urlParams.get('id');
+            if (callId) {
                 // Small delay to ensure dashboard is loaded
                 setTimeout(function() {
-                    showCallDetailByRegistrationId(registrationId);
+                    showCallDetail(callId);
                 }, 1000);
             }
         });

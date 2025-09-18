@@ -1202,7 +1202,26 @@ class AGICallHandler
 
     private function removeDiacritics($text)
     {
-        return iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+        // Greek character mapping for proper transliteration
+        $greek_map = [
+            'Α' => 'A', 'Β' => 'B', 'Γ' => 'G', 'Δ' => 'D', 'Ε' => 'E', 'Ζ' => 'Z', 'Η' => 'H', 'Θ' => 'Th',
+            'Ι' => 'I', 'Κ' => 'K', 'Λ' => 'L', 'Μ' => 'M', 'Ν' => 'N', 'Ξ' => 'X', 'Ο' => 'O', 'Π' => 'P',
+            'Ρ' => 'R', 'Σ' => 'S', 'Τ' => 'T', 'Υ' => 'Y', 'Φ' => 'F', 'Χ' => 'Ch', 'Ψ' => 'Ps', 'Ω' => 'O',
+            'α' => 'a', 'β' => 'b', 'γ' => 'g', 'δ' => 'd', 'ε' => 'e', 'ζ' => 'z', 'η' => 'h', 'θ' => 'th',
+            'ι' => 'i', 'κ' => 'k', 'λ' => 'l', 'μ' => 'm', 'ν' => 'n', 'ξ' => 'x', 'ο' => 'o', 'π' => 'p',
+            'ρ' => 'r', 'σ' => 's', 'ς' => 's', 'τ' => 't', 'υ' => 'y', 'φ' => 'f', 'χ' => 'ch', 'ψ' => 'ps', 'ω' => 'o',
+            'ά' => 'a', 'έ' => 'e', 'ή' => 'h', 'ί' => 'i', 'ό' => 'o', 'ύ' => 'y', 'ώ' => 'o',
+            'ΐ' => 'i', 'ΰ' => 'y', 'Ά' => 'A', 'Έ' => 'E', 'Ή' => 'H', 'Ί' => 'I', 'Ό' => 'O', 'Ύ' => 'Y', 'Ώ' => 'O'
+        ];
+
+        // Apply Greek character mapping first
+        $transliterated = strtr($text, $greek_map);
+
+        // Then try iconv as fallback for other diacritics, but only if result is not empty
+        $iconv_result = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $transliterated);
+
+        // Return iconv result only if it's not empty, otherwise return our manual transliteration
+        return !empty($iconv_result) ? $iconv_result : $transliterated;
     }
 
     // === API INTEGRATION ===
@@ -1989,14 +2008,16 @@ class AGICallHandler
         // Track registration API call
         $successful = !$result['callOperator'];
 
-        // Extract registration ID from response
+        // Extract registration ID and full response
         $registrationId = null;
+        $fullResponse = null;
         if (isset($response)) {
             $responseData = json_decode($response, true);
             $registrationId = $responseData['response']['id'] ?? null;
+            $fullResponse = $response; // Store full JSON response
         }
 
-        $this->trackRegistrationAPICall($successful, $result['msg'], $responseTime, $registrationId);
+        $this->trackRegistrationAPICall($successful, $fullResponse ?: $result['msg'], $responseTime, $registrationId);
 
         return $result;
     }
@@ -2015,7 +2036,7 @@ class AGICallHandler
             "destLongitude" => $this->dest_location['latLng']['lng'] ?? 0,
             "taxisNo" => 1,
             "comments" => $this->getCallComment(),
-            "referencePath" => $this->filebase,
+            "referencePath" => $this->call_id,
             "daysValid" => $this->days_valid
         ];
     }
