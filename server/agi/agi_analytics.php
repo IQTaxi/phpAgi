@@ -3105,6 +3105,9 @@ class AGIAnalytics {
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -4410,6 +4413,60 @@ class AGIAnalytics {
         .heatmap-controls select {
             min-width: 150px;
         }
+
+        /* Enhanced marker cluster styles */
+        .marker-cluster-small {
+            background-color: rgba(59, 130, 246, 0.8);
+        }
+        .marker-cluster-small div {
+            background-color: rgba(59, 130, 246, 0.9);
+            color: white;
+            font-weight: bold;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            font-size: 12px;
+        }
+
+        .marker-cluster-medium {
+            background-color: rgba(245, 158, 11, 0.8);
+        }
+        .marker-cluster-medium div {
+            background-color: rgba(245, 158, 11, 0.9);
+            color: white;
+            font-weight: bold;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 35px;
+            height: 35px;
+            font-size: 14px;
+        }
+
+        .marker-cluster-large {
+            background-color: rgba(239, 68, 68, 0.8);
+        }
+        .marker-cluster-large div {
+            background-color: rgba(239, 68, 68, 0.9);
+            color: white;
+            font-weight: bold;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            font-size: 16px;
+        }
+
+        .marker-cluster {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 2px solid white;
+        }
         
         .heatmap-fullscreen {
             position: fixed;
@@ -4423,7 +4480,7 @@ class AGIAnalytics {
             flex-direction: column;
             box-shadow: 0 0 50px rgba(0, 0, 0, 0.3);
         }
-        
+
         .heatmap-fullscreen .chart-header {
             padding: 1.5rem 2rem;
             border-bottom: 2px solid #e2e8f0;
@@ -4431,42 +4488,42 @@ class AGIAnalytics {
             color: white;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        
+
         .heatmap-fullscreen .chart-title {
             color: white;
             font-size: 1.5rem;
         }
-        
+
         .heatmap-fullscreen .chart-title i {
             color: rgba(255, 255, 255, 0.9);
         }
-        
+
         .heatmap-fullscreen .heatmap-controls {
             gap: 1.5rem;
         }
-        
+
         .heatmap-fullscreen .heatmap-stats {
             background: rgba(255, 255, 255, 0.1);
             padding: 0.75rem 1rem;
             border-radius: 8px;
             backdrop-filter: blur(10px);
         }
-        
+
         .heatmap-fullscreen .heatmap-stats .stat-item {
             color: white;
         }
-        
+
         .heatmap-fullscreen .heatmap-fullscreen-btn {
             background: rgba(255, 255, 255, 0.2);
             color: white;
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
-        
+
         .heatmap-fullscreen .heatmap-fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.3);
             border-color: rgba(255, 255, 255, 0.5);
         }
-        
+
         .heatmap-fullscreen .heatmap-wrapper {
             flex: 1;
             height: calc(100vh - 120px) !important;
@@ -4494,13 +4551,13 @@ class AGIAnalytics {
             backdrop-filter: blur(10px);
             z-index: 10001;
         }
-        
+
         .fullscreen-close-btn:hover {
             background: rgba(255, 255, 255, 0.3);
             border-color: rgba(255, 255, 255, 0.5);
             transform: scale(1.1);
         }
-        
+
         .fullscreen-close-btn i {
             font-size: 1.1rem;
         }
@@ -4509,26 +4566,6 @@ class AGIAnalytics {
             transform: rotate(45deg);
         }
         
-        /* Add hint for fullscreen */
-        .heatmap-fullscreen::before {
-            content: 'Press ESC or click × to exit';
-            position: absolute;
-            top: 1rem;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            pointer-events: none;
-            animation: fadeInOut 4s ease-in-out;
-        }
-        
-        @keyframes fadeInOut {
-            0%, 20% { opacity: 1; }
-            80%, 100% { opacity: 0; }
-        }
         
         .heatmap-stats {
             display: flex;
@@ -5043,6 +5080,11 @@ class AGIAnalytics {
                                 <option value="720"><?php echo $this->t('last_12_hours'); ?></option>
                                 <option value="1440"><?php echo $this->t('last_24_hours'); ?></option>
                             </select>
+                            <select id="heatmapMode" class="form-control">
+                                <option value="heatmap">🔥 Heatmap</option>
+                                <option value="clusters">📍 Clustered Markers</option>
+                                <option value="markers">🎯 Individual Markers</option>
+                            </select>
                             <div id="heatmapStats" class="heatmap-stats">
                                 <span class="stat-item">
                                     <i class="fas fa-map-pin text-success"></i>
@@ -5378,6 +5420,12 @@ class AGIAnalytics {
         // Initialize global heatmap variables
         window.heatmapInstance = null;
         window.heatmapLayer = null;
+        window.markersLayer = null;
+        window.mapUserInteracted = false;
+        window.mapInteractionTimer = null;
+        window.lastMapCenter = null;
+        window.lastMapZoom = null;
+        window.mapMovementTimeout = 30000; // 30 seconds
         
         // Language switching function
         function switchLanguage(lang) {
@@ -5636,6 +5684,15 @@ class AGIAnalytics {
                 });
             }
 
+            // Heatmap mode change
+            const heatmapMode = document.getElementById('heatmapMode');
+            if (heatmapMode) {
+                heatmapMode.addEventListener('change', function() {
+                    console.log('Visualization mode changed to:', this.value);
+                    loadLocationHeatmap();
+                });
+            }
+
             // Heatmap fullscreen toggle
             const heatmapFullscreen = document.getElementById('heatmapFullscreen');
             if (heatmapFullscreen) {
@@ -5651,16 +5708,22 @@ class AGIAnalytics {
                 });
             }
             
-            // Fullscreen helper functions
+            // Enhanced fullscreen helper functions
             function enterHeatmapFullscreen() {
                 var container = document.querySelector('.heatmap-container');
                 var icon = document.querySelector('#heatmapFullscreen i');
-                
+
+                // Store current map state before fullscreen
+                if (window.heatmapInstance) {
+                    window.preFullscreenCenter = window.heatmapInstance.getCenter();
+                    window.preFullscreenZoom = window.heatmapInstance.getZoom();
+                }
+
                 container.classList.add('heatmap-fullscreen');
                 icon.classList.remove('fa-expand');
                 icon.classList.add('fa-compress');
                 document.getElementById('heatmapFullscreen').title = 'Exit Fullscreen';
-                
+
                 // Add close button
                 var closeBtn = document.createElement('button');
                 closeBtn.className = 'fullscreen-close-btn';
@@ -5669,42 +5732,71 @@ class AGIAnalytics {
                 closeBtn.title = 'Close Fullscreen';
                 closeBtn.onclick = exitHeatmapFullscreen;
                 container.appendChild(closeBtn);
-                
+
                 // Disable body scroll
                 document.body.style.overflow = 'hidden';
-                
-                // Re-initialize heatmap after fullscreen change
+
+                // Re-initialize map and layers for fullscreen
                 setTimeout(function() {
                     if (window.heatmapInstance) {
                         window.heatmapInstance.invalidateSize();
+
+                        // Restore map position
+                        if (window.preFullscreenCenter && window.preFullscreenZoom) {
+                            window.heatmapInstance.setView(window.preFullscreenCenter, window.preFullscreenZoom);
+                        }
+
+                        // Refresh clusters if in cluster mode
+                        if (window.markersLayer && window.markersLayer.refreshClusters) {
+                            window.markersLayer.refreshClusters();
+                        }
                     }
-                }, 200);
+                }, 300);
             }
-            
+
             function exitHeatmapFullscreen() {
                 var container = document.querySelector('.heatmap-container');
                 var icon = document.querySelector('#heatmapFullscreen i');
-                
+
+                // Store fullscreen map state
+                if (window.heatmapInstance) {
+                    window.postFullscreenCenter = window.heatmapInstance.getCenter();
+                    window.postFullscreenZoom = window.heatmapInstance.getZoom();
+                }
+
                 container.classList.remove('heatmap-fullscreen');
                 icon.classList.remove('fa-compress');
                 icon.classList.add('fa-expand');
                 document.getElementById('heatmapFullscreen').title = 'Fullscreen';
-                
+
                 // Remove close button
                 var closeBtn = document.getElementById('fullscreenCloseBtn');
                 if (closeBtn) {
                     closeBtn.remove();
                 }
-                
+
                 // Re-enable body scroll
                 document.body.style.overflow = '';
-                
-                // Re-initialize heatmap after fullscreen change
+
+                // Re-initialize map and preserve user position
                 setTimeout(function() {
                     if (window.heatmapInstance) {
                         window.heatmapInstance.invalidateSize();
+
+                        // Preserve the map position from fullscreen
+                        if (window.postFullscreenCenter && window.postFullscreenZoom) {
+                            window.heatmapInstance.setView(window.postFullscreenCenter, window.postFullscreenZoom);
+                            // Update stored position to prevent auto-repositioning
+                            window.lastMapCenter = window.postFullscreenCenter;
+                            window.lastMapZoom = window.postFullscreenZoom;
+                        }
+
+                        // Refresh clusters if in cluster mode
+                        if (window.markersLayer && window.markersLayer.refreshClusters) {
+                            window.markersLayer.refreshClusters();
+                        }
                     }
-                }, 200);
+                }, 300);
             }
             
             // ESC key to exit fullscreen
@@ -6373,39 +6465,36 @@ class AGIAnalytics {
             document.getElementById('destinationCount').textContent = destinationCount;
         }
         
-        // Render location heatmap
+        // Enhanced render location heatmap with clustering and position retention
         function renderLocationHeatmap(data) {
             console.log('renderLocationHeatmap called with data:', data);
             var container = document.getElementById('locationHeatmap');
             var loading = document.getElementById('heatmapLoading');
             var empty = document.getElementById('heatmapEmpty');
             var legend = document.getElementById('heatmapLegend');
-            
+
             // Update stats
             updateLocationStats(data);
-            
+
             if (!data.locations || data.locations.length === 0) {
                 console.log('No locations found, showing empty state');
                 showHeatmapEmpty();
                 return;
             }
-            
+
             console.log('Found', data.locations.length, 'locations to display');
-            
+
             // Hide loading and empty states
-            console.log('Hiding loading state and showing map');
             loading.style.display = 'none';
             empty.style.display = 'none';
-            
+
             // Show map and legend smoothly
-            console.log('Setting container opacity to 1, current opacity:', container.style.opacity);
             if (container.style.opacity !== '1') {
                 container.style.transition = 'opacity 0.3s ease';
                 container.style.opacity = '1';
             }
             legend.style.display = 'block';
-            console.log('Map container opacity after setting:', container.style.opacity);
-            
+
             // Initialize map if not exists
             if (!window.heatmapInstance) {
                 try {
@@ -6413,8 +6502,34 @@ class AGIAnalytics {
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         attribution: '© OpenStreetMap contributors'
                     }).addTo(window.heatmapInstance);
-                    
-                    // Add zoom event listener to update heatmap radius (only for actual heatmap layers)
+
+                    // Store initial center and zoom
+                    window.lastMapCenter = window.heatmapInstance.getCenter();
+                    window.lastMapZoom = window.heatmapInstance.getZoom();
+
+                    // Add map interaction listeners for position retention
+                    window.heatmapInstance.on('movestart', function() {
+                        window.mapUserInteracted = true;
+                        if (window.mapInteractionTimer) {
+                            clearTimeout(window.mapInteractionTimer);
+                        }
+                    });
+
+                    window.heatmapInstance.on('moveend', function() {
+                        window.lastMapCenter = window.heatmapInstance.getCenter();
+                        window.lastMapZoom = window.heatmapInstance.getZoom();
+
+                        // Set timer to allow auto-repositioning after 30 seconds of no interaction
+                        if (window.mapInteractionTimer) {
+                            clearTimeout(window.mapInteractionTimer);
+                        }
+                        window.mapInteractionTimer = setTimeout(function() {
+                            window.mapUserInteracted = false;
+                            console.log('Map interaction timeout - auto-repositioning re-enabled');
+                        }, window.mapMovementTimeout);
+                    });
+
+                    // Dynamic radius update for heatmap layers
                     window.heatmapInstance.on('zoomend', function() {
                         if (window.heatmapLayer && window.heatmapLayer.options && typeof window.heatmapLayer.redraw === 'function') {
                             var currentZoom = window.heatmapInstance.getZoom();
@@ -6429,10 +6544,13 @@ class AGIAnalytics {
                     return;
                 }
             }
-            
-            // Clear existing layers before adding new ones
+
+            // Get visualization mode
+            var mode = document.getElementById('heatmapMode') ? document.getElementById('heatmapMode').value : 'heatmap';
+            console.log('Using visualization mode:', mode);
+
+            // Clear existing layers
             if (window.heatmapLayer) {
-                console.log('Removing existing heatmap layer');
                 try {
                     window.heatmapInstance.removeLayer(window.heatmapLayer);
                 } catch(e) {
@@ -6440,114 +6558,133 @@ class AGIAnalytics {
                 }
                 window.heatmapLayer = null;
             }
-            
-            // Prepare heat data with intensity based on location frequency
-            var locationCount = {};
-            var heatData = [];
-            
-            // Count frequency of each location
-            data.locations.forEach(function(loc) {
-                var key = loc.lat + ',' + loc.lng;
-                locationCount[key] = (locationCount[key] || 0) + 1;
-            });
-            
-            // Create heat data with higher intensity for better visibility
-            data.locations.forEach(function(loc) {
-                var key = loc.lat + ',' + loc.lng;
-                var frequency = locationCount[key];
-                var intensity = Math.min(1.0, Math.max(0.3, frequency / 3)); // Higher base intensity
-                heatData.push([loc.lat, loc.lng, intensity]);
-            });
-            
-            // Debug heatmap availability
-            console.log('Leaflet available:', typeof L !== 'undefined');
-            console.log('HeatLayer available:', typeof L !== 'undefined' && L.heatLayer && typeof L.heatLayer === 'function');
-            console.log('Heat plugin ready:', window.heatPluginReady);
-            
-            // Force circle markers for better visibility
-            if (false && typeof L !== 'undefined' && L.heatLayer && typeof L.heatLayer === 'function') {
-                console.log('Using heatmap visualization');
-                if (window.heatmapLayer && window.heatmapLayer.setLatLngs) {
-                    // Update existing layer smoothly instead of removing/recreating
-                    window.heatmapLayer.setLatLngs(heatData);
-                } else {
-                    // Remove old layer if exists
-                    if (window.heatmapLayer) {
-                        window.heatmapInstance.removeLayer(window.heatmapLayer);
-                    }
-                    // Create new heatmap layer with improved visibility
-                    window.heatmapLayer = L.heatLayer(heatData, {
-                        radius: function(zoom) {
-                            // Dynamic radius based on zoom level for optimal visibility
-                            return Math.max(20, Math.min(60, 35 + (18 - zoom) * 3));
-                        },
-                        blur: 20, // Increased blur for smoother heat effect
-                        minOpacity: 0.4, // Increased minimum opacity
-                        maxZoom: 22,
-                        max: 1.0,
-                        gradient: {
-                            0.0: '#0066ff',    // Blue for low activity
-                            0.2: '#00ccff',    // Light blue
-                            0.4: '#00ff99',    // Green
-                            0.6: '#ffff00',    // Yellow
-                            0.8: '#ff6600',    // Orange
-                            1.0: '#ff0000'     // Red for high activity
-                        }
-                    }).addTo(window.heatmapInstance);
+            if (window.markersLayer) {
+                try {
+                    window.heatmapInstance.removeLayer(window.markersLayer);
+                } catch(e) {
+                    console.log('Error removing markers layer:', e);
                 }
+                window.markersLayer = null;
+            }
+
+            // Prepare data based on visualization mode
+            var bounds = [];
+
+            if (mode === 'heatmap' && typeof L !== 'undefined' && L.heatLayer && typeof L.heatLayer === 'function') {
+                // Heatmap mode
+                console.log('Creating heatmap visualization');
+
+                var locationCount = {};
+                var heatData = [];
+
+                // Count frequency of each location
+                data.locations.forEach(function(loc) {
+                    var key = loc.lat + ',' + loc.lng;
+                    locationCount[key] = (locationCount[key] || 0) + 1;
+                });
+
+                // Create heat data with intensity based on frequency
+                var processedLocations = {};
+                data.locations.forEach(function(loc) {
+                    var key = loc.lat + ',' + loc.lng;
+                    if (!processedLocations[key]) {
+                        var frequency = locationCount[key];
+                        var intensity = Math.min(1.0, Math.max(0.3, frequency / 3));
+                        heatData.push([loc.lat, loc.lng, intensity]);
+                        bounds.push([loc.lat, loc.lng]);
+                        processedLocations[key] = true;
+                    }
+                });
+
+                // Create heatmap layer
+                window.heatmapLayer = L.heatLayer(heatData, {
+                    radius: 25,
+                    blur: 20,
+                    minOpacity: 0.4,
+                    maxZoom: 22,
+                    max: 1.0,
+                    gradient: {
+                        0.0: '#0066ff',    // Blue for low activity
+                        0.2: '#00ccff',    // Light blue
+                        0.4: '#00ff99',    // Green
+                        0.6: '#ffff00',    // Yellow
+                        0.8: '#ff6600',    // Orange
+                        1.0: '#ff0000'     // Red for high activity
+                    }
+                }).addTo(window.heatmapInstance);
+
+            } else if (mode === 'clusters') {
+                // Clustered markers mode
+                console.log('Creating clustered markers visualization');
+
+                window.markersLayer = L.markerClusterGroup({
+                    chunkedLoading: true,
+                    maxClusterRadius: 50,
+                    iconCreateFunction: function(cluster) {
+                        var count = cluster.getChildCount();
+                        var size = count < 10 ? 'small' : count < 100 ? 'medium' : 'large';
+                        return L.divIcon({
+                            html: '<div><span>' + count + '</span></div>',
+                            className: 'marker-cluster marker-cluster-' + size,
+                            iconSize: new L.Point(40, 40)
+                        });
+                    }
+                });
+
+                data.locations.forEach(function(loc) {
+                    var color = loc.type === 'pickup' ? '#10b981' : '#ef4444';
+                    var iconHtml = loc.type === 'pickup' ? '📍' : '🏁';
+
+                    var marker = L.marker([loc.lat, loc.lng], {
+                        icon: L.divIcon({
+                            html: '<div style="background-color: ' + color + '; width: 25px; height: 25px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 12px;">' + iconHtml + '</div>',
+                            iconSize: [25, 25],
+                            iconAnchor: [12, 12],
+                            className: 'custom-marker-icon'
+                        })
+                    }).bindPopup('<strong>' + (loc.type === 'pickup' ? '📍 Pickup' : '🏁 Destination') + '</strong><br>' + (loc.address || 'No address'));
+
+                    window.markersLayer.addLayer(marker);
+                    bounds.push([loc.lat, loc.lng]);
+                });
+
+                window.heatmapInstance.addLayer(window.markersLayer);
+
             } else {
-                // Fallback to regular markers
-                console.log('Creating markers for', data.locations.length, 'locations');
-                
-                // Clear existing markers layer if it exists
-                if (window.heatmapLayer) {
-                    console.log('Removing existing markers layer');
-                    try {
-                        window.heatmapInstance.removeLayer(window.heatmapLayer);
-                    } catch(e) {
-                        console.log('Error removing markers layer:', e);
-                    }
-                }
-                
-                window.heatmapLayer = L.layerGroup();
-                var bounds = [];
-                
-                for (var i = 0; i < data.locations.length; i++) {
-                    var loc = data.locations[i];
-                    console.log('Adding location:', loc.type, loc.lat, loc.lng, loc.address);
-                    
+                // Individual markers mode
+                console.log('Creating individual markers visualization');
+
+                window.markersLayer = L.layerGroup();
+
+                data.locations.forEach(function(loc) {
                     var color = loc.type === 'pickup' ? '#10b981' : '#ef4444';
                     var marker = L.circleMarker([loc.lat, loc.lng], {
-                        radius: 12, // Increased from 8 to make more visible
+                        radius: 12,
                         fillColor: color,
-                        color: '#333', // Changed from #fff to darker border
-                        weight: 3, // Increased border weight
+                        color: '#333',
+                        weight: 3,
                         opacity: 1,
-                        fillOpacity: 0.9 // Increased fill opacity
-                    }).bindPopup('<strong>' + (loc.type === 'pickup' ? '📍 ' + (LANG.translations.pickups || 'Pickup') : '🏁 ' + (LANG.translations.destinations || 'Destination')) + '</strong><br>' + (loc.address || 'No address'));
-                    
-                    window.heatmapLayer.addLayer(marker);
+                        fillOpacity: 0.9
+                    }).bindPopup('<strong>' + (loc.type === 'pickup' ? '📍 Pickup' : '🏁 Destination') + '</strong><br>' + (loc.address || 'No address'));
+
+                    window.markersLayer.addLayer(marker);
                     bounds.push([loc.lat, loc.lng]);
-                }
-                
-                window.heatmapLayer.addTo(window.heatmapInstance);
-                
-                // Auto-fit bounds to show all markers
-                if (bounds.length > 0) {
-                    console.log('Fitting bounds to', bounds.length, 'points');
-                    var group = new L.featureGroup(window.heatmapLayer.getLayers());
-                    window.heatmapInstance.fitBounds(group.getBounds().pad(0.1));
-                } else {
-                    console.log('No valid coordinates found');
-                }
+                });
+
+                window.heatmapInstance.addLayer(window.markersLayer);
             }
-            
-            // Fit bounds for heatmap if we have heat data and no circle markers were used
-            if (heatData.length > 0 && (typeof L !== 'undefined' && L.heatLayer && typeof L.heatLayer === 'function')) {
-                var bounds = L.latLngBounds(heatData.map(function(point) {
-                    return [point[0], point[1]];
-                }));
-                window.heatmapInstance.fitBounds(bounds, { padding: [50, 50] });
+
+            // Auto-fit bounds only if user hasn't interacted with map recently
+            if (bounds.length > 0 && !window.mapUserInteracted) {
+                console.log('Auto-fitting bounds to', bounds.length, 'points');
+                var latLngBounds = L.latLngBounds(bounds);
+                window.heatmapInstance.fitBounds(latLngBounds, { padding: [50, 50] });
+
+                // Update stored position
+                window.lastMapCenter = window.heatmapInstance.getCenter();
+                window.lastMapZoom = window.heatmapInstance.getZoom();
+            } else if (window.mapUserInteracted) {
+                console.log('User has interacted with map recently - preserving current view');
             }
         }
         
