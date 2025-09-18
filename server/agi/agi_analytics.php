@@ -91,7 +91,7 @@ class AGIAnalytics {
                 'filters' => 'Φίλτρα',
                 'export' => 'Εξαγωγή',
                 'refresh' => 'Ανανέωση',
-                'stop' => 'Στάση',
+                'stop' => 'Στοπ',
                 'live' => 'Ζωντανά',
                 'search' => 'Αναζήτηση',
                 'clear_all' => 'Καθαρισμός Όλων',
@@ -3106,6 +3106,10 @@ class AGIAnalytics {
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/gr.js"></script>
     <script>
         // Load leaflet heat plugin and ensure it's ready
         window.heatPluginReady = false;
@@ -3741,6 +3745,18 @@ class AGIAnalytics {
             box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
             animation: pulse 2s infinite;
         }
+
+        .status-indicator.online {
+            background: #10b981;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.offline {
+            background: #6b7280;
+            box-shadow: 0 0 0 2px rgba(107, 114, 128, 0.3);
+            animation: none;
+        }
         
         .status-text {
             font-size: 0.9rem;
@@ -3990,6 +4006,98 @@ class AGIAnalytics {
             font-size: 1.125rem;
             font-weight: 600;
             color: var(--gray-900);
+        }
+
+        .table-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn-group-left {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-group-right {
+            display: flex;
+            align-items: center;
+        }
+
+        .btn-sm {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+            line-height: 1.25rem;
+            border-radius: 0.375rem;
+            font-weight: 500;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .btn-outline-primary {
+            color: #3b82f6;
+            border: 1px solid #3b82f6;
+            background-color: transparent;
+        }
+
+        .btn-outline-primary:hover {
+            color: white;
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-success {
+            color: white;
+            background-color: #10b981;
+            border: 1px solid #10b981;
+        }
+
+        .btn-success:hover {
+            background-color: #059669;
+            border-color: #059669;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+        }
+
+        .form-control-sm {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+            line-height: 1.25rem;
+            border-radius: 0.375rem;
+            border: 1px solid var(--gray-300);
+            transition: border-color 0.2s ease-in-out;
+        }
+
+        .form-control-sm:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .date-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .date-input-wrapper .date-icon {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6b7280;
+            pointer-events: auto;
+            cursor: pointer;
+            z-index: 2;
+        }
+
+        .date-input-wrapper .date-icon:hover {
+            color: #3b82f6;
+        }
+
+        .date-picker {
+            padding-right: 35px;
         }
         
         .table-responsive {
@@ -4759,12 +4867,6 @@ class AGIAnalytics {
         <button onclick="switchLanguage('en')" class="lang-btn <?php echo $this->language === 'en' ? 'active' : ''; ?>">EN</button>
     </div>
 
-    <!-- Filter Toggle Button -->
-    <button id="filterToggle" class="filter-toggle">
-        <i class="fas fa-filter"></i>
-        <span><?php echo $this->t('filters'); ?></span>
-    </button>
-    
     <!-- Filter Modal -->
     <div class="modal" id="filterModal">
         <div class="modal-content filter-modal-content">
@@ -4826,12 +4928,20 @@ class AGIAnalytics {
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label"><?php echo $this->t('date_from'); ?></label>
-                            <input type="date" name="date_from" class="form-control">
+                            <div class="date-input-wrapper">
+                                <input type="text" name="date_from" class="form-control date-picker" id="dateFromFilter"
+                                       placeholder="ΗΗ/ΜΜ/ΕΕΕΕ" maxlength="10" autocomplete="off">
+                                <i class="fas fa-calendar-alt date-icon"></i>
+                            </div>
                         </div>
-                        
+
                         <div class="form-group">
                             <label class="form-label"><?php echo $this->t('date_to'); ?></label>
-                            <input type="date" name="date_to" class="form-control">
+                            <div class="date-input-wrapper">
+                                <input type="text" name="date_to" class="form-control date-picker" id="dateToFilter"
+                                       placeholder="ΗΗ/ΜΜ/ΕΕΕΕ" maxlength="10" autocomplete="off">
+                                <i class="fas fa-calendar-alt date-icon"></i>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -4870,9 +4980,6 @@ class AGIAnalytics {
                     </div>
                     <div class="header-right">
                         <div class="header-actions">
-                            <button id="exportBtn" class="btn btn-info">
-                                <i class="fas fa-download"></i> <?php echo $this->t('export'); ?>
-                            </button>
                             <button id="refreshBtn" class="btn btn-secondary">
                                 <i class="fas fa-refresh"></i> <?php echo $this->t('refresh'); ?>
                             </button>
@@ -4885,9 +4992,6 @@ class AGIAnalytics {
                                 <i class="fas fa-ellipsis-v"></i>
                             </button>
                             <div class="mobile-menu-dropdown" id="mobileMenuDropdown">
-                                <button id="exportBtnMobile" class="btn btn-info">
-                                    <i class="fas fa-download"></i> <?php echo $this->t('export'); ?>
-                                </button>
                                 <button id="refreshBtnMobile" class="btn btn-secondary">
                                     <i class="fas fa-refresh"></i> <?php echo $this->t('refresh'); ?>
                                 </button>
@@ -4999,12 +5103,22 @@ class AGIAnalytics {
             <div class="calls-table-container">
                 <div class="table-header">
                     <h3 class="table-title"><?php echo $this->t('recent_calls'); ?></h3>
-                    <div class="btn-group">
-                        <select id="limitSelect" class="form-control" style="width: auto;">
-                            <option value="25"><?php echo $this->t('25_per_page'); ?></option>
-                            <option value="50" selected><?php echo $this->t('50_per_page'); ?></option>
-                            <option value="100"><?php echo $this->t('100_per_page'); ?></option>
-                        </select>
+                    <div class="table-actions">
+                        <div class="btn-group-left">
+                            <button id="filterToggle" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-filter"></i> <?php echo $this->t('filters'); ?>
+                            </button>
+                            <button id="exportBtn" class="btn btn-success btn-sm">
+                                <i class="fas fa-download"></i> <?php echo $this->t('export'); ?>
+                            </button>
+                        </div>
+                        <div class="btn-group-right">
+                            <select id="limitSelect" class="form-control form-control-sm" style="width: auto; min-width: 120px;">
+                                <option value="25"><?php echo $this->t('25_per_page'); ?></option>
+                                <option value="50" selected><?php echo $this->t('50_per_page'); ?></option>
+                                <option value="100"><?php echo $this->t('100_per_page'); ?></option>
+                            </select>
+                        </div>
                     </div>
                 </div>
                 <div class="table-responsive">
@@ -5043,11 +5157,8 @@ class AGIAnalytics {
                     <button class="btn btn-sm btn-primary" onclick="refreshCallDetail()" title="<?php echo $this->t('refresh_action'); ?>">
                         <i class="fas fa-sync-alt"></i> <?php echo $this->t('refresh_action'); ?>
                     </button>
-                    <button class="btn btn-sm btn-warning" onclick="editCall()" title="<?php echo $this->t('edit'); ?>">
+                    <button class="btn btn-sm btn-warning" onclick="editCallWithAuth()" title="<?php echo $this->t('edit'); ?>">
                         <i class="fas fa-edit"></i> <?php echo $this->t('edit'); ?>
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteCall()" title="<?php echo $this->t('delete'); ?>">
-                        <i class="fas fa-trash"></i> <?php echo $this->t('delete'); ?>
                     </button>
                     <button class="modal-close" onclick="closeModal()">&times;</button>
                 </div>
@@ -5320,7 +5431,9 @@ class AGIAnalytics {
                 pickup_address_label: '<?php echo $this->t('pickup_address_label'); ?>',
                 destination_address_label: '<?php echo $this->t('destination_address_label'); ?>',
                 confirmation_audio: '<?php echo $this->t('confirmation_audio'); ?>',
-                system_generated_confirmation: '<?php echo $this->t('system_generated_confirmation'); ?>'
+                system_generated_confirmation: '<?php echo $this->t('system_generated_confirmation'); ?>',
+                stop: '<?php echo $this->t('stop'); ?>',
+                live: '<?php echo $this->t('live'); ?>'
             }
         };
         
@@ -5353,6 +5466,11 @@ class AGIAnalytics {
             startLiveDurationUpdater();
 
             // Auto-filters are set up in setupEventListeners
+
+            // Wait a bit to ensure the modal elements are ready
+            setTimeout(function() {
+                setupGreekDatePickers();
+            }, 500);
 
             // Check for id parameter to auto-open call details
             const urlParams = new URLSearchParams(window.location.search);
@@ -5444,33 +5562,52 @@ class AGIAnalytics {
         // Setup event listeners
         function setupEventListeners() {
             // Filter modal toggle
-            document.getElementById('filterToggle').addEventListener('click', function() {
-                document.getElementById('filterModal').classList.add('show');
-            });
+            const filterToggle = document.getElementById('filterToggle');
+            if (filterToggle) {
+                filterToggle.addEventListener('click', function() {
+                    document.getElementById('filterModal').classList.add('show');
+                    // Re-initialize date pickers when modal opens
+                    setTimeout(function() {
+                        setupGreekDatePickers();
+                    }, 100);
+                });
+            }
             
             // Filter modal close
-            document.getElementById('filterModalClose').addEventListener('click', function() {
-                document.getElementById('filterModal').classList.remove('show');
-            });
-            
+            const filterModalClose = document.getElementById('filterModalClose');
+            if (filterModalClose) {
+                filterModalClose.addEventListener('click', function() {
+                    document.getElementById('filterModal').classList.remove('show');
+                });
+            }
+
             // Close modal on backdrop click
-            document.getElementById('filterModal').addEventListener('click', function(e) {
-                if (e.target === this) {
-                    this.classList.remove('show');
-                }
-            });
+            const filterModal = document.getElementById('filterModal');
+            if (filterModal) {
+                filterModal.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        this.classList.remove('show');
+                    }
+                });
+            }
             
             // Export Modal Event Listeners
-            document.getElementById('exportModalClose').addEventListener('click', function() {
-                document.getElementById('exportModal').classList.remove('show');
-            });
-            
+            const exportModalClose = document.getElementById('exportModalClose');
+            if (exportModalClose) {
+                exportModalClose.addEventListener('click', function() {
+                    document.getElementById('exportModal').classList.remove('show');
+                });
+            }
+
             // Close export modal on backdrop click
-            document.getElementById('exportModal').addEventListener('click', function(e) {
-                if (e.target === this) {
-                    this.classList.remove('show');
-                }
-            });
+            const exportModal = document.getElementById('exportModal');
+            if (exportModal) {
+                exportModal.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        this.classList.remove('show');
+                    }
+                });
+            }
             
             // Export option click handlers
             document.querySelectorAll('.export-option').forEach(function(option) {
@@ -5481,29 +5618,38 @@ class AGIAnalytics {
             });
             
             // Edit Modal Event Listeners
-            document.getElementById('editCallModal').addEventListener('click', function(e) {
-                if (e.target === this) {
-                    closeEditModal();
-                }
-            });
+            const editCallModal = document.getElementById('editCallModal');
+            if (editCallModal) {
+                editCallModal.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        closeEditModal();
+                    }
+                });
+            }
             
             // Heatmap duration change
-            document.getElementById('heatmapDuration').addEventListener('change', function() {
-                console.log('Dropdown changed to:', this.value);
-                loadLocationHeatmap();
-            });
-            
+            const heatmapDuration = document.getElementById('heatmapDuration');
+            if (heatmapDuration) {
+                heatmapDuration.addEventListener('change', function() {
+                    console.log('Dropdown changed to:', this.value);
+                    loadLocationHeatmap();
+                });
+            }
+
             // Heatmap fullscreen toggle
-            document.getElementById('heatmapFullscreen').addEventListener('click', function() {
-                var container = document.querySelector('.heatmap-container');
-                var icon = this.querySelector('i');
-                
-                if (container.classList.contains('heatmap-fullscreen')) {
-                    exitHeatmapFullscreen();
-                } else {
-                    enterHeatmapFullscreen();
-                }
-            });
+            const heatmapFullscreen = document.getElementById('heatmapFullscreen');
+            if (heatmapFullscreen) {
+                heatmapFullscreen.addEventListener('click', function() {
+                    var container = document.querySelector('.heatmap-container');
+                    var icon = this.querySelector('i');
+
+                    if (container.classList.contains('heatmap-fullscreen')) {
+                        exitHeatmapFullscreen();
+                    } else {
+                        enterHeatmapFullscreen();
+                    }
+                });
+            }
             
             // Fullscreen helper functions
             function enterHeatmapFullscreen() {
@@ -5569,18 +5715,23 @@ class AGIAnalytics {
             });
             
             // Filter form
-            document.getElementById('filterForm').addEventListener('submit', function(e) {
+            const filterForm = document.getElementById('filterForm');
+            if (filterForm) {
+                filterForm.addEventListener('submit', function(e) {
                 e.preventDefault();
                 // Close modal
                 document.getElementById('filterModal').classList.remove('show');
                 // Apply filters
                 applyFilters();
-            });
+                });
+            }
             
             // Removed auto-apply filters - filters are now only applied when user clicks "Apply Filters" button
             
             // Clear filters
-            document.getElementById('clearFilters').addEventListener('click', function() {
+            const clearFilters = document.getElementById('clearFilters');
+            if (clearFilters) {
+                clearFilters.addEventListener('click', function() {
                 console.log('Clearing filters...');
                 document.getElementById('filterForm').reset();
                 currentFilters = {};
@@ -5595,29 +5746,42 @@ class AGIAnalytics {
                 // Reload calls
                 loadCalls();
                 updateURL();
-            });
+                });
+            }
             
             // Export button - show modal
-            document.getElementById('exportBtn').addEventListener('click', function() {
-                showExportModal();
-            });
+            const exportBtn = document.getElementById('exportBtn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function() {
+                    showExportModal();
+                });
+            }
             
             // Refresh button
-            document.getElementById('refreshBtn').addEventListener('click', function() {
-                loadDashboard();
-            });
+            const refreshBtn = document.getElementById('refreshBtn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function() {
+                    loadDashboard();
+                });
+            }
             
             // Real-time toggle
-            document.getElementById('realtimeBtn').addEventListener('click', function() {
-                toggleRealtime();
-            });
-            
+            const realtimeBtn = document.getElementById('realtimeBtn');
+            if (realtimeBtn) {
+                realtimeBtn.addEventListener('click', function() {
+                    toggleRealtime();
+                });
+            }
+
             // Mobile Menu Toggle
-            document.getElementById('mobileMenuToggle').addEventListener('click', function(e) {
-                e.stopPropagation();
-                const dropdown = document.getElementById('mobileMenuDropdown');
-                dropdown.classList.toggle('show');
-            });
+            const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+            if (mobileMenuToggle) {
+                mobileMenuToggle.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const dropdown = document.getElementById('mobileMenuDropdown');
+                    dropdown.classList.toggle('show');
+                });
+            }
             
             // Close mobile menu when clicking outside
             document.addEventListener('click', function(e) {
@@ -5630,39 +5794,57 @@ class AGIAnalytics {
             });
             
             // Mobile button event listeners (duplicate functionality)
-            document.getElementById('exportBtnMobile').addEventListener('click', function() {
-                document.getElementById('mobileMenuDropdown').classList.remove('show');
-                showExportModal();
-            });
+            const exportBtnMobile = document.getElementById('exportBtnMobile');
+            if (exportBtnMobile) {
+                exportBtnMobile.addEventListener('click', function() {
+                    document.getElementById('mobileMenuDropdown').classList.remove('show');
+                    showExportModal();
+                });
+            }
+
+            const refreshBtnMobile = document.getElementById('refreshBtnMobile');
+            if (refreshBtnMobile) {
+                refreshBtnMobile.addEventListener('click', function() {
+                    document.getElementById('mobileMenuDropdown').classList.remove('show');
+                    loadDashboard();
+                });
+            }
             
-            document.getElementById('refreshBtnMobile').addEventListener('click', function() {
-                document.getElementById('mobileMenuDropdown').classList.remove('show');
-                loadDashboard();
-            });
-            
-            document.getElementById('realtimeBtnMobile').addEventListener('click', function() {
-                document.getElementById('mobileMenuDropdown').classList.remove('show');
-                toggleRealtime();
-            });
+            const realtimeBtnMobile = document.getElementById('realtimeBtnMobile');
+            if (realtimeBtnMobile) {
+                realtimeBtnMobile.addEventListener('click', function() {
+                    document.getElementById('mobileMenuDropdown').classList.remove('show');
+                    toggleRealtime();
+                });
+            }
             
             // Limit select
-            document.getElementById('limitSelect').addEventListener('change', function() {
-                currentLimit = parseInt(this.value);
-                currentPage = 1;
-                loadCalls();
-            });
-            
+            const limitSelect = document.getElementById('limitSelect');
+            if (limitSelect) {
+                limitSelect.addEventListener('change', function() {
+                    currentLimit = parseInt(this.value);
+                    currentPage = 1;
+                    loadCalls();
+                });
+            }
+
             // Hourly date select
-            document.getElementById('hourlyDateSelect').addEventListener('change', function() {
-                loadHourlyChart(this.value);
-            });
-            
+            const hourlyDateSelect = document.getElementById('hourlyDateSelect');
+            if (hourlyDateSelect) {
+                hourlyDateSelect.addEventListener('change', function() {
+                    loadHourlyChart(this.value);
+                });
+            }
+
             // Modal close on background click
-            document.getElementById('callDetailModal').addEventListener('click', function(e) {
-                if (e.target === this) {
-                    closeModal();
-                }
-            });
+            const callDetailModal = document.getElementById('callDetailModal');
+            if (callDetailModal) {
+                callDetailModal.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        closeModal();
+                    }
+                });
+            }
         }
         
         // Load dashboard data
@@ -6105,6 +6287,9 @@ class AGIAnalytics {
         // Start real-time updates
         function startRealtime() {
             var btn = document.getElementById('realtimeBtn');
+            var statusIndicator = document.querySelector('.status-indicator');
+            var statusText = document.querySelector('.status-text');
+
             if (!realtimeInterval) {
                 console.log('Starting real-time updates...');
                 realtimeInterval = setInterval(() => {
@@ -6116,11 +6301,20 @@ class AGIAnalytics {
                     loadHourlyChart(); // Also refresh the hourly chart
                     loadLocationHeatmap();
                 }, 10000); // Update every 10 seconds
-                
-                btn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+
+                btn.innerHTML = '<i class="fas fa-stop"></i> ' + LANG.translations.stop;
                 btn.classList.remove('btn-primary');
                 btn.classList.add('btn-danger');
-                
+
+                // Update status indicator
+                if (statusIndicator) {
+                    statusIndicator.classList.remove('offline');
+                    statusIndicator.classList.add('online');
+                }
+                if (statusText) {
+                    statusText.textContent = LANG.translations.live;
+                }
+
                 console.log('Real-time updates enabled');
             }
         }
@@ -6902,38 +7096,19 @@ class AGIAnalytics {
             }
         }
 
-        // Delete call
-        function deleteCall() {
-            if (!currentCallId) {
-                alert('No call selected');
-                return;
-            }
+        // Edit call with password protection
+        function editCallWithAuth() {
+            const password = prompt('Enter password to edit call:');
+            if (password === null) return; // User cancelled
 
-            if (confirm('Are you sure you want to delete this call? This action cannot be undone.')) {
-                fetch('?endpoint=delete_call', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        call_id: currentCallId
-                    })
-                })
-                .then(function(response) { return response.json(); })
-                .then(function(result) {
-                    if (result.success) {
-                        alert('Call deleted successfully');
-                        closeModal();
-                        loadCalls(); // Refresh the calls table
-                        loadStats(); // Refresh statistics
-                    } else {
-                        alert('Failed to delete call: ' + (result.error || 'Unknown error'));
-                    }
-                })
-                .catch(function(error) {
-                    console.error('Error deleting call:', error);
-                    alert('Failed to delete call');
-                });
+            // MD5 hash of "iqtaxiedit" is: 0c8e002237b0b9bc54a3987de63e9896
+            const expectedHash = '0c8e002237b0b9bc54a3987de63e9896';
+            const inputHash = CryptoJS.MD5(password).toString();
+
+            if (inputHash === expectedHash) {
+                editCall();
+            } else {
+                alert('Incorrect password');
             }
         }
 
@@ -7144,12 +7319,81 @@ class AGIAnalytics {
                 window.open('?' + params.toString(), '_blank');
             }
         }
-        
+
+        // Setup Greek date pickers with dd/mm/yyyy format
+        function setupGreekDatePickers() {
+            // Initialize date from picker
+            if (document.getElementById('dateFromFilter')) {
+                flatpickr("#dateFromFilter", {
+                    dateFormat: "d/m/Y",  // dd/mm/yyyy format
+                    locale: "gr",         // Greek locale
+                    allowInput: true,
+                    clickOpens: true,
+                    disableMobile: true,  // Force desktop version on mobile
+                    minDate: "2020-01-01", // Allow dates from 2020 onwards
+                    maxDate: "today", // Maximum date is today
+                    onChange: function(selectedDates, dateStr, instance) {
+                        // Update date to minimum date when date from changes
+                        if (selectedDates.length > 0) {
+                            var dateToPicker = document.getElementById('dateToFilter')._flatpickr;
+                            if (dateToPicker) {
+                                dateToPicker.set('minDate', selectedDates[0]);
+                            }
+                        }
+                    }
+                });
+
+                // Make calendar icon clickable
+                var dateFromIcon = document.querySelector('#dateFromFilter').parentElement.querySelector('.date-icon');
+                if (dateFromIcon) {
+                    dateFromIcon.style.pointerEvents = 'auto';
+                    dateFromIcon.style.cursor = 'pointer';
+                    dateFromIcon.addEventListener('click', function() {
+                        var picker = document.getElementById('dateFromFilter')._flatpickr;
+                        if (picker) picker.open();
+                    });
+                }
+            }
+
+            // Initialize date to picker
+            if (document.getElementById('dateToFilter')) {
+                flatpickr("#dateToFilter", {
+                    dateFormat: "d/m/Y",  // dd/mm/yyyy format
+                    locale: "gr",         // Greek locale
+                    allowInput: true,
+                    clickOpens: true,
+                    disableMobile: true,  // Force desktop version on mobile
+                    minDate: "2020-01-01", // Allow dates from 2020 onwards
+                    maxDate: "today", // Maximum date is today
+                    onChange: function(selectedDates, dateStr, instance) {
+                        // Update date from maximum date when date to changes
+                        if (selectedDates.length > 0) {
+                            var dateFromPicker = document.getElementById('dateFromFilter')._flatpickr;
+                            if (dateFromPicker) {
+                                dateFromPicker.set('maxDate', selectedDates[0]);
+                            }
+                        }
+                    }
+                });
+
+                // Make calendar icon clickable
+                var dateToIcon = document.querySelector('#dateToFilter').parentElement.querySelector('.date-icon');
+                if (dateToIcon) {
+                    dateToIcon.style.pointerEvents = 'auto';
+                    dateToIcon.style.cursor = 'pointer';
+                    dateToIcon.addEventListener('click', function() {
+                        var picker = document.getElementById('dateToFilter')._flatpickr;
+                        if (picker) picker.open();
+                    });
+                }
+            }
+        }
+
         // Apply filters
         function applyFilters() {
             var form = document.getElementById('filterForm');
             var formData = new FormData(form);
-            
+
             currentFilters = {};
             var entries = formData.entries();
             var entry = entries.next();
@@ -7157,20 +7401,30 @@ class AGIAnalytics {
                 var key = entry.value[0];
                 var value = entry.value[1];
                 if (value.trim() !== '') {
+                    // Convert dd/mm/yyyy to yyyy-mm-dd for date fields
+                    if ((key === 'date_from' || key === 'date_to') && value.includes('/')) {
+                        var parts = value.split('/');
+                        if (parts.length === 3) {
+                            var day = parts[0].padStart(2, '0');
+                            var month = parts[1].padStart(2, '0');
+                            var year = parts[2];
+                            value = year + '-' + month + '-' + day;
+                        }
+                    }
                     currentFilters[key] = value;
                 }
                 entry = entries.next();
             }
-            
+
             console.log('Applying filters:', currentFilters);
-            
+
             currentPage = 1;
             loadCalls();
             updateURL();
-            
+
             // Show success feedback
             showFilterStatus('Filters applied!', 'text-success');
-            
+
             // Close the modal
             document.getElementById('filterModal').classList.remove('show');
         }
@@ -7178,13 +7432,24 @@ class AGIAnalytics {
         // Toggle real-time updates
         function toggleRealtime() {
             var btn = document.getElementById('realtimeBtn');
-            
+            var statusIndicator = document.querySelector('.status-indicator');
+            var statusText = document.querySelector('.status-text');
+
             if (realtimeInterval) {
                 clearInterval(realtimeInterval);
                 realtimeInterval = null;
                 btn.innerHTML = '<i class="fas fa-play"></i> Real-time';
                 btn.classList.remove('btn-danger');
                 btn.classList.add('btn-primary');
+
+                // Update status indicator to show stopped state
+                if (statusIndicator) {
+                    statusIndicator.classList.remove('online');
+                    statusIndicator.classList.add('offline');
+                }
+                if (statusText) {
+                    statusText.textContent = 'Stopped';
+                }
             } else {
                 startRealtime();
             }

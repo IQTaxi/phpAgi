@@ -2036,7 +2036,7 @@ class AGICallHandler
             "destLongitude" => $this->dest_location['latLng']['lng'] ?? 0,
             "taxisNo" => 1,
             "comments" => $this->getCallComment(),
-            "referencePath" => $this->call_id,
+            "referencePath" => (string)$this->uniqueid,
             "daysValid" => $this->days_valid
         ];
     }
