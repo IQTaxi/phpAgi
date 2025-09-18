@@ -946,9 +946,9 @@ $currentConfig = $configManager->getConfig();
 
         @media (min-width: 768px) {
             .form-group {
-                grid-template-columns: 220px 1fr;
+                grid-template-columns: 280px 1fr;
                 gap: 1.25rem;
-                align-items: center;
+                align-items: start;
             }
 
             .edit-header h2 {
@@ -956,10 +956,17 @@ $currentConfig = $configManager->getConfig();
             }
         }
         
+        .form-label-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.375rem;
+        }
+
         .form-label {
             font-weight: 600;
             color: var(--gray-700);
             font-size: 0.875rem;
+            margin: 0;
         }
 
         .form-label.missing-key {
@@ -970,6 +977,23 @@ $currentConfig = $configManager->getConfig();
         .form-label.missing-key::before {
             content: '⚠️ ';
             margin-right: 0.25rem;
+        }
+
+        .form-description {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+            line-height: 1.4;
+            padding: 0.5rem 0.75rem;
+            background: var(--gray-50);
+            border-radius: 0.375rem;
+            border-left: 3px solid var(--gray-200);
+            margin: 0;
+        }
+
+        .form-description.missing-key {
+            background: #fef2f2;
+            border-left-color: var(--danger);
+            color: #991b1b;
         }
 
         .form-input {
@@ -2200,16 +2224,23 @@ $currentConfig = $configManager->getConfig();
             const originalConfig = currentConfigs[selectedExtension];
             const isMissingKey = !originalConfig.hasOwnProperty(key);
             
+            const labelContainer = document.createElement('div');
+            labelContainer.className = 'form-label-container';
+
             const label = document.createElement('label');
-            label.className = 'form-label tooltip' + (isMissingKey ? ' missing-key' : '');
-            label.innerHTML = `
-                ${getTranslation(key)}${isMissingKey ? ' ' + getTranslation('missing_key_suffix') : ''}
-                <span class="tooltiptext">${getTranslation(key + '_tooltip')}${isMissingKey ? ' ' + getTranslation('missing_key_tooltip') : ''}</span>
-            `;
-            
+            label.className = 'form-label' + (isMissingKey ? ' missing-key' : '');
+            label.textContent = `${getTranslation(key)}${isMissingKey ? ' ' + getTranslation('missing_key_suffix') : ''}`;
+
+            const description = document.createElement('div');
+            description.className = 'form-description' + (isMissingKey ? ' missing-key' : '');
+            description.textContent = getTranslation(key + '_tooltip') + (isMissingKey ? ' ' + getTranslation('missing_key_tooltip') : '');
+
+            labelContainer.appendChild(label);
+            labelContainer.appendChild(description);
+
             const input = createInput(key, value, isMissingKey);
-            
-            formGroup.appendChild(label);
+
+            formGroup.appendChild(labelContainer);
             formGroup.appendChild(input);
             
             return formGroup;
