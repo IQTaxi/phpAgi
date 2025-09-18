@@ -6711,18 +6711,85 @@ class AGIAnalytics {
                 setTimeout(function() {
                     var map = L.map('callMap').setView([call.pickup_lat, call.pickup_lng], 13);
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-                    
-                    var pickupMarker = L.marker([call.pickup_lat, call.pickup_lng])
+
+                    // Create custom icons for pickup (green) and destination (red)
+                    var pickupIcon = L.divIcon({
+                        html: '<div style="background-color: #28a745; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10],
+                        className: 'custom-marker-icon'
+                    });
+
+                    var destinationIcon = L.divIcon({
+                        html: '<div style="background-color: #dc3545; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10],
+                        className: 'custom-marker-icon'
+                    });
+
+                    var pickupMarker = L.marker([call.pickup_lat, call.pickup_lng], {icon: pickupIcon})
                         .addTo(map)
                         .bindPopup('Pickup: ' + (call.pickup_address || ''));
-                        
+
                     if (call.destination_lat && call.destination_lng) {
-                        var destMarker = L.marker([call.destination_lat, call.destination_lng])
+                        var destMarker = L.marker([call.destination_lat, call.destination_lng], {icon: destinationIcon})
                             .addTo(map)
                             .bindPopup('Destination: ' + (call.destination_address || ''));
-                            
-                        var group = new L.featureGroup([pickupMarker, destMarker]);
-                        map.fitBounds(group.getBounds().pad(0.1));
+
+                        // Get route from OSRM (free service)
+                        var pickupLng = parseFloat(call.pickup_lng);
+                        var pickupLat = parseFloat(call.pickup_lat);
+                        var destLng = parseFloat(call.destination_lng);
+                        var destLat = parseFloat(call.destination_lat);
+
+                        var osrmUrl = 'https://router.project-osrm.org/route/v1/driving/' +
+                                     pickupLng + ',' + pickupLat + ';' +
+                                     destLng + ',' + destLat +
+                                     '?overview=full&geometries=geojson';
+
+                        fetch(osrmUrl)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.routes && data.routes.length > 0) {
+                                    var route = data.routes[0];
+                                    var coordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+
+                                    // Calculate distance and duration
+                                    var distance = (route.distance / 1000).toFixed(1); // km
+                                    var duration = Math.round(route.duration / 60); // minutes
+
+                                    // Create polyline
+                                    var polyline = L.polyline(coordinates, {
+                                        color: '#3388ff',
+                                        weight: 4,
+                                        opacity: 0.7
+                                    }).addTo(map);
+
+                                    // Add click event to polyline
+                                    polyline.on('click', function(e) {
+                                        L.popup()
+                                            .setLatLng(e.latlng)
+                                            .setContent('<div><strong>Route Information</strong><br>' +
+                                                       'Distance: ' + distance + ' km<br>' +
+                                                       'Estimated Time: ' + duration + ' minutes</div>')
+                                            .openOn(map);
+                                    });
+
+                                    // Fit map to show both markers and route
+                                    var group = new L.featureGroup([pickupMarker, destMarker, polyline]);
+                                    map.fitBounds(group.getBounds().pad(0.1));
+                                } else {
+                                    // Fallback if OSRM fails - just fit to markers
+                                    var group = new L.featureGroup([pickupMarker, destMarker]);
+                                    map.fitBounds(group.getBounds().pad(0.1));
+                                }
+                            })
+                            .catch(error => {
+                                console.log('OSRM routing failed:', error);
+                                // Fallback if OSRM fails - just fit to markers
+                                var group = new L.featureGroup([pickupMarker, destMarker]);
+                                map.fitBounds(group.getBounds().pad(0.1));
+                            });
                     }
                 }, 100);
             }

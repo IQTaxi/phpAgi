@@ -9,7 +9,9 @@
       "Bash(grep:*)",
       "Bash(php:*)",
       "WebFetch(domain:maps.googleapis.com)",
-      "Bash(dir \"C:\\Users\\billy\\Documents\\phpAgi\\server\\html\")"
+      "Bash(dir \"C:\\Users\\billy\\Documents\\phpAgi\\server\\html\")",
+      "WebSearch",
+      "WebFetch(domain:project-osrm.org)"
     ],
     "additionalDirectories": [
       "C:\\Users\\billy\\Documents\\phpAgi\\server",
