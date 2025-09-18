@@ -57,6 +57,11 @@ class ConfigManager {
         $configContent .= "// Object with lat, lng, radius = Bias API results toward a center point\n";
         $configContent .= "// Example: {\"lat\": 37.9755, \"lng\": 23.7348, \"radius\": 50000} (radius in meters)\n";
         $configContent .= "// Used by both Google Geocoding API v1 and Places API v2 to bias location results\n\n";
+        $configContent .= "// boundsRestrictionMode configuration:\n";
+        $configContent .= "// null or 0 = No restriction (bounds and centerBias are not applied)\n";
+        $configContent .= "// 1 = Apply bounds and centerBias only to pickup location\n";
+        $configContent .= "// 2 = Apply bounds and centerBias only to dropoff location\n";
+        $configContent .= "// 3 = Apply bounds and centerBias to both pickup and dropoff locations\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         $configContent .= "];\n}\n";
@@ -97,6 +102,11 @@ class ConfigManager {
         $configContent .= "// Object with lat, lng, radius = Bias API results toward a center point\n";
         $configContent .= "// Example: {\"lat\": 37.9755, \"lng\": 23.7348, \"radius\": 50000} (radius in meters)\n";
         $configContent .= "// Used by both Google Geocoding API v1 and Places API v2 to bias location results\n\n";
+        $configContent .= "// boundsRestrictionMode configuration:\n";
+        $configContent .= "// null or 0 = No restriction (bounds and centerBias are not applied)\n";
+        $configContent .= "// 1 = Apply bounds and centerBias only to pickup location\n";
+        $configContent .= "// 2 = Apply bounds and centerBias only to dropoff location\n";
+        $configContent .= "// 3 = Apply bounds and centerBias to both pickup and dropoff locations\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         
@@ -534,16 +544,33 @@ $currentConfig = $configManager->getConfig();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-en="AGI Configuration Manager" data-el="Διαχειριστής Ρυθμίσεων AGI">AGI Configuration Manager</title>
     <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #1d4ed8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #06b6d4;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #ffffff;
-            color: #1a1a1a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-900);
             line-height: 1.5;
             min-height: 100vh;
         }
@@ -554,12 +581,13 @@ $currentConfig = $configManager->getConfig();
         }
         
         .header {
-            background: #000000;
-            color: #ffffff;
-            padding: 1rem;
-            border-bottom: 3px solid #333333;
+            background: white;
+            color: var(--gray-900);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--gray-200);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        
+
         .header-content {
             max-width: 1200px;
             margin: 0 auto;
@@ -569,11 +597,11 @@ $currentConfig = $configManager->getConfig();
             flex-wrap: wrap;
             gap: 1rem;
         }
-        
+
         .header h1 {
-            font-size: 1.25rem;
+            font-size: 1.5rem;
             font-weight: 700;
-            color: #ffffff;
+            color: var(--gray-900);
             margin: 0;
         }
         
@@ -586,29 +614,34 @@ $currentConfig = $configManager->getConfig();
         
         .language-switcher {
             display: flex;
-            background: #333333;
-            border-radius: 4px;
-            overflow: hidden;
+            background: var(--gray-100);
+            border-radius: 0.5rem;
+            padding: 0.25rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--gray-200);
         }
-        
+
         .language-switcher button {
             padding: 0.5rem 0.75rem;
             border: none;
             background: transparent;
-            color: #ffffff;
+            color: var(--gray-600);
             cursor: pointer;
             font-size: 0.875rem;
             font-weight: 500;
             transition: all 0.2s ease;
+            border-radius: 0.375rem;
+            min-width: 40px;
         }
-        
+
         .language-switcher button.active {
-            background: #ffffff;
-            color: #000000;
+            background: var(--primary);
+            color: white;
         }
-        
+
         .language-switcher button:hover:not(.active) {
-            background: #555555;
+            background: var(--gray-200);
+            color: var(--gray-800);
         }
         
         .content {
@@ -644,73 +677,74 @@ $currentConfig = $configManager->getConfig();
         }
         
         .btn {
-            padding: 0.75rem 1rem;
-            border: 2px solid transparent;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            font-weight: 600;
-            transition: all 0.2s ease;
-            text-decoration: none;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            padding: 0.75rem 1.25rem;
+            border: 1px solid transparent;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
             min-width: 120px;
+            gap: 0.5rem;
         }
-        
+
         .btn-primary {
-            background: #000000;
-            color: #ffffff;
-            border-color: #000000;
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
         }
-        
+
         .btn-primary:hover {
-            background: #333333;
-            border-color: #333333;
+            background: var(--primary-dark);
+            border-color: var(--primary-dark);
         }
-        
+
         .btn-success {
-            background: #006600;
-            color: #ffffff;
-            border-color: #006600;
+            background: var(--success);
+            color: white;
+            border-color: var(--success);
         }
-        
+
         .btn-success:hover {
-            background: #004d00;
-            border-color: #004d00;
+            background: #059669;
+            border-color: #059669;
         }
-        
+
         .btn-warning {
-            background: #cc6600;
-            color: #ffffff;
-            border-color: #cc6600;
+            background: var(--warning);
+            color: white;
+            border-color: var(--warning);
         }
-        
+
         .btn-warning:hover {
-            background: #994d00;
-            border-color: #994d00;
+            background: #d97706;
+            border-color: #d97706;
         }
-        
+
         .btn-info {
-            background: #0066cc;
-            color: #ffffff;
-            border-color: #0066cc;
+            background: var(--info);
+            color: white;
+            border-color: var(--info);
         }
-        
+
         .btn-info:hover {
-            background: #004d99;
-            border-color: #004d99;
+            background: #0891b2;
+            border-color: #0891b2;
         }
-        
+
         .btn-outline-primary {
-            background: #ffffff;
-            color: #000000;
-            border-color: #000000;
+            background: white;
+            color: var(--primary);
+            border-color: var(--primary);
         }
-        
+
         .btn-outline-primary:hover {
-            background: #000000;
-            color: #ffffff;
+            background: var(--primary);
+            color: white;
         }
         
         /* Selection Screen Styles */
@@ -741,68 +775,100 @@ $currentConfig = $configManager->getConfig();
         .configs-grid {
             display: grid;
             grid-template-columns: 1fr;
-            gap: 1rem;
-            margin-top: 2rem;
+            gap: 1.5rem;
+            margin-top: 2.5rem;
+            padding: 1rem;
         }
-        
+
         @media (min-width: 768px) {
             .configs-grid {
-                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-                gap: 1.5rem;
+                grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+                gap: 2rem;
+                padding: 1.5rem;
             }
         }
         
         .config-card {
-            background: #ffffff;
-            border: 3px solid #000000;
-            border-radius: 8px;
-            padding: 1.5rem;
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--gray-200);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
             cursor: pointer;
-            transition: all 0.2s ease;
             text-align: left;
         }
-        
+
+        .config-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
         .config-card:hover {
-            background: #f8f8f8;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        .config-card:hover::before {
+            opacity: 1;
         }
         
         .config-card h3 {
-            color: #000000;
-            margin-bottom: 0.75rem;
+            color: var(--gray-900);
+            margin-bottom: 1.25rem;
             font-size: 1.25rem;
             font-weight: 700;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--gray-200);
         }
         
         .config-card .config-info {
             display: grid;
-            gap: 0.5rem;
+            gap: 0.875rem;
         }
         
         .config-card .config-row {
             display: flex;
             justify-content: space-between;
-            padding: 0.25rem 0;
-            border-bottom: 1px solid #eeeeee;
+            align-items: center;
+            padding: 0.75rem;
+            background: var(--gray-50);
+            border-radius: 0.5rem;
+            border-left: 3px solid var(--gray-200);
+            transition: all 0.2s ease;
         }
-        
-        .config-card .config-row:last-child {
-            border-bottom: none;
+
+        .config-card .config-row:hover {
+            background: var(--gray-100);
+            border-left-color: var(--primary);
         }
-        
+
         .config-card .label {
             font-weight: 600;
-            color: #333333;
+            color: var(--gray-700);
             font-size: 0.875rem;
         }
-        
+
         .config-card .value {
-            color: #000000;
+            color: var(--gray-900);
             font-weight: 500;
             font-size: 0.875rem;
             text-align: right;
             max-width: 50%;
             word-break: break-all;
+            background: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            border: 1px solid var(--gray-200);
         }
         
         /* Edit Screen Styles */
@@ -814,17 +880,30 @@ $currentConfig = $configManager->getConfig();
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
-            padding: 1rem;
-            background: #f0f0f0;
-            border: 2px solid #cccccc;
-            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            padding: 2rem;
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: 1rem;
             flex-wrap: wrap;
             gap: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            position: relative;
+            overflow: hidden;
         }
-        
+
+        .edit-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+        }
+
         .edit-header h2 {
-            color: #000000;
+            color: var(--gray-900);
             font-size: 1.25rem;
             margin: 0;
             font-weight: 700;
@@ -837,29 +916,41 @@ $currentConfig = $configManager->getConfig();
         }
         
         .config-form {
-            background: #ffffff;
-            border: 3px solid #000000;
-            border-radius: 8px;
-            padding: 1.5rem;
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            margin-top: 1rem;
         }
         
         .form-grid {
             display: grid;
-            gap: 1.5rem;
+            gap: 2rem;
         }
         
         .form-group {
             display: grid;
-            gap: 0.5rem;
+            gap: 0.75rem;
+            background: var(--gray-50);
+            padding: 1.25rem;
+            border-radius: 0.5rem;
+            border-left: 4px solid var(--gray-200);
+            transition: all 0.2s ease;
         }
-        
+
+        .form-group:hover {
+            background: var(--gray-100);
+            border-left-color: var(--primary);
+        }
+
         @media (min-width: 768px) {
             .form-group {
-                grid-template-columns: 200px 1fr;
-                gap: 1rem;
+                grid-template-columns: 220px 1fr;
+                gap: 1.25rem;
                 align-items: center;
             }
-            
+
             .edit-header h2 {
                 font-size: 1.5rem;
             }
@@ -867,44 +958,45 @@ $currentConfig = $configManager->getConfig();
         
         .form-label {
             font-weight: 600;
-            color: #000000;
-            font-size: 0.9375rem;
+            color: var(--gray-700);
+            font-size: 0.875rem;
         }
-        
+
         .form-label.missing-key {
-            color: #cc0000;
+            color: var(--danger);
             font-weight: 700;
         }
-        
+
         .form-label.missing-key::before {
             content: '⚠️ ';
             margin-right: 0.25rem;
         }
-        
+
         .form-input {
+            width: 100%;
             padding: 0.75rem;
-            border: 2px solid #000000;
-            border-radius: 4px;
-            font-size: 1rem;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-            background: #ffffff;
-            color: #000000;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: white;
+            color: var(--gray-900);
         }
-        
+
         .form-input:focus {
             outline: none;
-            border-color: #0066cc;
-            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.3);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
-        
+
         .form-input.missing-key {
-            border-color: #cc0000;
-            background-color: #fff5f5;
+            border-color: var(--danger);
+            background-color: #fef2f2;
         }
-        
+
         .form-input.missing-key:focus {
-            border-color: #cc0000;
-            box-shadow: 0 0 0 3px rgba(204, 0, 0, 0.3);
+            border-color: var(--danger);
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
         }
         
         select.form-input {
@@ -929,25 +1021,25 @@ $currentConfig = $configManager->getConfig();
             align-items: center;
             gap: 0.5rem;
             padding: 0.5rem;
-            border: 2px solid #000000;
-            border-radius: 4px;
-            background-color: #ffffff;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.5rem;
+            background-color: white;
             min-height: 2.5rem;
         }
-        
+
         .tags-wrapper:focus-within {
-            border-color: #0066cc;
-            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.3);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
-        
+
         .tag {
             display: inline-flex;
             align-items: center;
             gap: 0.25rem;
             padding: 0.25rem 0.5rem;
-            background-color: #0066cc;
+            background-color: var(--primary);
             color: white;
-            border-radius: 20px;
+            border-radius: 1rem;
             font-size: 0.875rem;
             font-weight: 500;
         }
@@ -985,34 +1077,34 @@ $currentConfig = $configManager->getConfig();
         }
         
         .tags-wrapper.missing-key {
-            border-color: #cc0000;
-            background-color: #fff5f5;
+            border-color: var(--danger);
+            background-color: #fef2f2;
         }
-        
+
         .tags-wrapper.missing-key:focus-within {
-            border-color: #cc0000;
-            box-shadow: 0 0 0 3px rgba(204, 0, 0, 0.3);
+            border-color: var(--danger);
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
         }
         
         .alert {
             padding: 1rem;
             margin-bottom: 1rem;
-            border: 2px solid transparent;
-            border-radius: 4px;
-            font-size: 0.9375rem;
+            border: 1px solid transparent;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
             font-weight: 500;
         }
-        
+
         .alert-success {
-            color: #004d00;
-            background-color: #ccffcc;
-            border-color: #00cc00;
+            color: #065f46;
+            background-color: #d1fae5;
+            border-color: var(--success);
         }
-        
+
         .alert-danger {
-            color: #cc0000;
-            background-color: #ffcccc;
-            border-color: #ff0000;
+            color: #991b1b;
+            background-color: #fee2e2;
+            border-color: var(--danger);
         }
         
         .tooltip {
@@ -1027,22 +1119,22 @@ $currentConfig = $configManager->getConfig();
             height: 18px;
             line-height: 18px;
             text-align: center;
-            background: #000000;
-            color: #ffffff;
+            background: var(--gray-600);
+            color: white;
             border-radius: 50%;
             font-size: 12px;
             font-weight: bold;
             margin-left: 0.5rem;
             cursor: help;
         }
-        
+
         .tooltip .tooltiptext {
             visibility: hidden;
             width: 320px;
-            background-color: #000000;
-            color: #ffffff;
+            background-color: var(--gray-900);
+            color: white;
             text-align: left;
-            border-radius: 6px;
+            border-radius: 0.5rem;
             padding: 1rem;
             position: absolute;
             z-index: 1000;
@@ -1053,9 +1145,9 @@ $currentConfig = $configManager->getConfig();
             transition: opacity 0.3s;
             font-size: 0.875rem;
             line-height: 1.4;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
-        
+
         .tooltip .tooltiptext::after {
             content: "";
             position: absolute;
@@ -1064,7 +1156,7 @@ $currentConfig = $configManager->getConfig();
             margin-left: -5px;
             border-width: 5px;
             border-style: solid;
-            border-color: #000000 transparent transparent transparent;
+            border-color: var(--gray-900) transparent transparent transparent;
         }
         
         .tooltip:hover .tooltiptext {
@@ -1086,53 +1178,55 @@ $currentConfig = $configManager->getConfig();
         }
         
         .modal-content {
-            background-color: #ffffff;
+            background-color: white;
             margin: 5% auto;
             padding: 2rem;
-            border: 3px solid #000000;
-            border-radius: 8px;
+            border: 1px solid var(--gray-200);
+            border-radius: 1rem;
             width: 90%;
             max-width: 600px;
             max-height: 80vh;
             overflow-y: auto;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
-        
+
         .modal-content h2 {
             margin-bottom: 1.5rem;
-            color: #000000;
+            color: var(--gray-900);
             font-weight: 700;
         }
-        
+
         .close {
-            color: #000000;
+            color: var(--gray-400);
             float: right;
             font-size: 2rem;
             font-weight: bold;
             cursor: pointer;
             line-height: 1;
         }
-        
+
         .close:hover {
-            color: #666666;
+            color: var(--gray-600);
         }
         
         .form-textarea {
             width: 100%;
             min-height: 300px;
             padding: 0.75rem;
-            border: 2px solid #000000;
-            border-radius: 4px;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.5rem;
             font-size: 0.875rem;
             font-family: 'Courier New', monospace;
             resize: vertical;
-            background: #ffffff;
-            color: #000000;
+            background: white;
+            color: var(--gray-900);
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        
+
         .form-textarea:focus {
             outline: none;
-            border-color: #0066cc;
-            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.3);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
         
         .modal-buttons {
@@ -1469,8 +1563,8 @@ $currentConfig = $configManager->getConfig();
                 <h1 data-en="AGI Configuration Manager" data-el="Διαχειριστής Ρυθμίσεων AGI">AGI Configuration Manager</h1>
                 <div class="header-controls">
                     <div class="language-switcher">
-                        <button onclick="switchLanguage('en')" class="active" id="btn-en">English</button>
-                        <button onclick="switchLanguage('el')" id="btn-el">Ελληνικά</button>
+                        <button onclick="switchLanguage('en')" class="active" id="btn-en" data-en="English" data-el="English">English</button>
+                        <button onclick="switchLanguage('el')" id="btn-el" data-en="Greek" data-el="Ελληνικά">Ελληνικά</button>
                     </div>
                 </div>
             </div>
@@ -1501,7 +1595,7 @@ $currentConfig = $configManager->getConfig();
                     <div class="configs-grid" id="configs-grid">
                         <!-- Config cards will be loaded here -->
                     </div>
-                    <div style="margin-top: 2rem;">
+                    <div style="margin-top: 2rem; display: none;">
                         <button class="btn btn-outline-primary" onclick="showAddExtensionForm()" data-en="Add New Configuration" data-el="Προσθήκη Νέας Ρύθμισης">
                             Add New Configuration
                         </button>
@@ -1512,7 +1606,7 @@ $currentConfig = $configManager->getConfig();
             <!-- Edit Screen -->
             <div id="edit-screen" class="edit-screen">
                 <div class="edit-header">
-                    <h2 id="edit-title">Edit Configuration</h2>
+                    <h2 id="edit-title" data-en="Edit Configuration" data-el="Επεξεργασία Ρυθμίσεων">Edit Configuration</h2>
                     <div class="buttons">
                         <button class="btn btn-outline-primary" onclick="goBack()" data-en="Back to List" data-el="Πίσω στη Λίστα">Back to List</button>
                         <button class="btn btn-success" onclick="saveConfiguration()" data-en="Save Changes" data-el="Αποθήκευση Αλλαγών">Save Changes</button>
@@ -1596,9 +1690,9 @@ $currentConfig = $configManager->getConfig();
             <h2 data-en="Sound Browser" data-el="Περιήγηση Ήχων">Sound Browser</h2>
             
             <div class="language-tabs">
-                <button id="sound-tab-el" class="tab-button active" onclick="switchSoundTab('el')">Greek (el)</button>
-                <button id="sound-tab-en" class="tab-button" onclick="switchSoundTab('en')">English (en)</button>
-                <button id="sound-tab-bg" class="tab-button" onclick="switchSoundTab('bg')">Bulgarian (bg)</button>
+                <button id="sound-tab-el" class="tab-button active" onclick="switchSoundTab('el')" data-en="Greek (el)" data-el="Ελληνικά (el)">Greek (el)</button>
+                <button id="sound-tab-en" class="tab-button" onclick="switchSoundTab('en')" data-en="English (en)" data-el="Αγγλικά (en)">English (en)</button>
+                <button id="sound-tab-bg" class="tab-button" onclick="switchSoundTab('bg')" data-en="Bulgarian (bg)" data-el="Βουλγαρικά (bg)">Bulgarian (bg)</button>
             </div>
             
             <div class="sound-browser-content">
@@ -1658,7 +1752,8 @@ $currentConfig = $configManager->getConfig();
             autoCallCentersMode: 3,
             maxRetries: 5,
             bounds: null,
-            centerBias: null
+            centerBias: null,
+            boundsRestrictionMode: null
         };
         
         const translations = {
@@ -1684,6 +1779,7 @@ $currentConfig = $configManager->getConfig();
                 'maxRetries': 'Max Retries',
                 'bounds': 'Geographic Bounds',
                 'centerBias': 'Center Bias',
+                'boundsRestrictionMode': 'Bounds Restriction Mode',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -1705,6 +1801,7 @@ $currentConfig = $configManager->getConfig();
                 'maxRetries_tooltip': 'Maximum number of retry attempts for name, pickup, destination and reservation collection',
                 'bounds_tooltip': 'Set geographic bounds for post-processing validation. Results outside bounds will be rejected. Leave empty to accept all areas.',
                 'centerBias_tooltip': 'Set center point and radius to bias API search results. Enter coordinates and radius in meters.',
+                'boundsRestrictionMode_tooltip': 'Control when bounds/centerBias apply: 0/null=Never, 1=Pickup only, 2=Dropoff only, 3=Both locations',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -1743,6 +1840,10 @@ $currentConfig = $configManager->getConfig();
                 'select_asap_calls_only': 'ASAP Calls Only',
                 'select_reservations_only': 'Reservations Only',
                 'select_all_enabled': 'All Enabled',
+                'select_bounds_none': 'No Restrictions',
+                'select_bounds_pickup_only': 'Apply to Pickup Only',
+                'select_bounds_dropoff_only': 'Apply to Dropoff Only',
+                'select_bounds_both': 'Apply to Both Locations',
                 // Sound browser
                 'browse_sounds': 'Browse Sounds',
                 'sound_browser_title': 'Sound Browser',
@@ -1756,7 +1857,24 @@ $currentConfig = $configManager->getConfig();
                 'no_sounds_found': 'No sounds found in this directory',
                 'upload_success': 'Sound uploaded successfully!',
                 'upload_error': 'Error uploading sound file.',
-                'invalid_sound_path': 'Please enter a valid sound path first.'
+                'invalid_sound_path': 'Please enter a valid sound path first.',
+                'loading': 'Loading...',
+                'loading_sounds': 'Loading sounds...',
+                'error_loading_sounds': 'Error loading sounds',
+                'error_playing_sound': 'Error playing sound file',
+                'media_error_network': 'Network error while loading sound',
+                'media_error_decode': 'Error decoding sound file',
+                'media_error_not_supported': 'Sound file format not supported',
+                'error_uploading_sound': 'Error uploading sound',
+                'geographic_bounds': 'Geographic Bounds',
+                'no_bounds_set': 'No bounds set - searches all areas',
+                'map_instructions': 'Map Instructions: Click and drag to draw a rectangle on the map to set geographic bounds',
+                'center_bias': 'Center Bias',
+                'no_center_bias': 'No center bias - searches globally',
+                'center_bias_map': 'Center Bias: Click map to set center, Drag marker to move',
+                'edit_title_prefix': 'Edit Configuration - Extension',
+                'save_changes_title': 'Save Changes',
+                'back_to_list_title': 'Back to List'
             },
             el: {
                 // Field labels
@@ -1780,6 +1898,7 @@ $currentConfig = $configManager->getConfig();
                 'maxRetries': 'Μέγιστες Επαναλήψεις',
                 'bounds': 'Γεωγραφικά Όρια',
                 'centerBias': 'Κεντρική Προκατάληψη',
+                'boundsRestrictionMode': 'Λειτουργία Περιορισμού Ορίων',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -1801,6 +1920,7 @@ $currentConfig = $configManager->getConfig();
                 'maxRetries_tooltip': 'Μέγιστος αριθμός επαναλήψεων για συλλογή ονόματος, παραλαβής, προορισμού και κράτησης',
                 'bounds_tooltip': 'Ορίστε γεωγραφικά όρια για επικύρωση αποτελεσμάτων. Αποτελέσματα εκτός ορίων θα απορρίπτονται. Αφήστε κενό για αποδοχή όλων των περιοχών.',
                 'centerBias_tooltip': 'Ορίστε κεντρικό σημείο και ακτίνα για προκατάληψη αποτελεσμάτων API. Εισάγετε συντεταγμένες και ακτίνα σε μέτρα.',
+                'boundsRestrictionMode_tooltip': 'Έλεγχος εφαρμογής ορίων/κέντρου: 0/null=Ποτέ, 1=Μόνο παραλαβή, 2=Μόνο προορισμός, 3=Και τα δύο',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',
@@ -1839,6 +1959,10 @@ $currentConfig = $configManager->getConfig();
                 'select_asap_calls_only': 'Μόνο Άμεσες Κλήσεις',
                 'select_reservations_only': 'Μόνο Κρατήσεις',
                 'select_all_enabled': 'Όλα Ενεργοποιημένα',
+                'select_bounds_none': 'Χωρίς Περιορισμούς',
+                'select_bounds_pickup_only': 'Εφαρμογή μόνο στην Παραλαβή',
+                'select_bounds_dropoff_only': 'Εφαρμογή μόνο στον Προορισμό',
+                'select_bounds_both': 'Εφαρμογή και στις Δύο Τοποθεσίες',
                 // Sound browser
                 'browse_sounds': 'Περιήγηση Ήχων',
                 'sound_browser_title': 'Περιήγηση Ήχων',
@@ -1852,24 +1976,41 @@ $currentConfig = $configManager->getConfig();
                 'no_sounds_found': 'Δεν βρέθηκαν ήχοι σε αυτόν τον κατάλογο',
                 'upload_success': 'Ο ήχος ανέβηκε επιτυχώς!',
                 'upload_error': 'Σφάλμα στο ανέβασμα του αρχείου ήχου.',
-                'invalid_sound_path': 'Παρακαλώ εισάγετε πρώτα έγκυρη διαδρομή ήχου.'
+                'invalid_sound_path': 'Παρακαλώ εισάγετε πρώτα έγκυρη διαδρομή ήχου.',
+                'loading': 'Φόρτωση...',
+                'loading_sounds': 'Φόρτωση ήχων...',
+                'error_loading_sounds': 'Σφάλμα στη φόρτωση ήχων',
+                'error_playing_sound': 'Σφάλμα στην αναπαραγωγή αρχείου ήχου',
+                'media_error_network': 'Σφάλμα δικτύου κατά τη φόρτωση ήχου',
+                'media_error_decode': 'Σφάλμα αποκωδικοποίησης αρχείου ήχου',
+                'media_error_not_supported': 'Η μορφή αρχείου ήχου δεν υποστηρίζεται',
+                'error_uploading_sound': 'Σφάλμα στο ανέβασμα ήχου',
+                'geographic_bounds': 'Γεωγραφικά Όρια',
+                'no_bounds_set': 'Δεν έχουν οριστεί όρια - αναζήτηση σε όλες τις περιοχές',
+                'map_instructions': 'Οδηγίες Χάρτη: Κάντε κλικ και σύρετε για να σχεδιάσετε ένα ορθογώνιο στον χάρτη για να ορίσετε γεωγραφικά όρια',
+                'center_bias': 'Κεντρική Προκατάληψη',
+                'no_center_bias': 'Δεν υπάρχει κεντρική προκατάληψη - αναζήτηση παγκοσμίως',
+                'center_bias_map': 'Κεντρική Προκατάληψη: Κάντε κλικ στο χάρτη για να ορίσετε κέντρο, Σύρετε τον δείκτη για να μετακινηθείτε',
+                'edit_title_prefix': 'Επεξεργασία Ρυθμίσεων - Extension',
+                'save_changes_title': 'Αποθήκευση Αλλαγών',
+                'back_to_list_title': 'Πίσω στη Λίστα'
             }
         };
         
         function switchLanguage(lang) {
             currentLanguage = lang;
-            
+
             // Update active button
             document.querySelectorAll('.language-switcher button').forEach(btn => {
                 btn.classList.remove('active');
             });
             document.getElementById('btn-' + lang).classList.add('active');
-            
+
             // Update all translatable elements
             document.querySelectorAll('[data-en][data-el]').forEach(element => {
                 element.textContent = element.getAttribute('data-' + lang);
             });
-            
+
             // Update placeholders
             document.querySelectorAll('textarea[placeholder]').forEach(element => {
                 if (lang === 'el') {
@@ -1878,6 +2019,37 @@ $currentConfig = $configManager->getConfig();
                     element.placeholder = 'Paste JSON configuration data here...';
                 }
             });
+
+            // Refresh dynamic content based on current screen
+            const selectionScreen = document.getElementById('selection-screen');
+            const editScreen = document.getElementById('edit-screen');
+
+            // Get computed styles to check actual visibility
+            const selectionVisible = selectionScreen && window.getComputedStyle(selectionScreen).display !== 'none';
+            const editVisible = editScreen && window.getComputedStyle(editScreen).display !== 'none';
+
+            if (selectionVisible) {
+                // Refresh config cards on selection screen
+                loadConfigCards();
+            }
+
+            if (editVisible) {
+                // Refresh form fields on edit screen
+                loadConfigForm();
+
+                // Update edit title with proper translation
+                const editTitle = document.getElementById('edit-title');
+                if (selectedExtension && currentExtensionConfig) {
+                    const editTitleText = `${getTranslation('edit_title_prefix')} ${selectedExtension}`;
+                    editTitle.textContent = editTitleText;
+
+                    // Also update the page title
+                    const saveChanges = getTranslation('save_changes_title');
+                    const backToList = getTranslation('back_to_list_title');
+                    const pageTitleText = `${saveChanges} | ${backToList} - Extension ${selectedExtension}`;
+                    document.title = pageTitleText;
+                }
+            }
         }
         
         function getTranslation(key) {
@@ -1898,17 +2070,13 @@ $currentConfig = $configManager->getConfig();
         
         function initializeScreen() {
             const configCount = Object.keys(currentConfigs).length;
-            
+
             if (configCount === 0) {
                 // No configs - show add first config screen
                 document.getElementById('no-configs').style.display = 'block';
                 document.getElementById('multiple-configs').style.display = 'none';
-            } else if (configCount === 1) {
-                // Only one config - auto-select and edit
-                const extension = Object.keys(currentConfigs)[0];
-                selectExtension(extension);
             } else {
-                // Multiple configs - show selection screen
+                // Always show selection screen, even for single extension
                 document.getElementById('no-configs').style.display = 'none';
                 document.getElementById('multiple-configs').style.display = 'block';
                 loadConfigCards();
@@ -1972,7 +2140,17 @@ $currentConfig = $configManager->getConfig();
             document.getElementById('edit-screen').style.display = 'block';
             document.getElementById('add-extension-form').style.display = 'none';
             
-            document.getElementById('edit-title').textContent = `Extension ${extension} - ${currentExtensionConfig.name || 'Unnamed'}`;
+            // Set edit title using translation
+            const editTitleText = `${getTranslation('edit_title_prefix')} ${extension}`;
+            document.getElementById('edit-title').textContent = editTitleText;
+
+            // Update page title to show Save Changes and Back to List
+            const saveChanges = getTranslation('save_changes_title') ||
+                (currentLanguage === 'el' ? 'Αποθήκευση Αλλαγών' : 'Save Changes');
+            const backToList = getTranslation('back_to_list_title') ||
+                (currentLanguage === 'el' ? 'Πίσω στη Λίστα' : 'Back to List');
+            const pageTitleText = `${saveChanges} | ${backToList} - Extension ${extension}`;
+            document.title = pageTitleText;
             
             // Show/hide missing keys info box
             document.getElementById('missing-keys-info').style.display = hasMissingKeys ? 'block' : 'none';
@@ -2083,11 +2261,11 @@ $currentConfig = $configManager->getConfig();
                 
                 const updateCoordsDisplay = (bounds) => {
                     if (bounds && bounds.north) {
-                        coordsText.innerHTML = '📍 <strong>Geographic Bounds:</strong><br>' +
+                        coordsText.innerHTML = '📍 <strong>' + getTranslation('geographic_bounds') + ':</strong><br>' +
                             'North: ' + bounds.north.toFixed(6) + ' | South: ' + bounds.south.toFixed(6) + '<br>' +
                             'East: ' + bounds.east.toFixed(6) + ' | West: ' + bounds.west.toFixed(6);
                     } else {
-                        coordsText.innerHTML = '<em>🌍 No bounds set - searches all areas</em>';
+                        coordsText.innerHTML = '<em>🌍 ' + getTranslation('no_bounds_set') + '</em>';
                     }
                 };
                 
@@ -2100,7 +2278,7 @@ $currentConfig = $configManager->getConfig();
                 mapInstructions.style.border = '1px solid #90caf9';
                 mapInstructions.style.borderRadius = '4px';
                 mapInstructions.style.marginBottom = '10px';
-                mapInstructions.innerHTML = '🗺️ <strong>Map Instructions:</strong> Click and drag to draw a rectangle on the map to set geographic bounds';
+                mapInstructions.innerHTML = '🗺️ <strong>' + getTranslation('map_instructions') + '</strong>';
                 
                 // Buttons for preset bounds
                 const presetsContainer = document.createElement('div');
@@ -2274,11 +2452,11 @@ $currentConfig = $configManager->getConfig();
                 
                 const updateCoordsDisplay = (centerBias) => {
                     if (centerBias && centerBias.lat) {
-                        display.innerHTML = '🎯 <strong>Center Bias:</strong><br>' +
+                        display.innerHTML = '🎯 <strong>' + getTranslation('center_bias') + ':</strong><br>' +
                             'Latitude: ' + centerBias.lat.toFixed(6) + ' | Longitude: ' + centerBias.lng.toFixed(6) + '<br>' +
                             'Radius: ' + centerBias.radius + ' meters';
                     } else {
-                        display.innerHTML = '<em>🌐 No center bias - searches globally</em>';
+                        display.innerHTML = '<em>🌐 ' + getTranslation('no_center_bias') + '</em>';
                     }
                 };
                 
@@ -2589,6 +2767,7 @@ $currentConfig = $configManager->getConfig();
             if (key === 'callbackMode') return 'select';
             if (key === 'geocodingApiVersion') return 'select';
             if (key === 'autoCallCentersMode') return 'select';
+            if (key === 'boundsRestrictionMode') return 'select';
             if (key === 'bounds') return 'bounds';
             if (key === 'centerBias') return 'centerBias';
             if (typeof value === 'number') return 'number';
@@ -2607,6 +2786,8 @@ $currentConfig = $configManager->getConfig();
                     return `<option value="1">1 - ${getTranslation('select_geocoding_api')}</option><option value="2">2 - ${getTranslation('select_places_api')}</option>`;
                 case 'autoCallCentersMode':
                     return `<option value="0">0 - ${getTranslation('select_all_disabled_operator')}</option><option value="1">1 - ${getTranslation('select_asap_calls_only')}</option><option value="2">2 - ${getTranslation('select_reservations_only')}</option><option value="3">3 - ${getTranslation('select_all_enabled')}</option>`;
+                case 'boundsRestrictionMode':
+                    return `<option value="">None - ${getTranslation('select_bounds_none')}</option><option value="1">1 - ${getTranslation('select_bounds_pickup_only')}</option><option value="2">2 - ${getTranslation('select_bounds_dropoff_only')}</option><option value="3">3 - ${getTranslation('select_bounds_both')}</option>`;
                 case 'bounds':
                     return ''; // Bounds will be handled by map interface
                 case 'centerBias':
@@ -2674,7 +2855,14 @@ $currentConfig = $configManager->getConfig();
             document.getElementById('selection-screen').style.display = 'block';
             document.getElementById('edit-screen').style.display = 'none';
             document.getElementById('add-extension-form').style.display = 'none';
-            
+
+            // Restore original page title using the same translation as the h1 element
+            const titleElement = document.querySelector('h1[data-en][data-el]');
+            const originalTitle = titleElement ?
+                titleElement.getAttribute('data-' + currentLanguage) :
+                (currentLanguage === 'el' ? 'Διαχειριστής Ρυθμίσεων AGI' : 'AGI Configuration Manager');
+            document.title = originalTitle;
+
             // Refresh the selection screen
             initializeScreen();
         }
@@ -2730,7 +2918,8 @@ $currentConfig = $configManager->getConfig();
                 autoCallCentersMode: 3,
                 maxRetries: 5,
                 bounds: null,
-            centerBias: null
+            centerBias: null,
+            boundsRestrictionMode: null
             };
             
             fetch('config_manager.php', {
@@ -2920,7 +3109,7 @@ $currentConfig = $configManager->getConfig();
         
         function loadSounds() {
             const soundsList = document.getElementById('soundsList');
-            soundsList.innerHTML = '<div style="text-align: center; padding: 2rem;">Loading sounds...</div>';
+            soundsList.innerHTML = '<div style="text-align: center; padding: 2rem;">' + getTranslation('loading_sounds') + '</div>';
             
             fetch('config_manager.php', {
                 method: 'POST',
@@ -2939,7 +3128,7 @@ $currentConfig = $configManager->getConfig();
             })
             .catch(error => {
                 console.error('Error loading sounds:', error);
-                soundsList.innerHTML = `<div style="text-align: center; padding: 2rem; color: #cc0000;">Error loading sounds</div>`;
+                soundsList.innerHTML = `<div style="text-align: center; padding: 2rem; color: #cc0000;">` + getTranslation('error_loading_sounds') + `</div>`;
             });
         }
         
@@ -3019,7 +3208,7 @@ $currentConfig = $configManager->getConfig();
             currentAudio = new Audio(audioUrl);
             
             currentAudio.addEventListener('loadstart', () => {
-                playButton.textContent = 'Loading...';
+                playButton.textContent = getTranslation('loading');
             });
             
             currentAudio.addEventListener('canplay', () => {
@@ -3045,20 +3234,20 @@ $currentConfig = $configManager->getConfig();
                 playButton.classList.add('btn-outline-primary');
                 
                 // More detailed error message
-                let errorMsg = 'Error playing sound file';
+                let errorMsg = getTranslation('error_playing_sound');
                 if (currentAudio.error) {
                     switch(currentAudio.error.code) {
                         case MediaError.MEDIA_ERR_NETWORK:
-                            errorMsg = 'Network error loading sound file';
+                            errorMsg = getTranslation('media_error_network');
                             break;
                         case MediaError.MEDIA_ERR_DECODE:
-                            errorMsg = 'Sound file format not supported';
+                            errorMsg = getTranslation('media_error_decode');
                             break;
                         case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-                            errorMsg = 'Sound file type not supported';
+                            errorMsg = getTranslation('media_error_not_supported');
                             break;
                         default:
-                            errorMsg = 'Error playing sound file';
+                            errorMsg = getTranslation('error_playing_sound');
                     }
                 }
                 
@@ -3460,7 +3649,7 @@ $currentConfig = $configManager->getConfig();
                 div.style.backgroundColor = 'white';
                 div.style.padding = '5px';
                 div.style.fontSize = '12px';
-                div.innerHTML = '<strong>🎯 Center Bias</strong><br>Click map to set center<br>Drag marker to move';
+                div.innerHTML = '<strong>🎯 ' + getTranslation('center_bias_map') + '</strong>';
                 return div;
             };
             customControl.addTo(map);
