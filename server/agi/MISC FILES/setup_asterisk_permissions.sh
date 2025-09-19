@@ -52,9 +52,7 @@ echo "   ✓ Created /var/auto_register_call"
 
 # Create sounds directories
 mkdir -p /var/sounds/iqtaxi
-mkdir -p /var/sounds/taxiway
 echo "   ✓ Created /var/sounds/iqtaxi"
-echo "   ✓ Created /var/sounds/taxiway"
 
 # Create log directory
 mkdir -p /var/log/auto_register_call
@@ -199,13 +197,12 @@ echo "================================================"
 echo "Directories created:"
 echo "  - /var/auto_register_call/          (recordings & logs)"
 echo "  - /var/sounds/iqtaxi/               (sound files)"
-echo "  - /var/sounds/taxiway/              (sound files)"
 echo "  - /var/log/auto_register_call/      (system logs)"
 echo ""
 echo "Permissions set for user: $ASTERISK_USER"
 echo ""
 echo "Next steps:"
-echo "1. Copy your sound files to /var/sounds/iqtaxi/ or /var/sounds/taxiway/"
+echo "1. Copy your sound files to /var/sounds/iqtaxi/"
 echo "2. Test your AGI script with a call"
 echo "3. Check logs in /var/log/auto_register_call/"
 echo ""
