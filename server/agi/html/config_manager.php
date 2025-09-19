@@ -62,6 +62,12 @@ class ConfigManager {
         $configContent .= "// 1 = Apply bounds and centerBias only to pickup location\n";
         $configContent .= "// 2 = Apply bounds and centerBias only to dropoff location\n";
         $configContent .= "// 3 = Apply bounds and centerBias to both pickup and dropoff locations\n\n";
+        $configContent .= "// confirmation_mode configuration:\n";
+        $configContent .= "// 1 = Full TTS confirmation: reads name, pickup, and dropoff addresses via TTS before asking for confirmation\n";
+        $configContent .= "// 2 = Quick confirmation: only plays confirmation prompt without reading details (just 'press 0 to confirm')\n\n";
+        $configContent .= "// getUser_enabled configuration:\n";
+        $configContent .= "// true = Check server for existing user data (name and pickup address) to skip collection\n";
+        $configContent .= "// false = Always ask user for their information (name and addresses)\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         $configContent .= "];\n}\n";
@@ -107,6 +113,12 @@ class ConfigManager {
         $configContent .= "// 1 = Apply bounds and centerBias only to pickup location\n";
         $configContent .= "// 2 = Apply bounds and centerBias only to dropoff location\n";
         $configContent .= "// 3 = Apply bounds and centerBias to both pickup and dropoff locations\n\n";
+        $configContent .= "// confirmation_mode configuration:\n";
+        $configContent .= "// 1 = Full TTS confirmation: reads name, pickup, and dropoff addresses via TTS before asking for confirmation\n";
+        $configContent .= "// 2 = Quick confirmation: only plays confirmation prompt without reading details (just 'press 0 to confirm')\n\n";
+        $configContent .= "// getUser_enabled configuration:\n";
+        $configContent .= "// true = Check server for existing user data (name and pickup address) to skip collection\n";
+        $configContent .= "// false = Always ask user for their information (name and addresses)\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         
@@ -1777,7 +1789,9 @@ $currentConfig = $configManager->getConfig();
             maxRetries: 5,
             bounds: null,
             centerBias: null,
-            boundsRestrictionMode: null
+            boundsRestrictionMode: null,
+            confirmation_mode: 1,
+            getUser_enabled: true
         };
         
         const translations = {
@@ -1794,7 +1808,7 @@ $currentConfig = $configManager->getConfig();
                 'defaultLanguage': 'Default Language',
                 'callbackMode': 'Callback Mode',
                 'callbackUrl': 'Callback URL',
-                'repeatTimes': 'Repeat Times',
+                'repeatTimes': 'Callback Check Duration',
                 'strictDropoffLocation': 'Strict Dropoff Location',
                 'geocodingApiVersion': 'Geocoding API Version',
                 'initialMessageSound': 'Initial Message Sound',
@@ -1804,6 +1818,8 @@ $currentConfig = $configManager->getConfig();
                 'bounds': 'Geographic Bounds',
                 'centerBias': 'Center Bias',
                 'boundsRestrictionMode': 'Bounds Restriction Mode',
+                'confirmation_mode': 'Confirmation Mode',
+                'getUser_enabled': 'Get User Enabled',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -1816,7 +1832,7 @@ $currentConfig = $configManager->getConfig();
                 'defaultLanguage_tooltip': 'Default language for this extension (el=Greek, en=English, bg=Bulgarian)',
                 'callbackMode_tooltip': 'Mode 1: Normal TTS, Mode 2: Callback with status file',
                 'callbackUrl_tooltip': 'URL for callback mode notifications',
-                'repeatTimes_tooltip': 'Maximum number of retry attempts',
+                'repeatTimes_tooltip': 'In Callback Mode 2: How many times to check for server response (checks every 3 seconds). Example: 10 = wait up to 30 seconds for taxi assignment. After this, transfers to operator if no taxi found',
                 'strictDropoffLocation_tooltip': 'Require precise GPS coordinates for dropoff location',
                 'geocodingApiVersion_tooltip': 'API version: 1=Geocoding API, 2=Places API',
                 'initialMessageSound_tooltip': 'Sound file name to play before welcome message',
@@ -1826,6 +1842,8 @@ $currentConfig = $configManager->getConfig();
                 'bounds_tooltip': 'Set geographic bounds for post-processing validation. Results outside bounds will be rejected. Leave empty to accept all areas.',
                 'centerBias_tooltip': 'Set center point and radius to bias API search results. Enter coordinates and radius in meters.',
                 'boundsRestrictionMode_tooltip': 'Control when bounds/centerBias apply: 0/null=Never, 1=Pickup only, 2=Dropoff only, 3=Both locations',
+                'confirmation_mode_tooltip': 'Mode 1: Reads name, pickup, dropoff via TTS and waits for confirmation. Mode 2: Only plays confirmation prompt without TTS details',
+                'getUser_enabled_tooltip': 'Enable to check server for existing user data (name and address). Disable to always ask for new user information',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -1868,6 +1886,8 @@ $currentConfig = $configManager->getConfig();
                 'select_bounds_pickup_only': 'Apply to Pickup Only',
                 'select_bounds_dropoff_only': 'Apply to Dropoff Only',
                 'select_bounds_both': 'Apply to Both Locations',
+                'select_confirmation_mode_1': 'Full TTS Confirmation (reads name, pickup, dropoff)',
+                'select_confirmation_mode_2': 'Quick Confirmation (press 0 to confirm)',
                 // Sound browser
                 'browse_sounds': 'Browse Sounds',
                 'sound_browser_title': 'Sound Browser',
@@ -1913,7 +1933,7 @@ $currentConfig = $configManager->getConfig();
                 'defaultLanguage': 'Προεπιλεγμένη Γλώσσα',
                 'callbackMode': 'Λειτουργία Callback',
                 'callbackUrl': 'URL Callback',
-                'repeatTimes': 'Φορές Επανάληψης',
+                'repeatTimes': 'Διάρκεια Ελέγχου Callback',
                 'strictDropoffLocation': 'Αυστηρή Τοποθεσία Προορισμού',
                 'geocodingApiVersion': 'Έκδοση API Γεωκωδικοποίησης',
                 'initialMessageSound': 'Ήχος Αρχικού Μηνύματος',
@@ -1923,6 +1943,8 @@ $currentConfig = $configManager->getConfig();
                 'bounds': 'Γεωγραφικά Όρια',
                 'centerBias': 'Κεντρική Προκατάληψη',
                 'boundsRestrictionMode': 'Λειτουργία Περιορισμού Ορίων',
+                'confirmation_mode': 'Λειτουργία Επιβεβαίωσης',
+                'getUser_enabled': 'Ενεργοποίηση Λήψης Χρήστη',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -1935,7 +1957,7 @@ $currentConfig = $configManager->getConfig();
                 'defaultLanguage_tooltip': 'Προεπιλεγμένη γλώσσα για αυτό το extension (el=Ελληνικά, en=Αγγλικά, bg=Βουλγαρικά)',
                 'callbackMode_tooltip': 'Λειτουργία 1: Κανονικό TTS, Λειτουργία 2: Callback με αρχείο κατάστασης',
                 'callbackUrl_tooltip': 'URL για ειδοποιήσεις callback mode',
-                'repeatTimes_tooltip': 'Μέγιστος αριθμός προσπαθειών επανάληψης',
+                'repeatTimes_tooltip': 'Σε Λειτουργία Callback 2: Πόσες φορές θα ελέγξει για απάντηση από τον διακομιστή (έλεγχος κάθε 3 δευτερόλεπτα). Παράδειγμα: 10 = αναμονή έως 30 δευτερόλεπτα για ανάθεση ταξί. Μετά, μεταφέρει σε χειριστή αν δεν βρεθεί ταξί',
                 'strictDropoffLocation_tooltip': 'Απαίτηση ακριβών συντεταγμένων GPS για τον προορισμό',
                 'geocodingApiVersion_tooltip': 'Έκδοση API: 1=Geocoding API, 2=Places API',
                 'initialMessageSound_tooltip': 'Όνομα αρχείου ήχου που θα παιχτεί πριν το μήνυμα καλωσορίσματος',
@@ -1945,6 +1967,8 @@ $currentConfig = $configManager->getConfig();
                 'bounds_tooltip': 'Ορίστε γεωγραφικά όρια για επικύρωση αποτελεσμάτων. Αποτελέσματα εκτός ορίων θα απορρίπτονται. Αφήστε κενό για αποδοχή όλων των περιοχών.',
                 'centerBias_tooltip': 'Ορίστε κεντρικό σημείο και ακτίνα για προκατάληψη αποτελεσμάτων API. Εισάγετε συντεταγμένες και ακτίνα σε μέτρα.',
                 'boundsRestrictionMode_tooltip': 'Έλεγχος εφαρμογής ορίων/κέντρου: 0/null=Ποτέ, 1=Μόνο παραλαβή, 2=Μόνο προορισμός, 3=Και τα δύο',
+                'confirmation_mode_tooltip': 'Λειτουργία 1: Διαβάζει όνομα, παραλαβή, προορισμό μέσω TTS και περιμένει επιβεβαίωση. Λειτουργία 2: Μόνο αναπαράγει μήνυμα επιβεβαίωσης χωρίς TTS λεπτομέρειες',
+                'getUser_enabled_tooltip': 'Ενεργοποιήστε για έλεγχο στον διακομιστή για υπάρχοντα δεδομένα χρήστη (όνομα και διεύθυνση). Απενεργοποιήστε για να ζητάτε πάντα νέα στοιχεία χρήστη',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',
@@ -1987,6 +2011,8 @@ $currentConfig = $configManager->getConfig();
                 'select_bounds_pickup_only': 'Εφαρμογή μόνο στην Παραλαβή',
                 'select_bounds_dropoff_only': 'Εφαρμογή μόνο στον Προορισμό',
                 'select_bounds_both': 'Εφαρμογή και στις Δύο Τοποθεσίες',
+                'select_confirmation_mode_1': 'Πλήρης Επιβεβαίωση TTS (διαβάζει όνομα, παραλαβή, προορισμό)',
+                'select_confirmation_mode_2': 'Γρήγορη Επιβεβαίωση (πατήστε 0 για επιβεβαίωση)',
                 // Sound browser
                 'browse_sounds': 'Περιήγηση Ήχων',
                 'sound_browser_title': 'Περιήγηση Ήχων',
@@ -2796,11 +2822,13 @@ $currentConfig = $configManager->getConfig();
             if (key === 'tts') return 'select';
             if (key === 'defaultLanguage') return 'select';
             if (key === 'callbackMode') return 'select';
+            if (key === 'confirmation_mode') return 'select';
             if (key === 'geocodingApiVersion') return 'select';
             if (key === 'autoCallCentersMode') return 'select';
             if (key === 'boundsRestrictionMode') return 'select';
             if (key === 'bounds') return 'bounds';
             if (key === 'centerBias') return 'centerBias';
+            if (key === 'getUser_enabled') return 'checkbox';
             if (typeof value === 'number') return 'number';
             return 'text';
         }
@@ -2813,6 +2841,8 @@ $currentConfig = $configManager->getConfig();
                     return '<option value="el">Greek (el)</option><option value="en">English (en)</option><option value="bg">Bulgarian (bg)</option>';
                 case 'callbackMode':
                     return `<option value="1">1 - ${getTranslation('select_normal_mode')}</option><option value="2">2 - ${getTranslation('select_callback_mode')}</option>`;
+                case 'confirmation_mode':
+                    return `<option value="1">1 - ${getTranslation('select_confirmation_mode_1')}</option><option value="2">2 - ${getTranslation('select_confirmation_mode_2')}</option>`;
                 case 'geocodingApiVersion':
                     return `<option value="1">1 - ${getTranslation('select_geocoding_api')}</option><option value="2">2 - ${getTranslation('select_places_api')}</option>`;
                 case 'autoCallCentersMode':

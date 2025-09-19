@@ -49,6 +49,8 @@ class AGICallHandler
     private $register_base_url = '';
     private $tts_provider = 'google';
     private $days_valid = 7;
+    private $confirmation_mode = 1;
+    private $getUser_enabled = true;
     private $current_language = 'el';
     private $default_language = 'el';
     private $initial_message_sound = '';
@@ -142,6 +144,8 @@ class AGICallHandler
             $this->register_base_url = $config['registerBaseUrl'];
             $this->tts_provider = $config['tts'] ?? 'google';
             $this->days_valid = intval($config['daysValid'] ?? 7);
+            $this->confirmation_mode = intval($config['confirmation_mode'] ?? 1);
+            $this->getUser_enabled = $config['getUser_enabled'] ?? true;
             $this->default_language = $config['defaultLanguage'] ?? 'el';
             $this->current_language = $this->default_language;
             $this->initial_message_sound = $config['initialMessageSound'] ?? '';
@@ -2680,6 +2684,37 @@ class AGICallHandler
     private function confirmAndRegister()
     {
         $this->trackStep('confirming_data');
+
+        if ($this->confirmation_mode == 2) {
+            // Mode 2: Simple confirmation - just ask to press 0
+            $this->logMessage("Using confirmation mode 2 (simple press 0 confirmation)");
+
+            for ($try = 1; $try <= 3; $try++) {
+                $this->trackAttempt('confirmation');
+                $this->logMessage("Simple confirmation attempt {$try}/3");
+
+                // Play a simple message asking to press 0 to confirm
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('options_short') . '"');
+                $choice = $this->readDTMF('', 1, 10);
+                $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
+
+                if ($choice == "0") {
+                    $this->processConfirmedCall();
+                    return;
+                } else {
+                    $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                }
+            }
+
+            $this->logMessage("Too many invalid simple confirmation attempts");
+            $this->setCallOutcome('operator_transfer', 'Too many invalid confirmation attempts');
+            $this->redirectToOperator();
+            return;
+        }
+
+        // Mode 1: Full confirmation process (existing behavior)
+        $this->logMessage("Using confirmation mode 1 (full confirmation with TTS)");
+
         for ($try = 1; $try <= 3; $try++) {
             $this->trackAttempt('confirmation');
             $this->logMessage("Confirmation attempt {$try}/3");
@@ -2881,19 +2916,24 @@ class AGICallHandler
         $this->is_reservation = true;
         $this->logMessage("Starting reservation flow");
 
-        $this->logMessage("Getting user data from API");
-        $this->startMusicOnHold();
-        $user_data = $this->getUserFromAPI($this->caller_num);
-        $this->stopMusicOnHold();
+        if ($this->getUser_enabled) {
+            $this->logMessage("Getting user data from API (getUser_enabled=true)");
+            $this->startMusicOnHold();
+            $user_data = $this->getUserFromAPI($this->caller_num);
+            $this->stopMusicOnHold();
 
-        if (isset($user_data['doNotServe']) && $user_data['doNotServe'] === '1') {
-            $this->logMessage("User is blocked (doNotServe=1)");
-            $this->setCallOutcome('user_blocked', 'User is blocked (doNotServe=1)');
-            $this->redirectToOperator();
-            return;
+            if (isset($user_data['doNotServe']) && $user_data['doNotServe'] === '1') {
+                $this->logMessage("User is blocked (doNotServe=1)");
+                $this->setCallOutcome('user_blocked', 'User is blocked (doNotServe=1)');
+                $this->redirectToOperator();
+                return;
+            }
+
+            $this->processUserDataForReservation($user_data);
+        } else {
+            $this->logMessage("Skipping user API call (getUser_enabled=false), collecting new user data");
+            $this->processUserDataForReservation([]);
         }
-
-        $this->processUserDataForReservation($user_data);
 
         if (!$this->collectDestination()) {
             $this->redirectToOperator();
@@ -3010,6 +3050,34 @@ class AGICallHandler
      */
     private function confirmReservationAndRegister()
     {
+        if ($this->confirmation_mode == 2) {
+            // Mode 2: Simple confirmation - just ask to press 0
+            $this->logMessage("Using confirmation mode 2 (simple press 0 confirmation) for reservation");
+
+            for ($try = 1; $try <= 3; $try++) {
+                $this->logMessage("Simple reservation confirmation attempt {$try}/3");
+
+                // Play a simple message asking to press 0 to confirm
+                $this->agiCommand('EXEC Playback "' . $this->getSoundFile('options_short') . '"');
+                $choice = $this->readDTMF('', 1, 10);
+                $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
+
+                if ($choice == "0") {
+                    $this->processConfirmedReservation();
+                    return;
+                } else {
+                    $this->agiCommand('EXEC Playback "' . $this->getSoundFile('invalid_input') . '"');
+                }
+            }
+
+            $this->logMessage("Too many invalid simple reservation confirmation attempts");
+            $this->redirectToOperator();
+            return;
+        }
+
+        // Mode 1: Full confirmation process (existing behavior)
+        $this->logMessage("Using confirmation mode 1 (full confirmation with TTS) for reservation");
+
         for ($try = 1; $try <= 3; $try++) {
             $this->logMessage("Reservation confirmation attempt {$try}/3");
 
@@ -3571,19 +3639,24 @@ class AGICallHandler
         $this->trackStep('immediate_call_flow');
         $this->logMessage("ASAP call selected");
 
-        $this->logMessage("Getting user data from API");
-        $this->startMusicOnHold();
-        $user_data = $this->getUserFromAPI($this->caller_num);
-        $this->stopMusicOnHold();
+        if ($this->getUser_enabled) {
+            $this->logMessage("Getting user data from API (getUser_enabled=true)");
+            $this->startMusicOnHold();
+            $user_data = $this->getUserFromAPI($this->caller_num);
+            $this->stopMusicOnHold();
 
-        if (isset($user_data['doNotServe']) && $user_data['doNotServe'] === '1') {
-            $this->logMessage("User is blocked (doNotServe=1)");
-            $this->setCallOutcome('user_blocked', 'User is blocked (doNotServe=1)');
-            $this->redirectToOperator();
-            return;
+            if (isset($user_data['doNotServe']) && $user_data['doNotServe'] === '1') {
+                $this->logMessage("User is blocked (doNotServe=1)");
+                $this->setCallOutcome('user_blocked', 'User is blocked (doNotServe=1)');
+                $this->redirectToOperator();
+                return;
+            }
+
+            $this->processUserDataForImmediateCall($user_data);
+        } else {
+            $this->logMessage("Skipping user API call (getUser_enabled=false), collecting new user data");
+            $this->processUserDataForImmediateCall([]);
         }
-
-        $this->processUserDataForImmediateCall($user_data);
         $this->confirmAndRegister();
     }
 

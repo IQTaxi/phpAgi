@@ -7,7 +7,9 @@
 		"registerBaseUrl": "http://192.168.1.105/IQTaxiApi",
 		"failCallTo": "SIP/5012@EpigyTrunksip",
 		"welcomePlayback": "custom/welcome-kosmos-5",
-		"daysValid" : 7
+		"daysValid" : 7,
+		"confirmation_mode": 1,
+		"getUser_enabled": true
 	},
 	"4037":
 	{
@@ -17,7 +19,9 @@
 		"registerBaseUrl": "http://192.168.1.105/IQTaxiApi",
 		"failCallTo": "SIP/5000@EpigyTrunksip",
 		"welcomePlayback": "custom/welcome-kosmos-ai-5",
-		"daysValid" : 7
+		"daysValid" : 7,
+		"confirmation_mode": 1,
+		"getUser_enabled": true
 	},
 	"4038":
 	{
@@ -27,7 +31,9 @@
 		"registerBaseUrl": "http://192.168.1.105/IQTaxiApi",
 		"failCallTo": "SIP/5000@EpigyTrunksip",
 		"welcomePlayback": "custom/welcome-kosmos-ai-5",
-		"daysValid" : 7
+		"daysValid" : 7,
+		"confirmation_mode": 2,
+		"getUser_enabled": false
 	},
 	"4039":
 	{
@@ -37,6 +43,8 @@
 		"registerBaseUrl": "http://192.168.1.105/IQTaxiApi",
 		"failCallTo": "SIP/5000@EpigyTrunksip",
 		"welcomePlayback": "custom/welcome-kosmos-ai-5",
-		"daysValid" : 7
+		"daysValid" : 7,
+		"confirmation_mode": 1,
+		"getUser_enabled": true
 	}
 }

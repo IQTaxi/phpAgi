@@ -77,7 +77,18 @@
 
 ---
 
-## 8. Invalid Input Message
+## 8. Quick Confirmation Options
+**File:** `options_short`
+
+**Greek:** "Παρακαλώ πατήστε 0 για να καταχωρήσετε τη διαδρομή."
+
+**Bulgarian:** "Моля, натиснете 0, за да регистрирате пътуването."
+
+**English:** "Please press 0 to register the ride."
+
+---
+
+## 9. Invalid Input Message
 **File:** `invalid_input`
 
 **Greek:** "Δεν μπορέσαμε να κατανοήσουμε αυτό που μας είπατε. Παρακαλώ δοκιμάστε ξανά."
