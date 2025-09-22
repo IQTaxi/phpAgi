@@ -692,10 +692,20 @@ class AGICallHandler
                 'en' => 'Please confirm. Name: {name}. Pickup: {pickup}. Destination: {destination}',
                 'bg' => 'Моля потвърдете. Име: {name}. Вземане: {pickup}. Дестинация: {destination}'
             ],
+            'confirmation_text_no_name' => [
+                'el' => 'Παρακαλώ επιβεβαιώστε. Παραλαβή: {pickup}. Προορισμός: {destination}',
+                'en' => 'Please confirm. Pickup: {pickup}. Destination: {destination}',
+                'bg' => 'Моля потвърдете. Вземане: {pickup}. Дестинация: {destination}'
+            ],
             'reservation_confirmation_text' => [
                 'el' => 'Παρακαλώ επιβεβαιώστε. Όνομα: {name}. Παραλαβή: {pickup}. Προορισμός: {destination}. Ώρα ραντεβού: {time}',
                 'en' => 'Please confirm. Name: {name}. Pickup: {pickup}. Destination: {destination}. Reservation time: {time}',
                 'bg' => 'Моля потвърдете. Име: {name}. Вземане: {pickup}. Дестинация: {destination}. Час на резервацията: {time}'
+            ],
+            'reservation_confirmation_text_no_name' => [
+                'el' => 'Παρακαλώ επιβεβαιώστε. Παραλαβή: {pickup}. Προορισμός: {destination}. Ώρα ραντεβού: {time}',
+                'en' => 'Please confirm. Pickup: {pickup}. Destination: {destination}. Reservation time: {time}',
+                'bg' => 'Моля потвърдете. Вземане: {pickup}. Дестинация: {destination}. Час на резервацията: {time}'
             ],
             'reservation_time_confirmation' => [
                 'el' => 'Το ραντεβού είναι για {time}, πατήστε 0 για επιβεβαίωση ή 1 για να προσπαθήσετε ξανά',
@@ -2070,10 +2080,9 @@ class AGICallHandler
 
     private function buildRegistrationPayload()
     {
-        return [
+        $payload = [
             "callTimeStamp" => $this->is_reservation ? $this->reservation_timestamp : null,
             "callerPhone" => $this->caller_num,
-            "customerName" => $this->name_result,
             "roadName" => $this->pickup_result,
             "latitude" => $this->pickup_location['latLng']['lat'],
             "longitude" => $this->pickup_location['latLng']['lng'],
@@ -2085,6 +2094,13 @@ class AGICallHandler
             "referencePath" => (string)$this->uniqueid,
             "daysValid" => $this->days_valid
         ];
+
+        // Only include customerName if name collection is enabled and we have a name
+        if ($this->shouldAskForName() && !empty($this->name_result)) {
+            $payload["customerName"] = $this->name_result;
+        }
+
+        return $payload;
     }
 
     private function addCallbackUrlToPayload(&$payload)
@@ -2268,6 +2284,28 @@ class AGICallHandler
 
         $this->logMessage("Failed to capture name after {$this->max_retries} attempts");
         return false;
+    }
+
+    /**
+     * Check if we should ask for customer name based on configuration
+     */
+    private function shouldAskForName()
+    {
+        return $this->config[$this->extension]['askForName'] ?? true;
+    }
+
+    /**
+     * Conditionally collect customer name based on configuration
+     */
+    private function collectNameIfRequired()
+    {
+        if (!$this->shouldAskForName()) {
+            $this->logMessage("Name collection disabled by configuration");
+            $this->name_result = '';
+            return true;
+        }
+
+        return $this->collectName();
     }
 
     /**
@@ -2735,7 +2773,7 @@ class AGICallHandler
                     $this->processConfirmedCall();
                     return;
                 } elseif ($choice == "1") {
-                    if (!$this->collectName()) {
+                    if (!$this->collectNameIfRequired()) {
                         $this->setCallOutcome('operator_transfer', 'Failed to collect name');
                         $this->redirectToOperator();
                         return;
@@ -2765,11 +2803,21 @@ class AGICallHandler
 
     private function generateAndPlayConfirmation()
     {
-        $confirm_text = str_replace(
-            ['{name}', '{pickup}', '{destination}'], 
-            [$this->name_result, $this->pickup_result, $this->dest_result], 
-            $this->getLocalizedText('confirmation_text')
-        );
+        if ($this->shouldAskForName() && !empty($this->name_result)) {
+            // Use confirmation text with name
+            $confirm_text = str_replace(
+                ['{name}', '{pickup}', '{destination}'],
+                [$this->name_result, $this->pickup_result, $this->dest_result],
+                $this->getLocalizedText('confirmation_text')
+            );
+        } else {
+            // Use confirmation text without name
+            $confirm_text = str_replace(
+                ['{pickup}', '{destination}'],
+                [$this->pickup_result, $this->dest_result],
+                $this->getLocalizedText('confirmation_text_no_name')
+            );
+        }
         $confirm_file = "{$this->filebase}/confirm";
 
         $this->startMusicOnHold();
@@ -2977,7 +3025,7 @@ class AGICallHandler
                 $this->saveJson("name", $this->name_result);
             }
         } else {
-            if (!$this->collectName()) {
+            if (!$this->collectNameIfRequired()) {
                 $this->redirectToOperator();
                 return;
             }
@@ -3097,7 +3145,7 @@ class AGICallHandler
                     $this->processConfirmedReservation();
                     return;
                 } elseif ($choice == "1") {
-                    if (!$this->collectName()) {
+                    if (!$this->collectNameIfRequired()) {
                         $this->redirectToOperator();
                         return;
                     }
@@ -3123,11 +3171,21 @@ class AGICallHandler
 
     private function generateAndPlayReservationConfirmation()
     {
-        $confirm_text = str_replace(
-            ['{name}', '{pickup}', '{destination}', '{time}'], 
-            [$this->name_result, $this->pickup_result, $this->dest_result, $this->reservation_result], 
-            $this->getLocalizedText('reservation_confirmation_text')
-        );
+        if ($this->shouldAskForName() && !empty($this->name_result)) {
+            // Use reservation confirmation text with name
+            $confirm_text = str_replace(
+                ['{name}', '{pickup}', '{destination}', '{time}'],
+                [$this->name_result, $this->pickup_result, $this->dest_result, $this->reservation_result],
+                $this->getLocalizedText('reservation_confirmation_text')
+            );
+        } else {
+            // Use reservation confirmation text without name
+            $confirm_text = str_replace(
+                ['{pickup}', '{destination}', '{time}'],
+                [$this->pickup_result, $this->dest_result, $this->reservation_result],
+                $this->getLocalizedText('reservation_confirmation_text_no_name')
+            );
+        }
         $confirm_file = "{$this->filebase}/confirm_reservation";
 
         $this->startMusicOnHold();
@@ -3715,7 +3773,7 @@ class AGICallHandler
 
     private function collectNewUserData()
     {
-        if (!$this->collectName()) {
+        if (!$this->collectNameIfRequired()) {
             $this->redirectToOperator();
             return;
         }

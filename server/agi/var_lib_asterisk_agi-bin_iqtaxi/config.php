@@ -31,6 +31,10 @@
 // 2 = Apply bounds and centerBias only to dropoff location
 // 3 = Apply bounds and centerBias to both pickup and dropoff locations
 
+// askForName configuration:
+// true = Ask customer for their name during call (default behavior)
+// false = Skip name collection, don't include name in registration API call
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -55,7 +59,8 @@ class AGICallHandlerConfig
         "maxRetries" => 5,
         "bounds" => null,
         "centerBias" => null,
-        "boundsRestrictionMode" => null
+        "boundsRestrictionMode" => null,
+        "askForName" => true
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -78,7 +83,8 @@ class AGICallHandlerConfig
         "maxRetries" => 5,
         "bounds" => null,
         "centerBias" => null,
-        "boundsRestrictionMode" => null
+        "boundsRestrictionMode" => null,
+        "askForName" => true
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -101,7 +107,8 @@ class AGICallHandlerConfig
         "maxRetries" => 5,
         "bounds" => null,
         "centerBias" => null,
-        "boundsRestrictionMode" => null
+        "boundsRestrictionMode" => null,
+        "askForName" => true
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -124,7 +131,8 @@ class AGICallHandlerConfig
         "maxRetries" => 5,
         "bounds" => null,
         "centerBias" => null,
-        "boundsRestrictionMode" => null
+        "boundsRestrictionMode" => null,
+        "askForName" => true
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -148,6 +156,7 @@ class AGICallHandlerConfig
 		"bounds" => null,
 		"centerBias" => null,
 		"boundsRestrictionMode" => null,
+		"askForName" => true,
 		"requireLocality" => false
     ]
 ];
