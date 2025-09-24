@@ -1637,7 +1637,7 @@ $currentConfig = $configManager->getConfig();
                     <div class="configs-grid" id="configs-grid">
                         <!-- Config cards will be loaded here -->
                     </div>
-                    <div style="margin-top: 2rem; display: none;">
+                    <div style="margin-top: 2rem;">
                         <button class="btn btn-outline-primary" onclick="showAddExtensionForm()" data-en="Add New Configuration" data-el="Προσθήκη Νέας Ρύθμισης">
                             Add New Configuration
                         </button>
