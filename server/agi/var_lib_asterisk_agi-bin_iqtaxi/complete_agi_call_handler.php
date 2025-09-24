@@ -2093,7 +2093,7 @@ class AGICallHandler
 			"comments" => $this->getCallComment(),
 			"referencePath" => (string)$this->uniqueid,
 			"daysValid" => $this->days_valid,
-			"customerName" => !empty($this->name_result) ? $this->name_result : ""
+			"customerName" => !empty($this->name_result) ? $this->name_result : "anonymous"
 		];
 		
 		return $payload;
