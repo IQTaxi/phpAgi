@@ -2079,29 +2079,25 @@ class AGICallHandler
     }
 
     private function buildRegistrationPayload()
-    {
-        $payload = [
-            "callTimeStamp" => $this->is_reservation ? $this->reservation_timestamp : null,
-            "callerPhone" => $this->caller_num,
-            "roadName" => $this->pickup_result,
-            "latitude" => $this->pickup_location['latLng']['lat'],
-            "longitude" => $this->pickup_location['latLng']['lng'],
-            "destination" => $this->dest_result,
-            "destLatitude" => $this->dest_location['latLng']['lat'] ?? 0,
-            "destLongitude" => $this->dest_location['latLng']['lng'] ?? 0,
-            "taxisNo" => 1,
-            "comments" => $this->getCallComment(),
-            "referencePath" => (string)$this->uniqueid,
-            "daysValid" => $this->days_valid
-        ];
-
-        // Only include customerName if name collection is enabled and we have a name
-        if ($this->shouldAskForName() && !empty($this->name_result)) {
-            $payload["customerName"] = $this->name_result;
-        }
-
-        return $payload;
-    }
+	{
+		$payload = [
+			"callTimeStamp" => $this->is_reservation ? $this->reservation_timestamp : null,
+			"callerPhone" => $this->caller_num,
+			"roadName" => $this->pickup_result,
+			"latitude" => $this->pickup_location['latLng']['lat'],
+			"longitude" => $this->pickup_location['latLng']['lng'],
+			"destination" => $this->dest_result,
+			"destLatitude" => $this->dest_location['latLng']['lat'] ?? 0,
+			"destLongitude" => $this->dest_location['latLng']['lng'] ?? 0,
+			"taxisNo" => 1,
+			"comments" => $this->getCallComment(),
+			"referencePath" => (string)$this->uniqueid,
+			"daysValid" => $this->days_valid,
+			"customerName" => !empty($this->name_result) ? $this->name_result : ""
+		];
+		
+		return $payload;
+	}
 
     private function addCallbackUrlToPayload(&$payload)
     {
