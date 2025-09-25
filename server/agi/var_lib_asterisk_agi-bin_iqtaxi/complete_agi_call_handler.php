@@ -114,7 +114,40 @@ class AGICallHandler
         $this->extension = $this->agi_env['agi_extension'] ?? '';
         $this->caller_id = isset($this->agi_env['agi_callerid']) ? str_replace(['<', '>'], '', $this->agi_env['agi_callerid']) : '';
         $this->caller_num = $this->agi_env['agi_callerid'] ?? '';
+
+        // Apply phone number prefix filtering
+        $this->caller_num = $this->filterPhoneNumberPrefix($this->caller_num);
+
         $this->current_exten = $this->extension;
+    }
+
+    /**
+     * Filter phone number prefixes (remove country codes)
+     * Removes prefixes like +30 (Greece), +359 (Bulgaria), 0030 (Greece alternative)
+     */
+    private function filterPhoneNumberPrefix($phone_number)
+    {
+        // List of country code prefixes to remove
+        $prefixes_to_remove = [
+            '+30',   // Greece
+            '+359',  // Bulgaria
+            '0030'   // Greece alternative format
+        ];
+
+        // Clean the phone number first (remove any spaces, dashes, etc.)
+        $cleaned_number = preg_replace('/[^+\d]/', '', $phone_number);
+
+        // Check each prefix and remove if found at the beginning
+        foreach ($prefixes_to_remove as $prefix) {
+            if (strpos($cleaned_number, $prefix) === 0) {
+                $filtered_number = substr($cleaned_number, strlen($prefix));
+                $this->logMessage("Phone number prefix filter: '{$phone_number}' -> '{$filtered_number}' (removed {$prefix})");
+                return $filtered_number;
+            }
+        }
+
+        // If no prefix matched, return the cleaned number as is
+        return $cleaned_number;
     }
 
     /**
