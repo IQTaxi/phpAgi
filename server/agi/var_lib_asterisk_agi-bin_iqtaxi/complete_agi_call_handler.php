@@ -59,11 +59,14 @@ class AGICallHandler
     
     // Call data properties
     private $max_retries = 3;
+    private $custom_fall_call_to = false;
+    private $custom_fall_call_to_url = '';
     private $name_result = '';
     private $pickup_result = '';
     private $pickup_location = [];
     private $dest_result = '';
     private $dest_location = [];
+    private $user_comments = '';
     private $reservation_result = '';
     private $reservation_timestamp = '';
     private $is_reservation = false;
@@ -111,7 +114,40 @@ class AGICallHandler
         $this->extension = $this->agi_env['agi_extension'] ?? '';
         $this->caller_id = isset($this->agi_env['agi_callerid']) ? str_replace(['<', '>'], '', $this->agi_env['agi_callerid']) : '';
         $this->caller_num = $this->agi_env['agi_callerid'] ?? '';
+
+        // Apply phone number prefix filtering
+        $this->caller_num = $this->filterPhoneNumberPrefix($this->caller_num);
+
         $this->current_exten = $this->extension;
+    }
+
+    /**
+     * Filter phone number prefixes (remove country codes)
+     * Removes prefixes like +30 (Greece), +359 (Bulgaria), 0030 (Greece alternative)
+     */
+    private function filterPhoneNumberPrefix($phone_number)
+    {
+        // List of country code prefixes to remove
+        $prefixes_to_remove = [
+            '+30',   // Greece
+            '+359',  // Bulgaria
+            '0030'   // Greece alternative format
+        ];
+
+        // Clean the phone number first (remove any spaces, dashes, etc.)
+        $cleaned_number = preg_replace('/[^+\d]/', '', $phone_number);
+
+        // Check each prefix and remove if found at the beginning
+        foreach ($prefixes_to_remove as $prefix) {
+            if (strpos($cleaned_number, $prefix) === 0) {
+                $filtered_number = substr($cleaned_number, strlen($prefix));
+                $this->logMessage("Phone number prefix filter: '{$phone_number}' -> '{$filtered_number}' (removed {$prefix})");
+                return $filtered_number;
+            }
+        }
+
+        // If no prefix matched, return the cleaned number as is
+        return $cleaned_number;
     }
 
     /**
@@ -152,6 +188,8 @@ class AGICallHandler
             $this->redirect_to_operator = $config['redirectToOperator'] ?? false;
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
             $this->max_retries = intval($config['maxRetries'] ?? 3);
+            $this->custom_fall_call_to = $config['customFallCallTo'] ?? false;
+            $this->custom_fall_call_to_url = $config['customFallCallToURL'] ?? '';
         }
     }
 
@@ -692,10 +730,20 @@ class AGICallHandler
                 'en' => 'Please confirm. Name: {name}. Pickup: {pickup}. Destination: {destination}',
                 'bg' => 'Моля потвърдете. Име: {name}. Вземане: {pickup}. Дестинация: {destination}'
             ],
+            'confirmation_text_no_name' => [
+                'el' => 'Παρακαλώ επιβεβαιώστε. Παραλαβή: {pickup}. Προορισμός: {destination}',
+                'en' => 'Please confirm. Pickup: {pickup}. Destination: {destination}',
+                'bg' => 'Моля потвърдете. Вземане: {pickup}. Дестинация: {destination}'
+            ],
             'reservation_confirmation_text' => [
                 'el' => 'Παρακαλώ επιβεβαιώστε. Όνομα: {name}. Παραλαβή: {pickup}. Προορισμός: {destination}. Ώρα ραντεβού: {time}',
                 'en' => 'Please confirm. Name: {name}. Pickup: {pickup}. Destination: {destination}. Reservation time: {time}',
                 'bg' => 'Моля потвърдете. Име: {name}. Вземане: {pickup}. Дестинация: {destination}. Час на резервацията: {time}'
+            ],
+            'reservation_confirmation_text_no_name' => [
+                'el' => 'Παρακαλώ επιβεβαιώστε. Παραλαβή: {pickup}. Προορισμός: {destination}. Ώρα ραντεβού: {time}',
+                'en' => 'Please confirm. Pickup: {pickup}. Destination: {destination}. Reservation time: {time}',
+                'bg' => 'Моля потвърдете. Вземане: {pickup}. Дестинация: {destination}. Час на резервацията: {time}'
             ],
             'reservation_time_confirmation' => [
                 'el' => 'Το ραντεβού είναι για {time}, πατήστε 0 για επιβεβαίωση ή 1 για να προσπαθήσετε ξανά',
@@ -1095,17 +1143,23 @@ class AGICallHandler
     {
         echo $command . "\n";
         $response = trim(fgets(STDIN));
-        
+
         // Check for hangup conditions
-        if (strpos($response, '200 result=-1') !== false || 
+        if (strpos($response, '200 result=-1') !== false ||
             strpos($response, '511 Command Not Permitted') !== false ||
             strpos($response, 'HANGUP') !== false) {
             $this->logMessage("Hangup detected during AGI command: $command");
-            $this->setCallOutcome('hangup', 'User hung up during call');
+
+            // Only set hangup outcome if the call wasn't already successful
+            // This preserves the success status when user hangs up after successful registration in callback mode 2
+            if ($this->analytics_data['call_outcome'] !== 'success') {
+                $this->setCallOutcome('hangup', 'User hung up during call');
+            }
+
             $this->finalizeCall();
             exit(0);
         }
-        
+
         return $response;
     }
 
@@ -1170,7 +1224,50 @@ class AGICallHandler
     private function redirectToOperator()
     {
         $this->trackStep('operator_transfer');
-        $this->logMessage("Redirecting to operator: {$this->phone_to_call}");
+
+        $phone_to_dial = $this->phone_to_call;
+
+        // Check if custom fall call to is enabled
+        if ($this->custom_fall_call_to && !empty($this->custom_fall_call_to_url)) {
+            $this->logMessage("Custom fall call to enabled, fetching number from API");
+
+            // Make API call to get custom phone number
+            // Ensure URL ends with / before appending caller number
+            $base_url = rtrim($this->custom_fall_call_to_url, '/') . '/';
+            $api_url = $base_url . $this->caller_num;
+            $this->logMessage("Calling API: {$api_url}");
+
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $api_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            curl_close($ch);
+
+            if ($curl_error) {
+                $this->logMessage("CURL error fetching custom phone number: {$curl_error}");
+            } elseif ($http_code != 200) {
+                $this->logMessage("HTTP error fetching custom phone number: {$http_code}");
+            } elseif (!empty($response)) {
+                // Parse JSON response
+                $response_data = json_decode($response, true);
+                if ($response_data && isset($response_data['formatted'])) {
+                    $custom_phone = $response_data['formatted'];
+                    $this->logMessage("API returned custom phone number: {$custom_phone}");
+                    $phone_to_dial = $custom_phone;
+                } else {
+                    $this->logMessage("Invalid JSON response or missing 'formatted' field: {$response}");
+                }
+            } else {
+                $this->logMessage("Empty response from custom phone API");
+            }
+        }
+
+        $this->logMessage("Redirecting to operator: {$phone_to_dial}");
 
         // Play operator sound before transferring
         $this->agiCommand('EXEC Playback "' . $this->getSoundFile('operator') . '"');
@@ -1181,7 +1278,7 @@ class AGICallHandler
         }
 
         $this->finalizeCall();
-        $this->agiCommand("EXEC \"Dial\" \"{$this->phone_to_call},20\"");
+        $this->agiCommand("EXEC \"Dial\" \"{$phone_to_dial},20\"");
         $this->agiCommand('HANGUP');
     }
 
@@ -1341,6 +1438,9 @@ class AGICallHandler
                     'lat' => $main_address['lat'],
                     'lng' => $main_address['lng']
                 ];
+            }
+            if (!empty($main_address['comments'])) {
+                $output['comments'] = $main_address['comments'];
             }
         }
 
@@ -2069,23 +2169,25 @@ class AGICallHandler
     }
 
     private function buildRegistrationPayload()
-    {
-        return [
-            "callTimeStamp" => $this->is_reservation ? $this->reservation_timestamp : null,
-            "callerPhone" => $this->caller_num,
-            "customerName" => $this->name_result,
-            "roadName" => $this->pickup_result,
-            "latitude" => $this->pickup_location['latLng']['lat'],
-            "longitude" => $this->pickup_location['latLng']['lng'],
-            "destination" => $this->dest_result,
-            "destLatitude" => $this->dest_location['latLng']['lat'] ?? 0,
-            "destLongitude" => $this->dest_location['latLng']['lng'] ?? 0,
-            "taxisNo" => 1,
-            "comments" => $this->getCallComment(),
-            "referencePath" => (string)$this->uniqueid,
-            "daysValid" => $this->days_valid
-        ];
-    }
+	{
+		$payload = [
+			"callTimeStamp" => $this->is_reservation ? $this->reservation_timestamp : null,
+			"callerPhone" => $this->caller_num,
+			"roadName" => mb_substr($this->pickup_result, 0, 255),
+			"latitude" => $this->pickup_location['latLng']['lat'],
+			"longitude" => $this->pickup_location['latLng']['lng'],
+			"destination" => mb_substr($this->dest_result, 0, 255),
+			"destLatitude" => $this->dest_location['latLng']['lat'] ?? 0,
+			"destLongitude" => $this->dest_location['latLng']['lng'] ?? 0,
+			"taxisNo" => 1,
+			"comments" => mb_substr($this->getCallComment(), 0, 255),
+			"referencePath" => (string)$this->uniqueid,
+			"daysValid" => $this->days_valid,
+			"customerName" => mb_substr(!empty($this->name_result) ? $this->name_result : "anonymous", 0, 50)
+		];
+
+		return $payload;
+	}
 
     private function addCallbackUrlToPayload(&$payload)
     {
@@ -2100,11 +2202,20 @@ class AGICallHandler
 
     private function getCallComment()
     {
+        $comment = '';
+
         if ($this->is_reservation) {
-            return str_replace('{time}', $this->reservation_result, $this->getLocalizedText('automated_reservation_comment'));
+            $comment = str_replace('{time}', $this->reservation_result, $this->getLocalizedText('automated_reservation_comment'));
         } else {
-            return $this->getLocalizedText('automated_call_comment');
+            $comment = $this->getLocalizedText('automated_call_comment');
         }
+
+        // Append user comments if they exist
+        if (!empty($this->user_comments)) {
+            $comment .= ' - ' . $this->user_comments;
+        }
+
+        return $comment;
     }
 
     private function processRegistrationResponse($response, $http_code, $curl_error)
@@ -2268,6 +2379,28 @@ class AGICallHandler
 
         $this->logMessage("Failed to capture name after {$this->max_retries} attempts");
         return false;
+    }
+
+    /**
+     * Check if we should ask for customer name based on configuration
+     */
+    private function shouldAskForName()
+    {
+        return $this->config[$this->extension]['askForName'] ?? true;
+    }
+
+    /**
+     * Conditionally collect customer name based on configuration
+     */
+    private function collectNameIfRequired()
+    {
+        if (!$this->shouldAskForName()) {
+            $this->logMessage("Name collection disabled by configuration");
+            $this->name_result = '';
+            return true;
+        }
+
+        return $this->collectName();
     }
 
     /**
@@ -2689,9 +2822,9 @@ class AGICallHandler
             // Mode 2: Simple confirmation - just ask to press 0
             $this->logMessage("Using confirmation mode 2 (simple press 0 confirmation)");
 
-            for ($try = 1; $try <= 3; $try++) {
+            for ($try = 1; $try <= $this->max_retries; $try++) {
                 $this->trackAttempt('confirmation');
-                $this->logMessage("Simple confirmation attempt {$try}/3");
+                $this->logMessage("Simple confirmation attempt {$try}/{$this->max_retries}");
 
                 // Play a simple message asking to press 0 to confirm
                 $this->agiCommand('EXEC Playback "' . $this->getSoundFile('options_short') . '"');
@@ -2715,12 +2848,16 @@ class AGICallHandler
         // Mode 1: Full confirmation process (existing behavior)
         $this->logMessage("Using confirmation mode 1 (full confirmation with TTS)");
 
-        for ($try = 1; $try <= 3; $try++) {
+        for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->trackAttempt('confirmation');
-            $this->logMessage("Confirmation attempt {$try}/3");
+            $this->logMessage("Confirmation attempt {$try}/{$this->max_retries}");
 
             if ($this->generateAndPlayConfirmation()) {
-                $choice = $this->readDTMFWithoutExit($this->getSoundFile('options'), 1, 10);
+                // Determine which options sound to play based on whether name collection is enabled
+                $askForName = $this->shouldAskForName();
+                $optionsSound = $askForName ? $this->getSoundFile('options') : $this->getSoundFile('options_no_name');
+
+                $choice = $this->readDTMFWithoutExit($optionsSound, 1, 10);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 // Check for hangup
@@ -2735,18 +2872,39 @@ class AGICallHandler
                     $this->processConfirmedCall();
                     return;
                 } elseif ($choice == "1") {
-                    if (!$this->collectName()) {
-                        $this->setCallOutcome('operator_transfer', 'Failed to collect name');
-                        $this->redirectToOperator();
-                        return;
+                    if ($askForName) {
+                        // With name: 1 = change name
+                        if (!$this->collectNameIfRequired()) {
+                            $this->setCallOutcome('operator_transfer', 'Failed to collect name');
+                            $this->redirectToOperator();
+                            return;
+                        }
+                    } else {
+                        // Without name: 1 = change pickup
+                        if (!$this->collectPickup()) {
+                            $this->setCallOutcome('operator_transfer', 'Failed to collect pickup');
+                            $this->redirectToOperator();
+                            return;
+                        }
                     }
                 } elseif ($choice == "2") {
-                    if (!$this->collectPickup()) {
-                        $this->setCallOutcome('operator_transfer', 'Failed to collect pickup');
-                        $this->redirectToOperator();
-                        return;
+                    if ($askForName) {
+                        // With name: 2 = change pickup
+                        if (!$this->collectPickup()) {
+                            $this->setCallOutcome('operator_transfer', 'Failed to collect pickup');
+                            $this->redirectToOperator();
+                            return;
+                        }
+                    } else {
+                        // Without name: 2 = change destination
+                        if (!$this->collectDestination()) {
+                            $this->setCallOutcome('operator_transfer', 'Failed to collect destination');
+                            $this->redirectToOperator();
+                            return;
+                        }
                     }
-                } elseif ($choice == "3") {
+                } elseif ($choice == "3" && $askForName) {
+                    // Option 3 only exists when name is asked (3 = change destination)
                     if (!$this->collectDestination()) {
                         $this->setCallOutcome('operator_transfer', 'Failed to collect destination');
                         $this->redirectToOperator();
@@ -2765,11 +2923,21 @@ class AGICallHandler
 
     private function generateAndPlayConfirmation()
     {
-        $confirm_text = str_replace(
-            ['{name}', '{pickup}', '{destination}'], 
-            [$this->name_result, $this->pickup_result, $this->dest_result], 
-            $this->getLocalizedText('confirmation_text')
-        );
+        if ($this->shouldAskForName() && !empty($this->name_result)) {
+            // Use confirmation text with name
+            $confirm_text = str_replace(
+                ['{name}', '{pickup}', '{destination}'],
+                [$this->name_result, $this->pickup_result, $this->dest_result],
+                $this->getLocalizedText('confirmation_text')
+            );
+        } else {
+            // Use confirmation text without name
+            $confirm_text = str_replace(
+                ['{pickup}', '{destination}'],
+                [$this->pickup_result, $this->dest_result],
+                $this->getLocalizedText('confirmation_text_no_name')
+            );
+        }
         $confirm_file = "{$this->filebase}/confirm";
 
         $this->startMusicOnHold();
@@ -2794,8 +2962,9 @@ class AGICallHandler
         $this->stopMusicOnHold();
 
         $callback_mode = $this->config[$this->extension]['callbackMode'] ?? 1;
-        
-        if ($callback_mode == 2) {
+
+        if ($callback_mode == 2 && !$result['callOperator']) {
+            // Only use callback mode if registration was successful
             $this->handleCallbackMode();
             // Callback mode handles its own call termination, so return here
             return;
@@ -2819,36 +2988,40 @@ class AGICallHandler
     {
         $register_info_file = $this->filebase . "/register_info.json";
         $repeat_times = $this->config[$this->extension]['repeatTimes'] ?? 10;
-        
+
+        // Set success outcome immediately since registration was successful
+        // This prevents hangup detection from overriding it later
+        $this->setCallOutcome('success');
+
         if (!file_exists($register_info_file)) {
             $this->logMessage("Playing waiting for registration sound");
             $this->agiCommand('EXEC Playback "' . $this->getSoundFile('waiting_register') . '"');
-            
+
             // Wait and retry to check if register_info.json exists
             for ($i = 0; $i < $repeat_times; $i++) {
                 $this->logMessage("Waiting for register_info.json - attempt " . ($i + 1) . "/{$repeat_times}");
-                
+
                 $this->startMusicOnHold();
                 $this->agiCommand('EXEC Wait "3"');
                 $this->stopMusicOnHold();
-                
+
                 if (file_exists($register_info_file)) {
                     $this->logMessage("register_info.json found, starting status monitoring");
-                    
+
                     // Read car number from register_info.json and announce taxi
                     $register_info = json_decode(file_get_contents($register_info_file), true);
                     if ($register_info && isset($register_info['carNo']) && !empty(trim($register_info['carNo']))) {
                         $car_no = trim($register_info['carNo']);
                         $this->logMessage("Found car number in register_info.json: {$car_no}");
-                        
+
                         $status_message = $this->getLocalizedStatusMessage('driver_accepted', $car_no);
                         $status_file = "{$this->filebase}/taxi_assigned";
-                        
+
                         $this->logMessage("Generating TTS for taxi assignment: {$status_message}");
                         $this->startMusicOnHold();
                         $tts_success = $this->callTTS($status_message, $status_file);
                         $this->stopMusicOnHold();
-                        
+
                         if ($tts_success) {
                             $this->logMessage("Playing taxi assignment announcement to caller");
                             $this->agiCommand("EXEC Playback \"{$status_file}\"");
@@ -2856,10 +3029,10 @@ class AGICallHandler
                     } else {
                         $this->logMessage("No car number found in register_info.json, starting monitoring silently");
                     }
-                    
+
                     break;
                 }
-                
+
                 if ($i == $repeat_times - 1) {
                     $this->logMessage("register_info.json not found after {$repeat_times} attempts");
                     return;
@@ -2957,6 +3130,12 @@ class AGICallHandler
             $this->logMessage("Found existing user data: name={$user_data['name']}, pickup={$user_data['pickup']}");
             $this->name_result = $user_data['name'];
 
+            // Store user comments if they exist
+            if (!empty($user_data['comments'])) {
+                $this->user_comments = $user_data['comments'];
+                $this->logMessage("User comments found: {$this->user_comments}");
+            }
+
             if ($this->confirmExistingPickupAddress($user_data)) {
                 $this->pickup_result = $user_data['pickup'];
                 $this->pickup_location = [
@@ -2977,7 +3156,7 @@ class AGICallHandler
                 $this->saveJson("name", $this->name_result);
             }
         } else {
-            if (!$this->collectName()) {
+            if (!$this->collectNameIfRequired()) {
                 $this->redirectToOperator();
                 return;
             }
@@ -3054,8 +3233,8 @@ class AGICallHandler
             // Mode 2: Simple confirmation - just ask to press 0
             $this->logMessage("Using confirmation mode 2 (simple press 0 confirmation) for reservation");
 
-            for ($try = 1; $try <= 3; $try++) {
-                $this->logMessage("Simple reservation confirmation attempt {$try}/3");
+            for ($try = 1; $try <= $this->max_retries; $try++) {
+                $this->logMessage("Simple reservation confirmation attempt {$try}/{$this->max_retries}");
 
                 // Play a simple message asking to press 0 to confirm
                 $this->agiCommand('EXEC Playback "' . $this->getSoundFile('options_short') . '"');
@@ -3078,11 +3257,15 @@ class AGICallHandler
         // Mode 1: Full confirmation process (existing behavior)
         $this->logMessage("Using confirmation mode 1 (full confirmation with TTS) for reservation");
 
-        for ($try = 1; $try <= 3; $try++) {
-            $this->logMessage("Reservation confirmation attempt {$try}/3");
+        for ($try = 1; $try <= $this->max_retries; $try++) {
+            $this->logMessage("Reservation confirmation attempt {$try}/{$this->max_retries}");
 
             if ($this->generateAndPlayReservationConfirmation()) {
-                $choice = $this->readDTMFWithoutExit($this->getSoundFile('options'), 1, 10);
+                // Determine which options sound to play based on whether name collection is enabled
+                $askForName = $this->shouldAskForName();
+                $optionsSound = $askForName ? $this->getSoundFile('options') : $this->getSoundFile('options_no_name');
+
+                $choice = $this->readDTMFWithoutExit($optionsSound, 1, 10);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 // Check for hangup
@@ -3097,16 +3280,35 @@ class AGICallHandler
                     $this->processConfirmedReservation();
                     return;
                 } elseif ($choice == "1") {
-                    if (!$this->collectName()) {
-                        $this->redirectToOperator();
-                        return;
+                    if ($askForName) {
+                        // With name: 1 = change name
+                        if (!$this->collectNameIfRequired()) {
+                            $this->redirectToOperator();
+                            return;
+                        }
+                    } else {
+                        // Without name: 1 = change pickup
+                        if (!$this->collectPickup()) {
+                            $this->redirectToOperator();
+                            return;
+                        }
                     }
                 } elseif ($choice == "2") {
-                    if (!$this->collectPickup()) {
-                        $this->redirectToOperator();
-                        return;
+                    if ($askForName) {
+                        // With name: 2 = change pickup
+                        if (!$this->collectPickup()) {
+                            $this->redirectToOperator();
+                            return;
+                        }
+                    } else {
+                        // Without name: 2 = change destination
+                        if (!$this->collectDestination()) {
+                            $this->redirectToOperator();
+                            return;
+                        }
                     }
-                } elseif ($choice == "3") {
+                } elseif ($choice == "3" && $askForName) {
+                    // Option 3 only exists when name is asked (3 = change destination)
                     if (!$this->collectDestination()) {
                         $this->redirectToOperator();
                         return;
@@ -3123,11 +3325,21 @@ class AGICallHandler
 
     private function generateAndPlayReservationConfirmation()
     {
-        $confirm_text = str_replace(
-            ['{name}', '{pickup}', '{destination}', '{time}'], 
-            [$this->name_result, $this->pickup_result, $this->dest_result, $this->reservation_result], 
-            $this->getLocalizedText('reservation_confirmation_text')
-        );
+        if ($this->shouldAskForName() && !empty($this->name_result)) {
+            // Use reservation confirmation text with name
+            $confirm_text = str_replace(
+                ['{name}', '{pickup}', '{destination}', '{time}'],
+                [$this->name_result, $this->pickup_result, $this->dest_result, $this->reservation_result],
+                $this->getLocalizedText('reservation_confirmation_text')
+            );
+        } else {
+            // Use reservation confirmation text without name
+            $confirm_text = str_replace(
+                ['{pickup}', '{destination}', '{time}'],
+                [$this->pickup_result, $this->dest_result, $this->reservation_result],
+                $this->getLocalizedText('reservation_confirmation_text_no_name')
+            );
+        }
         $confirm_file = "{$this->filebase}/confirm_reservation";
 
         $this->startMusicOnHold();
@@ -3560,9 +3772,9 @@ class AGICallHandler
             exit(0);
         }
 
-        // Try up to 3 times to get user input
-        for ($attempt = 1; $attempt <= 3; $attempt++) {
-            $this->logMessage("Playing welcome message (attempt {$attempt}/3)");
+        // Try up to max_retries times to get user input
+        for ($attempt = 1; $attempt <= $this->max_retries; $attempt++) {
+            $this->logMessage("Playing welcome message (attempt {$attempt}/{$this->max_retries})");
             $user_choice = $this->readDTMFWithoutExit($this->getSoundFile('welcome'), 1, 10);
             $this->logMessage("User choice: {$user_choice}", 'INFO', 'USER_INPUT');
 
@@ -3690,6 +3902,12 @@ class AGICallHandler
         $this->logMessage("Found existing user data: name={$user_data['name']}, pickup={$user_data['pickup']}");
         $this->name_result = $user_data['name'];
 
+        // Store user comments if they exist
+        if (!empty($user_data['comments'])) {
+            $this->user_comments = $user_data['comments'];
+            $this->logMessage("User comments found: {$this->user_comments}");
+        }
+
         if ($this->confirmExistingPickupAddress($user_data)) {
             $this->pickup_result = $user_data['pickup'];
             $this->pickup_location = [
@@ -3715,7 +3933,7 @@ class AGICallHandler
 
     private function collectNewUserData()
     {
-        if (!$this->collectName()) {
+        if (!$this->collectNameIfRequired()) {
             $this->redirectToOperator();
             return;
         }

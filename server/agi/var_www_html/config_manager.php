@@ -68,6 +68,9 @@ class ConfigManager {
         $configContent .= "// getUser_enabled configuration:\n";
         $configContent .= "// true = Check server for existing user data (name and pickup address) to skip collection\n";
         $configContent .= "// false = Always ask user for their information (name and addresses)\n\n";
+        $configContent .= "// askForName configuration:\n";
+        $configContent .= "// true = Ask customer for their name during call (default behavior)\n";
+        $configContent .= "// false = Skip name collection, don't include name in registration API call\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         $configContent .= "];\n}\n";
@@ -119,9 +122,12 @@ class ConfigManager {
         $configContent .= "// getUser_enabled configuration:\n";
         $configContent .= "// true = Check server for existing user data (name and pickup address) to skip collection\n";
         $configContent .= "// false = Always ask user for their information (name and addresses)\n\n";
+        $configContent .= "// askForName configuration:\n";
+        $configContent .= "// true = Ask customer for their name during call (default behavior)\n";
+        $configContent .= "// false = Skip name collection, don't include name in registration API call\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
-        
+
         foreach ($newConfig as $extension => $extensionConfig) {
             $configContent .= "    \"$extension\" => [\n";
             foreach ($extensionConfig as $key => $value) {
@@ -1631,7 +1637,7 @@ $currentConfig = $configManager->getConfig();
                     <div class="configs-grid" id="configs-grid">
                         <!-- Config cards will be loaded here -->
                     </div>
-                    <div style="margin-top: 2rem; display: none;">
+                    <div style="margin-top: 2rem;">
                         <button class="btn btn-outline-primary" onclick="showAddExtensionForm()" data-en="Add New Configuration" data-el="Προσθήκη Νέας Ρύθμισης">
                             Add New Configuration
                         </button>
@@ -1791,7 +1797,10 @@ $currentConfig = $configManager->getConfig();
             centerBias: null,
             boundsRestrictionMode: null,
             confirmation_mode: 1,
-            getUser_enabled: true
+            getUser_enabled: true,
+            askForName: true,
+            customFallCallTo: false,
+            customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
         };
         
         const translations = {
@@ -1820,6 +1829,9 @@ $currentConfig = $configManager->getConfig();
                 'boundsRestrictionMode': 'Bounds Restriction Mode',
                 'confirmation_mode': 'Confirmation Mode',
                 'getUser_enabled': 'Get User Enabled',
+                'askForName': 'Ask For Name',
+                'customFallCallTo': 'Custom Fall Call To',
+                'customFallCallToURL': 'Custom Fall Call To URL',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -1844,6 +1856,9 @@ $currentConfig = $configManager->getConfig();
                 'boundsRestrictionMode_tooltip': 'Control when bounds/centerBias apply: 0/null=Never, 1=Pickup only, 2=Dropoff only, 3=Both locations',
                 'confirmation_mode_tooltip': 'Mode 1: Reads name, pickup, dropoff via TTS and waits for confirmation. Mode 2: Only plays confirmation prompt without TTS details',
                 'getUser_enabled_tooltip': 'Enable to check server for existing user data (name and address). Disable to always ask for new user information',
+                'askForName_tooltip': 'Enable to ask customer for their name during call. Disable to skip name collection.',
+                'customFallCallTo_tooltip': 'Enable custom API-based fallback number retrieval when redirecting to operator',
+                'customFallCallToURL_tooltip': 'Base URL for custom fallback API. Caller number will be appended to this URL',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -1945,6 +1960,9 @@ $currentConfig = $configManager->getConfig();
                 'boundsRestrictionMode': 'Λειτουργία Περιορισμού Ορίων',
                 'confirmation_mode': 'Λειτουργία Επιβεβαίωσης',
                 'getUser_enabled': 'Ενεργοποίηση Λήψης Χρήστη',
+                'askForName': 'Ερώτηση για Όνομα',
+                'customFallCallTo': 'Προσαρμοσμένη Εφεδρική Κλήση',
+                'customFallCallToURL': 'URL Προσαρμοσμένης Εφεδρικής Κλήσης',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -1969,6 +1987,9 @@ $currentConfig = $configManager->getConfig();
                 'boundsRestrictionMode_tooltip': 'Έλεγχος εφαρμογής ορίων/κέντρου: 0/null=Ποτέ, 1=Μόνο παραλαβή, 2=Μόνο προορισμός, 3=Και τα δύο',
                 'confirmation_mode_tooltip': 'Λειτουργία 1: Διαβάζει όνομα, παραλαβή, προορισμό μέσω TTS και περιμένει επιβεβαίωση. Λειτουργία 2: Μόνο αναπαράγει μήνυμα επιβεβαίωσης χωρίς TTS λεπτομέρειες',
                 'getUser_enabled_tooltip': 'Ενεργοποιήστε για έλεγχο στον διακομιστή για υπάρχοντα δεδομένα χρήστη (όνομα και διεύθυνση). Απενεργοποιήστε για να ζητάτε πάντα νέα στοιχεία χρήστη',
+                'askForName_tooltip': 'Ενεργοποιήστε για να ζητάτε όνομα πελάτη κατά τη διάρκεια της κλήσης. Απενεργοποιήστε για να παραλείπετε τη συλλογή ονόματος.',
+                'customFallCallTo_tooltip': 'Ενεργοποιήστε την ανάκτηση προσαρμοσμένου αριθμού εφεδρείας μέσω API κατά την ανακατεύθυνση σε χειριστή',
+                'customFallCallToURL_tooltip': 'Βασικό URL για προσαρμοσμένο API εφεδρείας. Ο αριθμός καλούντος θα προστεθεί στο τέλος αυτού του URL',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',
@@ -2829,6 +2850,7 @@ $currentConfig = $configManager->getConfig();
             if (key === 'bounds') return 'bounds';
             if (key === 'centerBias') return 'centerBias';
             if (key === 'getUser_enabled') return 'checkbox';
+            if (key === 'customFallCallTo') return 'checkbox';
             if (typeof value === 'number') return 'number';
             return 'text';
         }
@@ -2980,7 +3002,9 @@ $currentConfig = $configManager->getConfig();
                 maxRetries: 5,
                 bounds: null,
             centerBias: null,
-            boundsRestrictionMode: null
+            boundsRestrictionMode: null,
+            customFallCallTo: false,
+            customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
             };
             
             fetch('config_manager.php', {
