@@ -64,6 +64,7 @@ class AGICallHandler
     private $pickup_location = [];
     private $dest_result = '';
     private $dest_location = [];
+    private $user_comments = '';
     private $reservation_result = '';
     private $reservation_timestamp = '';
     private $is_reservation = false;
@@ -1358,6 +1359,9 @@ class AGICallHandler
                     'lng' => $main_address['lng']
                 ];
             }
+            if (!empty($main_address['comments'])) {
+                $output['comments'] = $main_address['comments'];
+            }
         }
 
         return $output;
@@ -2118,11 +2122,20 @@ class AGICallHandler
 
     private function getCallComment()
     {
+        $comment = '';
+
         if ($this->is_reservation) {
-            return str_replace('{time}', $this->reservation_result, $this->getLocalizedText('automated_reservation_comment'));
+            $comment = str_replace('{time}', $this->reservation_result, $this->getLocalizedText('automated_reservation_comment'));
         } else {
-            return $this->getLocalizedText('automated_call_comment');
+            $comment = $this->getLocalizedText('automated_call_comment');
         }
+
+        // Append user comments if they exist
+        if (!empty($this->user_comments)) {
+            $comment .= ' - ' . $this->user_comments;
+        }
+
+        return $comment;
     }
 
     private function processRegistrationResponse($response, $http_code, $curl_error)
@@ -3037,6 +3050,12 @@ class AGICallHandler
             $this->logMessage("Found existing user data: name={$user_data['name']}, pickup={$user_data['pickup']}");
             $this->name_result = $user_data['name'];
 
+            // Store user comments if they exist
+            if (!empty($user_data['comments'])) {
+                $this->user_comments = $user_data['comments'];
+                $this->logMessage("User comments found: {$this->user_comments}");
+            }
+
             if ($this->confirmExistingPickupAddress($user_data)) {
                 $this->pickup_result = $user_data['pickup'];
                 $this->pickup_location = [
@@ -3802,6 +3821,12 @@ class AGICallHandler
     {
         $this->logMessage("Found existing user data: name={$user_data['name']}, pickup={$user_data['pickup']}");
         $this->name_result = $user_data['name'];
+
+        // Store user comments if they exist
+        if (!empty($user_data['comments'])) {
+            $this->user_comments = $user_data['comments'];
+            $this->logMessage("User comments found: {$this->user_comments}");
+        }
 
         if ($this->confirmExistingPickupAddress($user_data)) {
             $this->pickup_result = $user_data['pickup'];
