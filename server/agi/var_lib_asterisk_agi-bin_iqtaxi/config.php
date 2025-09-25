@@ -60,7 +60,9 @@ class AGICallHandlerConfig
         "bounds" => null,
         "centerBias" => null,
         "boundsRestrictionMode" => null,
-        "askForName" => true
+        "askForName" => true,
+        "customFallCallTo" => false,
+        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -84,7 +86,9 @@ class AGICallHandlerConfig
         "bounds" => null,
         "centerBias" => null,
         "boundsRestrictionMode" => null,
-        "askForName" => true
+        "askForName" => true,
+        "customFallCallTo" => false,
+        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -108,7 +112,9 @@ class AGICallHandlerConfig
         "bounds" => null,
         "centerBias" => null,
         "boundsRestrictionMode" => null,
-        "askForName" => true
+        "askForName" => true,
+        "customFallCallTo" => false,
+        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -132,7 +138,9 @@ class AGICallHandlerConfig
         "bounds" => null,
         "centerBias" => null,
         "boundsRestrictionMode" => null,
-        "askForName" => true
+        "askForName" => true,
+        "customFallCallTo" => false,
+        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
     ],
     "5001" => [
 		"name" => "iqtaxi.com",

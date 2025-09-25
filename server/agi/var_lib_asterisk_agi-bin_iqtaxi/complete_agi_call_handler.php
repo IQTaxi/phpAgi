@@ -59,6 +59,8 @@ class AGICallHandler
     
     // Call data properties
     private $max_retries = 3;
+    private $custom_fall_call_to = false;
+    private $custom_fall_call_to_url = '';
     private $name_result = '';
     private $pickup_result = '';
     private $pickup_location = [];
@@ -153,6 +155,8 @@ class AGICallHandler
             $this->redirect_to_operator = $config['redirectToOperator'] ?? false;
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
             $this->max_retries = intval($config['maxRetries'] ?? 3);
+            $this->custom_fall_call_to = $config['customFallCallTo'] ?? false;
+            $this->custom_fall_call_to_url = $config['customFallCallToURL'] ?? '';
         }
     }
 
@@ -1187,7 +1191,50 @@ class AGICallHandler
     private function redirectToOperator()
     {
         $this->trackStep('operator_transfer');
-        $this->logMessage("Redirecting to operator: {$this->phone_to_call}");
+
+        $phone_to_dial = $this->phone_to_call;
+
+        // Check if custom fall call to is enabled
+        if ($this->custom_fall_call_to && !empty($this->custom_fall_call_to_url)) {
+            $this->logMessage("Custom fall call to enabled, fetching number from API");
+
+            // Make API call to get custom phone number
+            // Ensure URL ends with / before appending caller number
+            $base_url = rtrim($this->custom_fall_call_to_url, '/') . '/';
+            $api_url = $base_url . $this->caller_num;
+            $this->logMessage("Calling API: {$api_url}");
+
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $api_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            curl_close($ch);
+
+            if ($curl_error) {
+                $this->logMessage("CURL error fetching custom phone number: {$curl_error}");
+            } elseif ($http_code != 200) {
+                $this->logMessage("HTTP error fetching custom phone number: {$http_code}");
+            } elseif (!empty($response)) {
+                // Parse JSON response
+                $response_data = json_decode($response, true);
+                if ($response_data && isset($response_data['formatted'])) {
+                    $custom_phone = $response_data['formatted'];
+                    $this->logMessage("API returned custom phone number: {$custom_phone}");
+                    $phone_to_dial = $custom_phone;
+                } else {
+                    $this->logMessage("Invalid JSON response or missing 'formatted' field: {$response}");
+                }
+            } else {
+                $this->logMessage("Empty response from custom phone API");
+            }
+        }
+
+        $this->logMessage("Redirecting to operator: {$phone_to_dial}");
 
         // Play operator sound before transferring
         $this->agiCommand('EXEC Playback "' . $this->getSoundFile('operator') . '"');
@@ -1198,7 +1245,7 @@ class AGICallHandler
         }
 
         $this->finalizeCall();
-        $this->agiCommand("EXEC \"Dial\" \"{$this->phone_to_call},20\"");
+        $this->agiCommand("EXEC \"Dial\" \"{$phone_to_dial},20\"");
         $this->agiCommand('HANGUP');
     }
 
