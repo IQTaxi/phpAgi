@@ -1105,17 +1105,23 @@ class AGICallHandler
     {
         echo $command . "\n";
         $response = trim(fgets(STDIN));
-        
+
         // Check for hangup conditions
-        if (strpos($response, '200 result=-1') !== false || 
+        if (strpos($response, '200 result=-1') !== false ||
             strpos($response, '511 Command Not Permitted') !== false ||
             strpos($response, 'HANGUP') !== false) {
             $this->logMessage("Hangup detected during AGI command: $command");
-            $this->setCallOutcome('hangup', 'User hung up during call');
+
+            // Only set hangup outcome if the call wasn't already successful
+            // This preserves the success status when user hangs up after successful registration in callback mode 2
+            if ($this->analytics_data['call_outcome'] !== 'success') {
+                $this->setCallOutcome('hangup', 'User hung up during call');
+            }
+
             $this->finalizeCall();
             exit(0);
         }
-        
+
         return $response;
     }
 
@@ -2838,8 +2844,9 @@ class AGICallHandler
         $this->stopMusicOnHold();
 
         $callback_mode = $this->config[$this->extension]['callbackMode'] ?? 1;
-        
-        if ($callback_mode == 2) {
+
+        if ($callback_mode == 2 && !$result['callOperator']) {
+            // Only use callback mode if registration was successful
             $this->handleCallbackMode();
             // Callback mode handles its own call termination, so return here
             return;
@@ -2863,36 +2870,40 @@ class AGICallHandler
     {
         $register_info_file = $this->filebase . "/register_info.json";
         $repeat_times = $this->config[$this->extension]['repeatTimes'] ?? 10;
-        
+
+        // Set success outcome immediately since registration was successful
+        // This prevents hangup detection from overriding it later
+        $this->setCallOutcome('success');
+
         if (!file_exists($register_info_file)) {
             $this->logMessage("Playing waiting for registration sound");
             $this->agiCommand('EXEC Playback "' . $this->getSoundFile('waiting_register') . '"');
-            
+
             // Wait and retry to check if register_info.json exists
             for ($i = 0; $i < $repeat_times; $i++) {
                 $this->logMessage("Waiting for register_info.json - attempt " . ($i + 1) . "/{$repeat_times}");
-                
+
                 $this->startMusicOnHold();
                 $this->agiCommand('EXEC Wait "3"');
                 $this->stopMusicOnHold();
-                
+
                 if (file_exists($register_info_file)) {
                     $this->logMessage("register_info.json found, starting status monitoring");
-                    
+
                     // Read car number from register_info.json and announce taxi
                     $register_info = json_decode(file_get_contents($register_info_file), true);
                     if ($register_info && isset($register_info['carNo']) && !empty(trim($register_info['carNo']))) {
                         $car_no = trim($register_info['carNo']);
                         $this->logMessage("Found car number in register_info.json: {$car_no}");
-                        
+
                         $status_message = $this->getLocalizedStatusMessage('driver_accepted', $car_no);
                         $status_file = "{$this->filebase}/taxi_assigned";
-                        
+
                         $this->logMessage("Generating TTS for taxi assignment: {$status_message}");
                         $this->startMusicOnHold();
                         $tts_success = $this->callTTS($status_message, $status_file);
                         $this->stopMusicOnHold();
-                        
+
                         if ($tts_success) {
                             $this->logMessage("Playing taxi assignment announcement to caller");
                             $this->agiCommand("EXEC Playback \"{$status_file}\"");
@@ -2900,10 +2911,10 @@ class AGICallHandler
                     } else {
                         $this->logMessage("No car number found in register_info.json, starting monitoring silently");
                     }
-                    
+
                     break;
                 }
-                
+
                 if ($i == $repeat_times - 1) {
                     $this->logMessage("register_info.json not found after {$repeat_times} attempts");
                     return;
