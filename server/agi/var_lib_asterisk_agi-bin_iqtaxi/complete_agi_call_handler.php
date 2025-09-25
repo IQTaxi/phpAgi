@@ -2173,19 +2173,19 @@ class AGICallHandler
 		$payload = [
 			"callTimeStamp" => $this->is_reservation ? $this->reservation_timestamp : null,
 			"callerPhone" => $this->caller_num,
-			"roadName" => $this->pickup_result,
+			"roadName" => mb_substr($this->pickup_result, 0, 255),
 			"latitude" => $this->pickup_location['latLng']['lat'],
 			"longitude" => $this->pickup_location['latLng']['lng'],
-			"destination" => $this->dest_result,
+			"destination" => mb_substr($this->dest_result, 0, 255),
 			"destLatitude" => $this->dest_location['latLng']['lat'] ?? 0,
 			"destLongitude" => $this->dest_location['latLng']['lng'] ?? 0,
 			"taxisNo" => 1,
-			"comments" => $this->getCallComment(),
+			"comments" => mb_substr($this->getCallComment(), 0, 255),
 			"referencePath" => (string)$this->uniqueid,
 			"daysValid" => $this->days_valid,
-			"customerName" => !empty($this->name_result) ? $this->name_result : "anonymous"
+			"customerName" => mb_substr(!empty($this->name_result) ? $this->name_result : "anonymous", 0, 50)
 		];
-		
+
 		return $payload;
 	}
 
