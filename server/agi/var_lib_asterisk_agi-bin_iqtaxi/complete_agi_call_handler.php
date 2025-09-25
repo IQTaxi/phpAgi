@@ -2742,9 +2742,9 @@ class AGICallHandler
             // Mode 2: Simple confirmation - just ask to press 0
             $this->logMessage("Using confirmation mode 2 (simple press 0 confirmation)");
 
-            for ($try = 1; $try <= 3; $try++) {
+            for ($try = 1; $try <= $this->max_retries; $try++) {
                 $this->trackAttempt('confirmation');
-                $this->logMessage("Simple confirmation attempt {$try}/3");
+                $this->logMessage("Simple confirmation attempt {$try}/{$this->max_retries}");
 
                 // Play a simple message asking to press 0 to confirm
                 $this->agiCommand('EXEC Playback "' . $this->getSoundFile('options_short') . '"');
@@ -2768,9 +2768,9 @@ class AGICallHandler
         // Mode 1: Full confirmation process (existing behavior)
         $this->logMessage("Using confirmation mode 1 (full confirmation with TTS)");
 
-        for ($try = 1; $try <= 3; $try++) {
+        for ($try = 1; $try <= $this->max_retries; $try++) {
             $this->trackAttempt('confirmation');
-            $this->logMessage("Confirmation attempt {$try}/3");
+            $this->logMessage("Confirmation attempt {$try}/{$this->max_retries}");
 
             if ($this->generateAndPlayConfirmation()) {
                 // Determine which options sound to play based on whether name collection is enabled
@@ -3153,8 +3153,8 @@ class AGICallHandler
             // Mode 2: Simple confirmation - just ask to press 0
             $this->logMessage("Using confirmation mode 2 (simple press 0 confirmation) for reservation");
 
-            for ($try = 1; $try <= 3; $try++) {
-                $this->logMessage("Simple reservation confirmation attempt {$try}/3");
+            for ($try = 1; $try <= $this->max_retries; $try++) {
+                $this->logMessage("Simple reservation confirmation attempt {$try}/{$this->max_retries}");
 
                 // Play a simple message asking to press 0 to confirm
                 $this->agiCommand('EXEC Playback "' . $this->getSoundFile('options_short') . '"');
@@ -3177,8 +3177,8 @@ class AGICallHandler
         // Mode 1: Full confirmation process (existing behavior)
         $this->logMessage("Using confirmation mode 1 (full confirmation with TTS) for reservation");
 
-        for ($try = 1; $try <= 3; $try++) {
-            $this->logMessage("Reservation confirmation attempt {$try}/3");
+        for ($try = 1; $try <= $this->max_retries; $try++) {
+            $this->logMessage("Reservation confirmation attempt {$try}/{$this->max_retries}");
 
             if ($this->generateAndPlayReservationConfirmation()) {
                 // Determine which options sound to play based on whether name collection is enabled
@@ -3692,9 +3692,9 @@ class AGICallHandler
             exit(0);
         }
 
-        // Try up to 3 times to get user input
-        for ($attempt = 1; $attempt <= 3; $attempt++) {
-            $this->logMessage("Playing welcome message (attempt {$attempt}/3)");
+        // Try up to max_retries times to get user input
+        for ($attempt = 1; $attempt <= $this->max_retries; $attempt++) {
+            $this->logMessage("Playing welcome message (attempt {$attempt}/{$this->max_retries})");
             $user_choice = $this->readDTMFWithoutExit($this->getSoundFile('welcome'), 1, 10);
             $this->logMessage("User choice: {$user_choice}", 'INFO', 'USER_INPUT');
 
