@@ -894,6 +894,9 @@ class AGIAnalytics {
             case 'recordings':
                 $this->apiGetRecordings();
                 break;
+            case 'getFinalPickUpRec':
+                $this->apiGetFinalPickUpRec();
+                break;
             default:
                 $this->sendErrorResponse('Endpoint not found', 404);
         }
@@ -1253,7 +1256,56 @@ class AGIAnalytics {
         $recordings = $this->getCallRecordings($call['recording_path']);
         $this->sendResponse(['recordings' => $recordings]);
     }
-    
+
+    /**
+     * Get final pickup recording for a specific call ID
+     * URL: ?endpoint=getFinalPickUpRec&id=<unique_id>
+     * Returns: 200 with pickup_X.wav file path if found, 404 if no recording exists
+     */
+    private function apiGetFinalPickUpRec() {
+        $uniqueId = $_GET['id'] ?? '';
+        if (empty($uniqueId)) {
+            $this->sendErrorResponse('id parameter required', 400);
+            return;
+        }
+
+        // Find the highest numbered pickup recording for this unique ID
+        $baseDir = "/var/auto_register_call";
+        $pattern = "{$baseDir}/*/*/{$uniqueId}/recordings/pickup_*.wav";
+        $pickupFiles = glob($pattern);
+
+        if (empty($pickupFiles)) {
+            $this->sendErrorResponse('No pickup recording found', 404);
+            return;
+        }
+
+        // Sort files to get the highest numbered one (final attempt)
+        usort($pickupFiles, function($a, $b) {
+            // Extract the number from pickup_X.wav
+            preg_match('/pickup_(\d+)\.wav$/', $a, $matchesA);
+            preg_match('/pickup_(\d+)\.wav$/', $b, $matchesB);
+            $numA = isset($matchesA[1]) ? intval($matchesA[1]) : 0;
+            $numB = isset($matchesB[1]) ? intval($matchesB[1]) : 0;
+            return $numB - $numA; // Descending order
+        });
+
+        $finalPickupFile = $pickupFiles[0];
+
+        // Verify the file exists and is readable
+        if (!file_exists($finalPickupFile) || !is_readable($finalPickupFile)) {
+            $this->sendErrorResponse('Pickup recording file not accessible', 404);
+            return;
+        }
+
+        // Return the actual audio file for inline playback
+        header('Content-Type: audio/wav');
+        header('Content-Length: ' . filesize($finalPickupFile));
+        header('Content-Disposition: inline; filename="' . basename($finalPickupFile) . '"');
+        header('Accept-Ranges: bytes');
+        readfile($finalPickupFile);
+        exit;
+    }
+
     // ===== POST/PUT/DELETE API ENDPOINTS =====
     
     private function handlePostAPI($endpoint) {
