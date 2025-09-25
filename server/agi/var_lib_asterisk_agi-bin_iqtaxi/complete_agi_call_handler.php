@@ -2760,7 +2760,11 @@ class AGICallHandler
             $this->logMessage("Confirmation attempt {$try}/3");
 
             if ($this->generateAndPlayConfirmation()) {
-                $choice = $this->readDTMFWithoutExit($this->getSoundFile('options'), 1, 10);
+                // Determine which options sound to play based on whether name collection is enabled
+                $askForName = $this->shouldAskForName();
+                $optionsSound = $askForName ? $this->getSoundFile('options') : $this->getSoundFile('options_no_name');
+
+                $choice = $this->readDTMFWithoutExit($optionsSound, 1, 10);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 // Check for hangup
@@ -2775,18 +2779,39 @@ class AGICallHandler
                     $this->processConfirmedCall();
                     return;
                 } elseif ($choice == "1") {
-                    if (!$this->collectNameIfRequired()) {
-                        $this->setCallOutcome('operator_transfer', 'Failed to collect name');
-                        $this->redirectToOperator();
-                        return;
+                    if ($askForName) {
+                        // With name: 1 = change name
+                        if (!$this->collectNameIfRequired()) {
+                            $this->setCallOutcome('operator_transfer', 'Failed to collect name');
+                            $this->redirectToOperator();
+                            return;
+                        }
+                    } else {
+                        // Without name: 1 = change pickup
+                        if (!$this->collectPickup()) {
+                            $this->setCallOutcome('operator_transfer', 'Failed to collect pickup');
+                            $this->redirectToOperator();
+                            return;
+                        }
                     }
                 } elseif ($choice == "2") {
-                    if (!$this->collectPickup()) {
-                        $this->setCallOutcome('operator_transfer', 'Failed to collect pickup');
-                        $this->redirectToOperator();
-                        return;
+                    if ($askForName) {
+                        // With name: 2 = change pickup
+                        if (!$this->collectPickup()) {
+                            $this->setCallOutcome('operator_transfer', 'Failed to collect pickup');
+                            $this->redirectToOperator();
+                            return;
+                        }
+                    } else {
+                        // Without name: 2 = change destination
+                        if (!$this->collectDestination()) {
+                            $this->setCallOutcome('operator_transfer', 'Failed to collect destination');
+                            $this->redirectToOperator();
+                            return;
+                        }
                     }
-                } elseif ($choice == "3") {
+                } elseif ($choice == "3" && $askForName) {
+                    // Option 3 only exists when name is asked (3 = change destination)
                     if (!$this->collectDestination()) {
                         $this->setCallOutcome('operator_transfer', 'Failed to collect destination');
                         $this->redirectToOperator();
@@ -3137,7 +3162,11 @@ class AGICallHandler
             $this->logMessage("Reservation confirmation attempt {$try}/3");
 
             if ($this->generateAndPlayReservationConfirmation()) {
-                $choice = $this->readDTMFWithoutExit($this->getSoundFile('options'), 1, 10);
+                // Determine which options sound to play based on whether name collection is enabled
+                $askForName = $this->shouldAskForName();
+                $optionsSound = $askForName ? $this->getSoundFile('options') : $this->getSoundFile('options_no_name');
+
+                $choice = $this->readDTMFWithoutExit($optionsSound, 1, 10);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 // Check for hangup
@@ -3152,16 +3181,35 @@ class AGICallHandler
                     $this->processConfirmedReservation();
                     return;
                 } elseif ($choice == "1") {
-                    if (!$this->collectNameIfRequired()) {
-                        $this->redirectToOperator();
-                        return;
+                    if ($askForName) {
+                        // With name: 1 = change name
+                        if (!$this->collectNameIfRequired()) {
+                            $this->redirectToOperator();
+                            return;
+                        }
+                    } else {
+                        // Without name: 1 = change pickup
+                        if (!$this->collectPickup()) {
+                            $this->redirectToOperator();
+                            return;
+                        }
                     }
                 } elseif ($choice == "2") {
-                    if (!$this->collectPickup()) {
-                        $this->redirectToOperator();
-                        return;
+                    if ($askForName) {
+                        // With name: 2 = change pickup
+                        if (!$this->collectPickup()) {
+                            $this->redirectToOperator();
+                            return;
+                        }
+                    } else {
+                        // Without name: 2 = change destination
+                        if (!$this->collectDestination()) {
+                            $this->redirectToOperator();
+                            return;
+                        }
                     }
-                } elseif ($choice == "3") {
+                } elseif ($choice == "3" && $askForName) {
+                    // Option 3 only exists when name is asked (3 = change destination)
                     if (!$this->collectDestination()) {
                         $this->redirectToOperator();
                         return;

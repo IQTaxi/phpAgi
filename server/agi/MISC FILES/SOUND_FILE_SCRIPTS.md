@@ -88,6 +88,17 @@
 
 ---
 
+## 8a. Confirmation Options (No Name)
+**File:** `options_no_name`
+
+**Greek:** "Πατήστε 0 για να καταχωρήσετε την κλήση, πατήστε 1 για αλλαγή διεύθυνσης παραλαβής, ή πατήστε 2 για αλλαγή διεύθυνσης προορισμού."
+
+**Bulgarian:** "Натиснете 0, за да регистрирате повикването, натиснете 1, за да промените адреса за вземане или натиснете 2, за да промените адреса на дестинацията."
+
+**English:** "Press 0 to register the call, press 1 to change the pickup address, or press 2 to change the destination address."
+
+---
+
 ## 9. Invalid Input Message
 **File:** `invalid_input`
 
