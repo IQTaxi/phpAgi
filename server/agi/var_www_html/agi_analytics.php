@@ -22,6 +22,7 @@ class AGIAnalytics {
     private $table = 'automated_calls_analitycs';
     private $language = 'el'; // Default to Greek
     private $translations = [];
+    private $globalExtensionFilter = null; // Global extension filter
     
     // Database configuration
     private $dbConfig = [
@@ -38,10 +39,11 @@ class AGIAnalytics {
     public function __construct() {
         // Keep server in UTC for universal compatibility
         date_default_timezone_set('UTC');
-        
+
         $this->initializeLanguage();
         $this->loadTranslations();
         $this->loadEnvConfig();
+        $this->initializeGlobalFilters();
         $this->connectDatabase();
         $this->createTableIfNeeded();
         $this->createIndexesIfNeeded();
@@ -61,6 +63,28 @@ class AGIAnalytics {
         $this->dbConfig['port'] = getenv('DB_PORT') ?: $this->dbConfig['port'];
     }
     
+    /**
+     * Initialize global filters from URL parameters
+     */
+    private function initializeGlobalFilters() {
+        // Set global extension filter if provided
+        if (!empty($_GET['extension'])) {
+            $this->globalExtensionFilter = $_GET['extension'];
+        }
+    }
+
+    /**
+     * Get extension filter WHERE clause and parameter
+     * @return array [where_clause, params]
+     */
+    private function getExtensionFilterClause($prefix = '') {
+        if ($this->globalExtensionFilter === null) {
+            return ['', []];
+        }
+        $field = $prefix ? "{$prefix}.extension" : "extension";
+        return ["{$field} = ?", [$this->globalExtensionFilter]];
+    }
+
     /**
      * Initialize language from URL parameter or default
      */
@@ -132,6 +156,7 @@ class AGIAnalytics {
                 'calls_per_hour' => 'Κλήσεις ανά Ώρα',
                 'location_heatmap' => 'Χάρτης Τοποθεσιών',
                 'today' => 'Σήμερα',
+                'yesterday' => 'Χθες',
                 
                 // Heatmap Controls
                 'last_30_minutes' => '🕐 Τελευταία 30 λεπτά',
@@ -365,6 +390,7 @@ class AGIAnalytics {
                 'calls_per_hour' => 'Calls per Hour',
                 'location_heatmap' => 'Location Heatmap',
                 'today' => 'Today',
+                'yesterday' => 'Yesterday',
                 
                 // Heatmap Controls
                 'last_30_minutes' => '🕐 Last 30 minutes',
@@ -909,10 +935,17 @@ class AGIAnalytics {
         $page = max(1, intval($_GET['page'] ?? 1));
         $limit = min(1000, max(1, intval($_GET['limit'] ?? 50)));
         $offset = ($page - 1) * $limit;
-        
+
         $where = [];
         $params = [];
-        
+
+        // Apply global extension filter first
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        if ($extWhere) {
+            $where[] = $extWhere;
+            $params = array_merge($params, $extParams);
+        }
+
         // Handle general search field
         if (!empty($_GET['search'])) {
             $searchTerm = $_GET['search'];
@@ -920,17 +953,16 @@ class AGIAnalytics {
             $searchPattern = "%{$searchTerm}%";
             $params = array_merge($params, [$searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern]);
         }
-        
-        // Advanced filtering
+
+        // Advanced filtering (removed 'extension' since it's handled by global filter)
         $filters = [
             'phone' => 'phone_number LIKE ?',
-            'extension' => 'extension = ?',
             'call_type' => 'call_type = ?',
             'outcome' => 'call_outcome = ?',
             'user_name' => 'user_name LIKE ?',
             'successful' => 'successful_registration = ?'
         ];
-        
+
         foreach ($filters as $key => $condition) {
             if (!empty($_GET[$key])) {
                 $where[] = $condition;
@@ -1147,8 +1179,13 @@ class AGIAnalytics {
      */
     private function apiGetHourlyAnalytics() {
         $date = $_GET['date'] ?? date('Y-m-d');
-        
-        $sql = "SELECT 
+
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        $whereConditions = ["DATE(call_start_time) = ?"];
+        if ($extWhere) $whereConditions[] = $extWhere;
+        $whereClause = implode(' AND ', $whereConditions);
+
+        $sql = "SELECT
                     HOUR(call_start_time) as hour,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
@@ -1157,13 +1194,14 @@ class AGIAnalytics {
                     AVG(call_duration) as avg_duration,
                     SUM(google_tts_calls + edge_tts_calls) as tts_usage,
                     SUM(google_stt_calls) as stt_usage
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) = ?
+                FROM {$this->table}
+                WHERE {$whereClause}
                 GROUP BY HOUR(call_start_time)
                 ORDER BY hour";
-        
+
+        $params = array_merge([$date], $extParams);
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$date]);
+        $stmt->execute($params);
         $hourlyData = $stmt->fetchAll();
         
         // Fill missing hours with zeros
@@ -1584,15 +1622,20 @@ class AGIAnalytics {
      * Enhance call data with additional information
      */
     private function enhanceCallData($call, $detailed = false) {
+        // Ensure call_id is properly set and not undefined
+        if (empty($call['call_id']) || $call['call_id'] === 'UNDEFINED') {
+            $call['call_id'] = $call['unique_id'] ?? ('call_' . ($call['id'] ?? uniqid()));
+        }
+
         // Calculate derived fields
         $call['success_rate'] = $call['call_outcome'] === 'success' ? 100 : 0;
         $call['has_location_data'] = !empty($call['pickup_lat']) && !empty($call['pickup_lng']);
-        $call['total_api_calls'] = 
-            ($call['google_tts_calls'] ?? 0) + 
-            ($call['edge_tts_calls'] ?? 0) + 
-            ($call['google_stt_calls'] ?? 0) + 
-            ($call['geocoding_api_calls'] ?? 0) + 
-            ($call['user_api_calls'] ?? 0) + 
+        $call['total_api_calls'] =
+            ($call['google_tts_calls'] ?? 0) +
+            ($call['edge_tts_calls'] ?? 0) +
+            ($call['google_stt_calls'] ?? 0) +
+            ($call['geocoding_api_calls'] ?? 0) +
+            ($call['user_api_calls'] ?? 0) +
             ($call['registration_api_calls'] ?? 0);
         
         // Calculate live duration for in-progress calls using server time
@@ -1605,9 +1648,9 @@ class AGIAnalytics {
             $call['is_live'] = false;
         }
         
-        // Format timestamps
-        $call['call_start_time_formatted'] = $this->formatTimestamp($call['call_start_time']);
-        $call['call_end_time_formatted'] = $this->formatTimestamp($call['call_end_time']);
+        // Include raw timestamps for JavaScript timezone conversion
+        $call['call_start_time_formatted'] = $call['call_start_time'];
+        $call['call_end_time_formatted'] = $call['call_end_time'];
         $call['duration_formatted'] = $this->formatDuration($call['call_duration']);
         
         if ($detailed) {
@@ -1692,7 +1735,12 @@ class AGIAnalytics {
     // ===== ANALYTICS HELPER METHODS =====
     
     private function getAnalyticsSummary($dateFrom, $dateTo) {
-        $sql = "SELECT 
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        if ($extWhere) $whereConditions[] = $extWhere;
+        $whereClause = implode(' AND ', $whereConditions);
+
+        $sql = "SELECT
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                     COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
@@ -1703,11 +1751,12 @@ class AGIAnalytics {
                     MIN(call_duration) as min_duration,
                     COUNT(DISTINCT phone_number) as unique_callers,
                     COUNT(DISTINCT extension) as extensions_used
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ?";
-        
+                FROM {$this->table}
+                WHERE {$whereClause}";
+
+        $params = array_merge([$dateFrom, $dateTo], $extParams);
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$dateFrom, $dateTo]);
+        $stmt->execute($params);
         $summary = $stmt->fetch();
         
         // Calculate success rate
@@ -1748,39 +1797,56 @@ class AGIAnalytics {
     }
     
     private function getDailyTrend($dateFrom, $dateTo) {
-        $sql = "SELECT 
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        if ($extWhere) $whereConditions[] = $extWhere;
+        $whereClause = implode(' AND ', $whereConditions);
+
+        $sql = "SELECT
                     DATE(call_start_time) as date,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ?
+                FROM {$this->table}
+                WHERE {$whereClause}
                 GROUP BY DATE(call_start_time)
                 ORDER BY date";
-        
+
+        $params = array_merge([$dateFrom, $dateTo], $extParams);
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$dateFrom, $dateTo]);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
     
     private function getExtensionPerformance($dateFrom, $dateTo) {
-        $sql = "SELECT 
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?", "extension IS NOT NULL"];
+        if ($extWhere) $whereConditions[] = $extWhere;
+        $whereClause = implode(' AND ', $whereConditions);
+
+        $sql = "SELECT
                     extension,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                     AVG(call_duration) as avg_duration,
                     ROUND((COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) * 100.0 / COUNT(*)), 2) as success_rate
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ? AND extension IS NOT NULL
+                FROM {$this->table}
+                WHERE {$whereClause}
                 GROUP BY extension
                 ORDER BY total_calls DESC";
-        
+
+        $params = array_merge([$dateFrom, $dateTo], $extParams);
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$dateFrom, $dateTo]);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
     
     private function getAPIUsageAnalytics($dateFrom, $dateTo) {
-        $sql = "SELECT 
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        if ($extWhere) $whereConditions[] = $extWhere;
+        $whereClause = implode(' AND ', $whereConditions);
+
+        $sql = "SELECT
                     SUM(google_tts_calls) as google_tts_total,
                     SUM(edge_tts_calls) as edge_tts_total,
                     SUM(google_stt_calls) as google_stt_total,
@@ -1791,11 +1857,12 @@ class AGIAnalytics {
                     AVG(stt_processing_time) as avg_stt_time,
                     AVG(geocoding_processing_time) as avg_geocoding_time,
                     AVG(api_response_time) as avg_api_response_time
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ?";
-        
+                FROM {$this->table}
+                WHERE {$whereClause}";
+
+        $params = array_merge([$dateFrom, $dateTo], $extParams);
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$dateFrom, $dateTo]);
+        $stmt->execute($params);
         return $stmt->fetch();
     }
     
@@ -1825,8 +1892,13 @@ class AGIAnalytics {
     private function apiGetLocations() {
         $minutes = intval($_GET['minutes'] ?? 30);
         $dateFrom = date('Y-m-d H:i:s', strtotime("-{$minutes} minutes"));
-        
-        $sql = "SELECT 
+
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        $whereConditions = ["call_start_time >= ?", "(pickup_lat IS NOT NULL OR destination_lat IS NOT NULL)"];
+        if ($extWhere) $whereConditions[] = $extWhere;
+        $whereClause = implode(' AND ', $whereConditions);
+
+        $sql = "SELECT
                     pickup_address,
                     pickup_lat,
                     pickup_lng,
@@ -1836,12 +1908,12 @@ class AGIAnalytics {
                     call_outcome,
                     call_start_time
                 FROM {$this->table}
-                WHERE call_start_time >= ?
-                    AND (pickup_lat IS NOT NULL OR destination_lat IS NOT NULL)
+                WHERE {$whereClause}
                 ORDER BY call_start_time DESC";
-        
+
+        $params = array_merge([$dateFrom], $extParams);
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$dateFrom]);
+        $stmt->execute($params);
         $locations = [];
         
         while ($row = $stmt->fetch()) {
@@ -1876,7 +1948,12 @@ class AGIAnalytics {
     }
     
     private function getGeographicAnalytics($dateFrom, $dateTo) {
-        $sql = "SELECT 
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?", "pickup_lat IS NOT NULL", "pickup_lng IS NOT NULL"];
+        if ($extWhere) $whereConditions[] = $extWhere;
+        $whereClause = implode(' AND ', $whereConditions);
+
+        $sql = "SELECT
                     pickup_address,
                     destination_address,
                     pickup_lat,
@@ -1884,21 +1961,25 @@ class AGIAnalytics {
                     destination_lat,
                     destination_lng,
                     COUNT(*) as frequency
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ?
-                    AND pickup_lat IS NOT NULL 
-                    AND pickup_lng IS NOT NULL
+                FROM {$this->table}
+                WHERE {$whereClause}
                 GROUP BY pickup_address, destination_address
                 ORDER BY frequency DESC
                 LIMIT 50";
-        
+
+        $params = array_merge([$dateFrom, $dateTo], $extParams);
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$dateFrom, $dateTo]);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
     
     private function getCallDurationStats($dateFrom, $dateTo) {
-        $sql = "SELECT 
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        if ($extWhere) $whereConditions[] = $extWhere;
+        $whereClause = implode(' AND ', $whereConditions);
+
+        $sql = "SELECT
                     AVG(call_duration) as avg_duration,
                     MIN(call_duration) as min_duration,
                     MAX(call_duration) as max_duration,
@@ -1906,26 +1987,33 @@ class AGIAnalytics {
                     COUNT(CASE WHEN call_duration <= 30 THEN 1 END) as short_calls,
                     COUNT(CASE WHEN call_duration BETWEEN 31 AND 120 THEN 1 END) as medium_calls,
                     COUNT(CASE WHEN call_duration > 120 THEN 1 END) as long_calls
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ?";
-        
+                FROM {$this->table}
+                WHERE {$whereClause}";
+
+        $params = array_merge([$dateFrom, $dateTo], $extParams);
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$dateFrom, $dateTo]);
+        $stmt->execute($params);
         return $stmt->fetch();
     }
     
     private function getLanguageStats($dateFrom, $dateTo) {
-        $sql = "SELECT 
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        if ($extWhere) $whereConditions[] = $extWhere;
+        $whereClause = implode(' AND ', $whereConditions);
+
+        $sql = "SELECT
                     language_used,
                     COUNT(*) as count,
                     COUNT(CASE WHEN language_changed = 1 THEN 1 END) as changed_count
-                FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ?
+                FROM {$this->table}
+                WHERE {$whereClause}
                 GROUP BY language_used
                 ORDER BY count DESC";
-        
+
+        $params = array_merge([$dateFrom, $dateTo], $extParams);
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$dateFrom, $dateTo]);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
     
@@ -1952,9 +2040,12 @@ class AGIAnalytics {
     
     private function getRecentCalls($limit = 20) {
         try {
-            $sql = "SELECT * FROM {$this->table} ORDER BY call_start_time DESC LIMIT ?";
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            $whereClause = $extWhere ? "WHERE {$extWhere}" : "";
+            $sql = "SELECT * FROM {$this->table} {$whereClause} ORDER BY call_start_time DESC LIMIT ?";
+            $params = array_merge($extParams, [$limit]);
             $stmt = $this->db->prepare($sql);
-            $stmt->execute([$limit]);
+            $stmt->execute($params);
             $calls = $stmt->fetchAll();
             
             if (!$calls) {
@@ -1974,17 +2065,26 @@ class AGIAnalytics {
     
     private function getTodaySummary() {
         try {
-            $sql = "SELECT 
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            $whereConditions = ["DATE(call_start_time) = CURDATE()"];
+            if ($extWhere) $whereConditions[] = $extWhere;
+            $whereClause = implode(' AND ', $whereConditions);
+
+            $sql = "SELECT
                         COUNT(*) as total_calls,
                         COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                         AVG(call_duration) as avg_duration,
                         SUM(google_tts_calls + edge_tts_calls) as tts_usage,
                         COUNT(DISTINCT phone_number) as unique_callers
-                    FROM {$this->table} 
-                    WHERE DATE(call_start_time) = CURDATE()";
-            
+                    FROM {$this->table}
+                    WHERE {$whereClause}";
+
             $stmt = $this->db->prepare($sql);
-            $stmt->execute();
+            if ($extParams) {
+                $stmt->execute($extParams);
+            } else {
+                $stmt->execute();
+            }
             $result = $stmt->fetch();
             
             // Return default values if no data
@@ -2013,8 +2113,19 @@ class AGIAnalytics {
     
     private function getActiveCalls() {
         try {
-            $sql = "SELECT COUNT(*) FROM {$this->table} WHERE call_outcome = 'in_progress'";
-            $result = $this->db->query($sql);
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            $whereConditions = ["call_outcome = 'in_progress'"];
+            if ($extWhere) $whereConditions[] = $extWhere;
+            $whereClause = implode(' AND ', $whereConditions);
+            $sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$whereClause}";
+            if ($extParams) {
+                $stmt = $this->db->prepare($sql);
+                $result = $stmt->execute($extParams);
+                if (!$result) return 0;
+                $result = $stmt;
+            } else {
+                $result = $this->db->query($sql);
+            }
             if ($result === false) {
                 error_log("getActiveCalls query failed: " . implode(" ", $this->db->errorInfo()));
                 return 0;
@@ -2028,8 +2139,19 @@ class AGIAnalytics {
     
     private function getTodayCallCount() {
         try {
-            $sql = "SELECT COUNT(*) FROM {$this->table} WHERE DATE(call_start_time) = CURDATE()";
-            $result = $this->db->query($sql);
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            $whereConditions = ["DATE(call_start_time) = CURDATE()"];
+            if ($extWhere) $whereConditions[] = $extWhere;
+            $whereClause = implode(' AND ', $whereConditions);
+            $sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$whereClause}";
+            if ($extParams) {
+                $stmt = $this->db->prepare($sql);
+                $result = $stmt->execute($extParams);
+                if (!$result) return 0;
+                $result = $stmt;
+            } else {
+                $result = $this->db->query($sql);
+            }
             if ($result === false) {
                 error_log("getTodayCallCount query failed: " . implode(" ", $this->db->errorInfo()));
                 return 0;
@@ -2043,8 +2165,19 @@ class AGIAnalytics {
     
     private function getCurrentHourCallCount() {
         try {
-            $sql = "SELECT COUNT(*) FROM {$this->table} WHERE call_start_time >= DATE_SUB(NOW(), INTERVAL 1 HOUR)";
-            $result = $this->db->query($sql);
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            $whereConditions = ["call_start_time >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"];
+            if ($extWhere) $whereConditions[] = $extWhere;
+            $whereClause = implode(' AND ', $whereConditions);
+            $sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$whereClause}";
+            if ($extParams) {
+                $stmt = $this->db->prepare($sql);
+                $result = $stmt->execute($extParams);
+                if (!$result) return 0;
+                $result = $stmt;
+            } else {
+                $result = $this->db->query($sql);
+            }
             if ($result === false) {
                 error_log("getCurrentHourCallCount query failed: " . implode(" ", $this->db->errorInfo()));
                 return 0;
@@ -2062,11 +2195,27 @@ class AGIAnalytics {
     
     private function getTodaySuccessRate() {
         try {
-            $sql = "SELECT 
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            $whereConditions = ["DATE(call_start_time) = CURDATE()"];
+            if ($extWhere) $whereConditions[] = $extWhere;
+            $whereClause = implode(' AND ', $whereConditions);
+
+            $sql = "SELECT
                         COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) as success_rate
-                    FROM {$this->table} 
-                    WHERE DATE(call_start_time) = CURDATE()";
-            $result = $this->db->query($sql);
+                    FROM {$this->table}
+                    WHERE {$whereClause}";
+
+            if ($extParams) {
+                $stmt = $this->db->prepare($sql);
+                $result = $stmt->execute($extParams);
+                if (!$result) {
+                    error_log("getTodaySuccessRate query failed: " . implode(" ", $this->db->errorInfo()));
+                    return 0;
+                }
+                $result = $stmt;
+            } else {
+                $result = $this->db->query($sql);
+            }
             if ($result === false) {
                 error_log("getTodaySuccessRate query failed: " . implode(" ", $this->db->errorInfo()));
                 return 0;
@@ -2081,8 +2230,19 @@ class AGIAnalytics {
     
     private function getTodayAvgDuration() {
         try {
-            $sql = "SELECT AVG(call_duration) FROM {$this->table} WHERE DATE(call_start_time) = CURDATE()";
-            $result = $this->db->query($sql);
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            $whereConditions = ["DATE(call_start_time) = CURDATE()"];
+            if ($extWhere) $whereConditions[] = $extWhere;
+            $whereClause = implode(' AND ', $whereConditions);
+            $sql = "SELECT AVG(call_duration) FROM {$this->table} WHERE {$whereClause}";
+            if ($extParams) {
+                $stmt = $this->db->prepare($sql);
+                $result = $stmt->execute($extParams);
+                if (!$result) return 0;
+                $result = $stmt;
+            } else {
+                $result = $this->db->query($sql);
+            }
             if ($result === false) {
                 error_log("getTodayAvgDuration query failed: " . implode(" ", $this->db->errorInfo()));
                 return 0;
@@ -2097,8 +2257,19 @@ class AGIAnalytics {
     
     private function getAverageResponseTime() {
         try {
-            $sql = "SELECT AVG(api_response_time) FROM {$this->table} WHERE DATE(call_start_time) = CURDATE() AND api_response_time > 0";
-            $result = $this->db->query($sql);
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            $whereConditions = ["DATE(call_start_time) = CURDATE()", "api_response_time > 0"];
+            if ($extWhere) $whereConditions[] = $extWhere;
+            $whereClause = implode(' AND ', $whereConditions);
+            $sql = "SELECT AVG(api_response_time) FROM {$this->table} WHERE {$whereClause}";
+            if ($extParams) {
+                $stmt = $this->db->prepare($sql);
+                $result = $stmt->execute($extParams);
+                if (!$result) return 0.00;
+                $result = $stmt;
+            } else {
+                $result = $this->db->query($sql);
+            }
             if ($result === false) {
                 error_log("getAverageResponseTime query failed: " . implode(" ", $this->db->errorInfo()));
                 return 0;
@@ -2341,15 +2512,9 @@ class AGIAnalytics {
     
     private function formatTimestamp($timestamp) {
         if (!$timestamp) return '';
-        
-        $time = strtotime($timestamp);
-        if ($this->language === 'el') {
-            // Greek date format: dd/mm/yyyy HH:mm
-            return date('d/m/Y H:i', $time);
-        } else {
-            // English date format: Mon j, Y g:i A
-            return date('M j, Y g:i A', $time);
-        }
+
+        // Return raw timestamp for JavaScript to convert to browser timezone
+        return $timestamp;
     }
     
     private function formatDuration($seconds) {
@@ -2382,171 +2547,175 @@ class AGIAnalytics {
     // ===== CSV EXPORT =====
     
     private function exportCSV() {
+        // Clean output buffer to prevent any interference
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="agi_analytics_export_' . date('Y-m-d_H-i-s') . '.csv"');
-        
-        $output = fopen('php://output', 'w');
-        
-        // Add UTF-8 BOM for proper encoding in Excel
-        fputs($output, "\xEF\xBB\xBF");
-        
-        // CSV Headers (translated)
+        header('Content-Disposition: attachment; filename="taxi_calls_report_' . date('Y-m-d_H-i-s') . '.csv"');
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Expires: 0');
+
+        // Create clean CSV content
+        $csvContent = '';
+
+        // Add UTF-8 BOM for proper Excel encoding
+        $csvContent .= "\xEF\xBB\xBF";
+
+        // Title row
+        $title = $this->language === 'el' ? 'ΑΝΑΦΟΡΑ ΚΛΗΣΕΩΝ ΤΑΞΙ' : 'TAXI CALLS REPORT';
+        $csvContent .= '"' . $title . '"' . "\r\n";
+
+        // Generation date
+        $generated = $this->language === 'el' ? 'Δημιουργήθηκε στις' : 'Generated on';
+        $csvContent .= '"' . $generated . ': ' . date('d/m/Y H:i:s') . '"' . "\r\n";
+
+        // Empty row
+        $csvContent .= "\r\n";
+
+        // Headers row
         $headers = [
-            'ID', 
-            $this->t('call_id', 'Call ID'), 
-            $this->t('unique_id', 'Unique ID'), 
-            $this->t('phone_number', 'Phone Number'), 
-            $this->t('extension', 'Extension'), 
-            $this->t('call_start', 'Call Start Time'), 
-            $this->t('call_end', 'Call End Time'), 
-            $this->t('duration_label', 'Duration') . ' (' . $this->t('seconds_short', 's') . ')', 
-            $this->t('call_outcome', 'Call Outcome'), 
-            $this->t('call_type', 'Call Type'), 
-            $this->t('reservation', 'Is Reservation'), 
-            $this->t('reservation_time', 'Reservation Time'), 
-            $this->language === 'el' ? 'Γλώσσα που Χρησιμοποιήθηκε' : 'Language Used', 
-            $this->language === 'el' ? 'Αλλαγή Γλώσσας' : 'Language Changed', 
-            $this->language === 'el' ? 'Αρχική Επιλογή' : 'Initial Choice', 
-            $this->language === 'el' ? 'Προσπάθειες Επιβεβαίωσης' : 'Confirmation Attempts', 
-            $this->language === 'el' ? 'Συνολικές Επαναλήψεις' : 'Total Retries',
-            $this->language === 'el' ? 'Προσπάθειες Ονόματος' : 'Name Attempts', 
-            $this->language === 'el' ? 'Προσπάθειες Παραλαβής' : 'Pickup Attempts', 
-            $this->language === 'el' ? 'Προσπάθειες Προορισμού' : 'Destination Attempts', 
-            $this->language === 'el' ? 'Προσπάθειες Κράτησης' : 'Reservation Attempts',
-            $this->language === 'el' ? 'Επιβεβαίωση Προεπιλεγμένης Διεύθυνσης' : 'Confirmed Default Address', 
-            $this->t('pickup_location', 'Pickup Address'), 
-            $this->language === 'el' ? 'Γεωγραφικό Πλάτος Παραλαβής' : 'Pickup Latitude', 
-            $this->language === 'el' ? 'Γεωγραφικό Μήκος Παραλαβής' : 'Pickup Longitude',
-            $this->t('destination_location', 'Destination Address'), 
-            $this->language === 'el' ? 'Γεωγραφικό Πλάτος Προορισμού' : 'Destination Latitude', 
-            $this->language === 'el' ? 'Γεωγραφικό Μήκος Προορισμού' : 'Destination Longitude', 
-            $this->language === 'el' ? 'Κλήσεις Google TTS' : 'Google TTS Calls',
-            $this->language === 'el' ? 'Κλήσεις Google STT' : 'Google STT Calls', 
-            $this->language === 'el' ? 'Κλήσεις Edge TTS' : 'Edge TTS Calls', 
-            $this->language === 'el' ? 'Κλήσεις Geocoding API' : 'Geocoding API Calls', 
-            $this->language === 'el' ? 'Κλήσεις User API' : 'User API Calls', 
-            $this->language === 'el' ? 'Κλήσεις Registration API' : 'Registration API Calls', 
-            $this->language === 'el' ? 'Κλήσεις Date Parsing API' : 'Date Parsing API Calls', 
-            $this->language === 'el' ? 'Χρόνος Επεξεργασίας TTS (ms)' : 'TTS Processing Time (ms)', 
-            $this->language === 'el' ? 'Χρόνος Επεξεργασίας STT (ms)' : 'STT Processing Time (ms)', 
-            $this->language === 'el' ? 'Χρόνος Επεξεργασίας Geocoding (ms)' : 'Geocoding Processing Time (ms)', 
-            $this->language === 'el' ? 'Συνολικός Χρόνος Επεξεργασίας (ms)' : 'Total Processing Time (ms)',
-            $this->language === 'el' ? 'Επιτυχημένη Εγγραφή' : 'Successful Registration', 
-            $this->language === 'el' ? 'Αιτία Μεταφοράς σε Τηλεφωνητή' : 'Operator Transfer Reason', 
-            $this->t('error_messages', 'Error Messages'), 
-            $this->language === 'el' ? 'Διαδρομή Ηχογράφησης' : 'Recording Path',
-            $this->language === 'el' ? 'Διαδρομή Αρχείου Log' : 'Log File Path', 
-            $this->language === 'el' ? 'Διαδρομή Progress JSON' : 'Progress JSON Path', 
-            $this->language === 'el' ? 'Πάροχος TTS' : 'TTS Provider', 
-            $this->language === 'el' ? 'Λειτουργία Callback' : 'Callback Mode', 
-            $this->language === 'el' ? 'Ημέρες Ισχύος' : 'Days Valid',
-            $this->language === 'el' ? 'Όνομα Χρήστη' : 'User Name', 
-            $this->language === 'el' ? 'Αποτέλεσμα Εγγραφής' : 'Registration Result', 
-            $this->language === 'el' ? 'Χρόνος Απόκρισης API (ms)' : 'API Response Time (ms)', 
-            $this->language === 'el' ? 'Δημιουργήθηκε στις' : 'Created At', 
-            $this->language === 'el' ? 'Ενημερώθηκε στις' : 'Updated At'
+            $this->language === 'el' ? 'Ημερομηνία' : 'Date',
+            $this->language === 'el' ? 'Ώρα' : 'Time',
+            $this->language === 'el' ? 'Τηλέφωνο' : 'Phone',
+            $this->language === 'el' ? 'Εσωτερικό' : 'Extension',
+            $this->language === 'el' ? 'Διάρκεια' : 'Duration',
+            $this->language === 'el' ? 'Αποτέλεσμα' : 'Result',
+            $this->language === 'el' ? 'Τύπος' : 'Type',
+            $this->language === 'el' ? 'Κράτηση' : 'Reservation',
+            $this->language === 'el' ? 'Παραλαβή' : 'Pickup',
+            $this->language === 'el' ? 'Προορισμός' : 'Destination',
+            $this->language === 'el' ? 'Πελάτης' : 'Customer',
+            $this->language === 'el' ? 'Γλώσσα' : 'Language'
         ];
+
+        // Add header row to CSV
+        $csvContent .= '"' . implode('","', $headers) . '"' . "\r\n";
         
-        fputcsv($output, $headers);
-        
-        // Apply same filters as main query
-        $where = [];
-        $params = [];
-        
-        if (!empty($_GET['date_from'])) {
-            $where[] = 'DATE(call_start_time) >= ?';
-            $params[] = $_GET['date_from'];
-        }
-        if (!empty($_GET['date_to'])) {
-            $where[] = 'DATE(call_start_time) <= ?';
-            $params[] = $_GET['date_to'];
-        }
-        if (!empty($_GET['phone'])) {
-            $where[] = 'phone_number LIKE ?';
-            $params[] = '%' . $_GET['phone'] . '%';
-        }
-        if (!empty($_GET['extension'])) {
-            $where[] = 'extension = ?';
-            $params[] = $_GET['extension'];
-        }
-        if (!empty($_GET['outcome'])) {
-            $where[] = 'call_outcome = ?';
-            $params[] = $_GET['outcome'];
-        }
-        
-        $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
-        $sql = "SELECT * FROM {$this->table} WHERE {$whereClause} ORDER BY call_start_time DESC";
-        
-        // Add limit if specified
-        if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
-            $sql .= " LIMIT " . intval($_GET['limit']);
-        }
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-        
-        // Initialize totals counters
+        // Get clean call data
+        $exportResult = $this->getExportData();
+        $calls = $exportResult['data'];
+
+        // Initialize counters for summary
         $totalCalls = 0;
-        $totalGoogleTTS = 0;
-        $totalGoogleSTT = 0;
-        $totalEdgeTTS = 0;
-        $totalGeocoding = 0;
-        $totalUserAPI = 0;
-        $totalRegistrationAPI = 0;
-        $totalDateParsingAPI = 0;
-        
-        while ($row = $stmt->fetch()) {
-            $csvRow = [
-                $row['id'], $row['call_id'], $row['unique_id'], $row['phone_number'], $row['extension'],
-                $row['call_start_time'], $row['call_end_time'], $row['call_duration'], 
-                $this->translateStatus($row['call_outcome']),
-                $this->translateCallType($row['call_type']), 
-                $row['is_reservation'] ? ($this->language === 'el' ? 'Ναι' : 'Yes') : ($this->language === 'el' ? 'Όχι' : 'No'), 
-                $row['reservation_time'],
-                $row['language_used'], $row['language_changed'] ? 'Yes' : 'No', $row['initial_choice'],
-                $row['confirmation_attempts'], $row['total_retries'], $row['name_attempts'], 
-                $row['pickup_attempts'], $row['destination_attempts'], $row['reservation_attempts'],
-                $row['confirmed_default_address'] ? 'Yes' : 'No', $row['pickup_address'], 
-                $row['pickup_lat'], $row['pickup_lng'], $row['destination_address'], 
-                $row['destination_lat'], $row['destination_lng'], $row['google_tts_calls'],
-                $row['google_stt_calls'], $row['edge_tts_calls'], $row['geocoding_api_calls'],
-                $row['user_api_calls'], $row['registration_api_calls'], $row['date_parsing_api_calls'],
-                $row['tts_processing_time'], $row['stt_processing_time'], $row['geocoding_processing_time'],
-                $row['total_processing_time'], $row['successful_registration'] ? 'Yes' : 'No',
-                $row['operator_transfer_reason'], $row['error_messages'], $row['recording_path'],
-                $row['log_file_path'], $row['progress_json_path'], $row['tts_provider'], 
-                $row['callback_mode'], $row['days_valid'], $row['user_name'], $row['registration_id'], $row['registration_result'],
-                $row['api_response_time'], $row['created_at'], $row['updated_at']
-            ];
-            
-            fputcsv($output, $csvRow);
-            
-            // Accumulate totals
-            $totalCalls++;
-            $totalGoogleTTS += (int)$row['google_tts_calls'];
-            $totalGoogleSTT += (int)$row['google_stt_calls'];
-            $totalEdgeTTS += (int)$row['edge_tts_calls'];
-            $totalGeocoding += (int)$row['geocoding_api_calls'];
-            $totalUserAPI += (int)$row['user_api_calls'];
-            $totalRegistrationAPI += (int)$row['registration_api_calls'];
-            $totalDateParsingAPI += (int)$row['date_parsing_api_calls'];
+        $successfulCalls = 0;
+        $failedCalls = 0;
+        $reservationCalls = 0;
+
+        // Process each call and add to CSV
+        foreach ($calls as $row) {
+            try {
+                // Format date and time
+                $datetime = new DateTime($row['call_start_time']);
+                $callDate = $datetime->format('d/m/Y');
+                $callTime = $datetime->format('H:i');
+
+                // Format duration as MM:SS
+                $duration = '';
+                if (!empty($row['call_duration']) && is_numeric($row['call_duration'])) {
+                    $seconds = (int)$row['call_duration'];
+                    $minutes = floor($seconds / 60);
+                    $seconds = $seconds % 60;
+                    $duration = sprintf('%02d:%02d', $minutes, $seconds);
+                }
+
+                // Clean call result
+                $callResult = $this->translateStatus($row['call_outcome']);
+                $callType = $this->translateCallType($row['call_type']);
+
+                // Reservation status
+                $isReservation = $row['is_reservation'] ?
+                    ($this->language === 'el' ? 'Ναι' : 'Yes') :
+                    ($this->language === 'el' ? 'Όχι' : 'No');
+
+                // Clean addresses
+                $pickup = !empty($row['pickup_address']) ?
+                    str_replace(['"', '\n', '\r'], ['', ' ', ' '], $row['pickup_address']) : '';
+                $destination = !empty($row['destination_address']) ?
+                    str_replace(['"', '\n', '\r'], ['', ' ', ' '], $row['destination_address']) : '';
+
+                // Customer name
+                $customer = !empty($row['user_name']) ?
+                    str_replace(['"', '\n', '\r'], ['', ' ', ' '], $row['user_name']) : '';
+
+                // Language
+                $language = !empty($row['language_used']) ? $row['language_used'] : '';
+
+                // Create CSV data row
+                $dataRow = [
+                    $callDate,      // Date
+                    $callTime,      // Time
+                    $row['phone_number'] ?: '',  // Phone
+                    $row['extension'] ?: '',     // Extension
+                    $duration,      // Duration
+                    $callResult,    // Result
+                    $callType,      // Type
+                    $isReservation, // Reservation
+                    $pickup,        // Pickup
+                    $destination,   // Destination
+                    $customer,      // Customer
+                    $language       // Language
+                ];
+
+                // Add data row to CSV content
+                $csvContent .= '"' . implode('","', $dataRow) . '"' . "\r\n";
+
+                // Count statistics
+                $totalCalls++;
+                if ($row['call_outcome'] === 'successful_registration') {
+                    $successfulCalls++;
+                } elseif (in_array($row['call_outcome'], ['hangup', 'error'])) {
+                    $failedCalls++;
+                }
+                if ($row['is_reservation']) {
+                    $reservationCalls++;
+                }
+
+            } catch (Exception $e) {
+                // Skip problematic rows but continue processing
+                error_log("CSV Export Error for row ID " . $row['id'] . ": " . $e->getMessage());
+                continue;
+            }
         }
-        
-        // Add summary rows
-        fputcsv($output, []); // Empty row for separation
-        fputcsv($output, ['=== SUMMARY ===']);
-        fputcsv($output, ['Total Calls', $totalCalls]);
-        fputcsv($output, ['Total Google TTS Calls', $totalGoogleTTS]);
-        fputcsv($output, ['Total Google STT Calls', $totalGoogleSTT]);
-        fputcsv($output, ['Total Edge TTS Calls', $totalEdgeTTS]);
-        fputcsv($output, ['Total Geocoding API Calls', $totalGeocoding]);
-        fputcsv($output, ['Total User API Calls', $totalUserAPI]);
-        fputcsv($output, ['Total Registration API Calls', $totalRegistrationAPI]);
-        fputcsv($output, ['Total Date Parsing API Calls', $totalDateParsingAPI]);
-        fputcsv($output, ['Total TTS Calls (All)', $totalGoogleTTS + $totalEdgeTTS]);
-        fputcsv($output, ['Total API Calls (All)', $totalGoogleTTS + $totalGoogleSTT + $totalEdgeTTS + $totalGeocoding + $totalUserAPI + $totalRegistrationAPI + $totalDateParsingAPI]);
-        
-        fclose($output);
+
+        // Add summary section
+        $transferredCalls = $totalCalls - $successfulCalls - $failedCalls;
+        $successRate = $totalCalls > 0 ? round(($successfulCalls / $totalCalls) * 100, 1) : 0;
+
+        // Empty rows before summary
+        $csvContent .= "\r\n\r\n";
+
+        // Summary title
+        $summaryTitle = $this->language === 'el' ? '=== ΣΥΝΟΨΗ ΑΝΑΦΟΡΑΣ ===' : '=== REPORT SUMMARY ===';
+        $csvContent .= '"' . $summaryTitle . '"' . "\r\n\r\n";
+
+        // Summary statistics
+        $summaryLabels = [
+            'total' => $this->language === 'el' ? 'Συνολικές Κλήσεις' : 'Total Calls',
+            'successful' => $this->language === 'el' ? 'Επιτυχημένες Κλήσεις' : 'Successful Calls',
+            'failed' => $this->language === 'el' ? 'Αποτυχημένες Κλήσεις' : 'Failed Calls',
+            'transferred' => $this->language === 'el' ? 'Μεταφορές σε Τηλεφωνητή' : 'Transferred to Operator',
+            'reservations' => $this->language === 'el' ? 'Κρατήσεις' : 'Reservations',
+            'success_rate' => $this->language === 'el' ? 'Ποσοστό Επιτυχίας' : 'Success Rate'
+        ];
+
+        $csvContent .= '"' . $summaryLabels['total'] . '","' . $totalCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['successful'] . '","' . $successfulCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['failed'] . '","' . $failedCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['transferred'] . '","' . $transferredCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['reservations'] . '","' . $reservationCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['success_rate'] . '","' . $successRate . '%"' . "\r\n";
+
+        // Generation info
+        $csvContent .= "\r\n";
+        $genBy = $this->language === 'el' ? 'Δημιουργήθηκε από' : 'Generated by';
+        $csvContent .= '"' . $genBy . '","IQ Taxi Analytics System"' . "\r\n";
+        $exportDate = $this->language === 'el' ? 'Ημερομηνία Εξαγωγής' : 'Export Date';
+        $csvContent .= '"' . $exportDate . '","' . date('d/m/Y H:i:s') . '"' . "\r\n";
+
+        // Output the clean CSV content
+        echo $csvContent;
         exit;
     }
     
@@ -3015,7 +3184,14 @@ class AGIAnalytics {
     private function getExportData() {
         $where = [];
         $params = [];
-        
+
+        // Apply global extension filter first
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        if ($extWhere) {
+            $where[] = $extWhere;
+            $params = array_merge($params, $extParams);
+        }
+
         if (!empty($_GET['date_from'])) {
             $where[] = 'DATE(call_start_time) >= ?';
             $params[] = $_GET['date_from'];
@@ -3028,7 +3204,8 @@ class AGIAnalytics {
             $where[] = 'phone_number LIKE ?';
             $params[] = '%' . $_GET['phone'] . '%';
         }
-        if (!empty($_GET['extension'])) {
+        if (!empty($_GET['extension']) && !$this->globalExtensionFilter) {
+            // Only apply manual extension filter if global filter is not active
             $where[] = 'extension = ?';
             $params[] = $_GET['extension'];
         }
@@ -3036,7 +3213,7 @@ class AGIAnalytics {
             $where[] = 'call_outcome = ?';
             $params[] = $_GET['outcome'];
         }
-        
+
         $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
         $sql = "SELECT * FROM {$this->table} WHERE {$whereClause} ORDER BY call_start_time DESC";
         
@@ -3699,11 +3876,12 @@ class AGIAnalytics {
             box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
             padding: 0.75rem;
             min-width: 200px;
-            z-index: 1000;
+            z-index: 9999;
             opacity: 0;
             visibility: hidden;
             transform: translateY(-10px);
             transition: all 0.3s ease;
+            border: 1px solid #e5e7eb;
         }
         
         .mobile-menu-dropdown.show {
@@ -3731,27 +3909,247 @@ class AGIAnalytics {
             transform: translateY(-1px);
         }
         
-        /* Responsive behavior */
+        /* Tablet and larger screens - reset heatmap layout */
+        @media (min-width: 769px) {
+            .heatmap-container .heatmap-header {
+                flex-direction: row !important;
+                align-items: center !important;
+                justify-content: space-between !important;
+                margin-bottom: 1rem !important;
+                padding: 0 !important;
+            }
+
+            .heatmap-container .heatmap-stats {
+                flex-direction: row !important;
+                flex-wrap: wrap !important;
+                font-size: 0.9rem !important;
+                gap: 1rem !important;
+                width: auto !important;
+                max-width: calc(100% - 120px); /* Leave space for fullscreen button */
+            }
+
+            .heatmap-container .heatmap-fullscreen-btn {
+                margin-top: 0 !important;
+                margin-left: auto !important;
+                min-width: 100px !important;
+                flex-shrink: 0 !important; /* Don't shrink the button */
+            }
+
+            .heatmap-container .heatmap-wrapper {
+                height: 400px !important;
+            }
+        }
+
+        /* Mobile phones only */
         @media (max-width: 768px) {
             .header-content {
                 align-items: center;
             }
-            
+
             .dashboard-title {
                 font-size: 2rem;
                 gap: 0.5rem;
             }
-            
+
             .dashboard-subtitle {
                 font-size: 1rem;
             }
-            
+
             .header-actions {
                 display: none;
             }
-            
+
             .header-actions-mobile {
                 display: block;
+            }
+
+            /* Modal mobile fixes */
+            .modal-content {
+                max-width: 95vw;
+                max-height: 95vh;
+                margin: 0.5rem;
+            }
+
+            .modal-header {
+                padding: 1rem;
+                position: sticky;
+                top: 0;
+                background: white;
+                z-index: 20;
+            }
+
+            .modal-body {
+                padding: 1rem;
+                max-height: calc(95vh - 100px);
+            }
+
+            .modal-title {
+                font-size: 1.1rem;
+            }
+
+            .modal-actions {
+                gap: 0.25rem;
+            }
+
+            .modal-actions .btn {
+                padding: 0.375rem 0.5rem;
+                font-size: 0.8rem;
+            }
+
+            /* Heatmap fixes for tablets (481px to 768px) */
+
+            /* Call detail grid mobile */
+            .call-detail-grid {
+                grid-template-columns: 1fr;
+                gap: 0.75rem;
+            }
+
+            /* Mobile menu fixes */
+            .header-actions-mobile {
+                position: relative;
+                z-index: 1000;
+            }
+
+            .mobile-menu-dropdown {
+                position: fixed !important;
+                top: 80px !important; /* Fixed position from top */
+                right: 1rem !important;
+                left: auto !important;
+                width: 200px !important;
+                z-index: 99999 !important;
+                background: white !important;
+                border: 2px solid #e5e7eb !important;
+                border-radius: 8px !important;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+                padding: 0.75rem !important;
+            }
+
+            .mobile-menu-dropdown.show {
+                opacity: 1 !important;
+                visibility: visible !important;
+                transform: translateY(0) !important;
+                display: block !important;
+            }
+
+            .mobile-menu-toggle {
+                padding: 0.6rem;
+                font-size: 1.1rem;
+                background: rgba(255, 255, 255, 0.15) !important;
+            }
+
+            .mobile-menu-dropdown .btn {
+                padding: 0.75rem 1rem !important;
+                font-size: 0.9rem !important;
+                margin-bottom: 0.5rem !important;
+                width: 100% !important;
+                text-align: left !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 0.5rem !important;
+            }
+
+            /* Mobile Fullscreen Heatmap - Complete Redesign */
+            .heatmap-fullscreen {
+                background: #000 !important;
+            }
+
+            .heatmap-fullscreen .chart-header {
+                display: none !important; /* Hide entire header on mobile */
+            }
+
+            .heatmap-fullscreen .heatmap-wrapper {
+                margin: 0 !important;
+                height: 100vh !important; /* Full viewport height */
+                border-radius: 0 !important;
+                width: 100vw !important;
+            }
+
+            /* Floating close button */
+            .fullscreen-close-btn {
+                position: fixed !important;
+                top: 1rem !important;
+                right: 1rem !important;
+                width: 45px !important;
+                height: 45px !important;
+                background: rgba(0, 0, 0, 0.7) !important;
+                color: white !important;
+                border: 2px solid rgba(255, 255, 255, 0.3) !important;
+                border-radius: 50% !important;
+                z-index: 100000 !important;
+                font-size: 1.2rem !important;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3) !important;
+                backdrop-filter: blur(5px) !important;
+            }
+
+            .fullscreen-close-btn:hover {
+                background: rgba(0, 0, 0, 0.9) !important;
+                border-color: rgba(255, 255, 255, 0.5) !important;
+                transform: scale(1.1) !important;
+            }
+
+            /* Floating stats overlay - initially hidden */
+            .heatmap-fullscreen .mobile-stats-overlay {
+                position: fixed !important;
+                bottom: 1rem !important;
+                left: 1rem !important;
+                right: 1rem !important;
+                background: rgba(0, 0, 0, 0.85) !important;
+                color: white !important;
+                padding: 0.75rem !important;
+                border-radius: 12px !important;
+                border: 1px solid rgba(255, 255, 255, 0.2) !important;
+                backdrop-filter: blur(10px) !important;
+                z-index: 99999 !important;
+                display: none !important;
+                flex-wrap: wrap !important;
+                gap: 0.75rem !important;
+                font-size: 0.8rem !important;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
+                opacity: 0 !important;
+                transform: translateY(20px) !important;
+                transition: all 0.3s ease !important;
+            }
+
+            .heatmap-fullscreen .mobile-stats-overlay.show {
+                display: flex !important;
+                opacity: 1 !important;
+                transform: translateY(0) !important;
+            }
+
+            .heatmap-fullscreen .mobile-stats-overlay .stat-item {
+                color: white !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 0.25rem !important;
+                flex: 1 !important;
+                justify-content: center !important;
+            }
+
+            /* Hide other fullscreen elements on mobile */
+            .heatmap-fullscreen .heatmap-fullscreen-btn {
+                display: none !important;
+            }
+
+            /* Mobile fullscreen tap instruction */
+            .heatmap-fullscreen .mobile-tap-hint {
+                position: fixed !important;
+                top: 50% !important;
+                left: 50% !important;
+                transform: translate(-50%, -50%) !important;
+                background: rgba(0, 0, 0, 0.6) !important;
+                color: white !important;
+                padding: 1rem 1.5rem !important;
+                border-radius: 25px !important;
+                font-size: 0.9rem !important;
+                z-index: 99998 !important;
+                opacity: 0 !important;
+                animation: fadeInOut 3s ease-in-out !important;
+                pointer-events: none !important;
+            }
+
+            @keyframes fadeInOut {
+                0%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+                20%, 80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
             }
         }
         
@@ -3779,6 +4177,132 @@ class AGIAnalytics {
             
             .dashboard-title i {
                 font-size: 1.5rem;
+            }
+
+            /* Extra small mobile fullscreen fixes */
+            .heatmap-fullscreen .chart-header {
+                padding: 0.75rem !important;
+            }
+
+            .heatmap-fullscreen .chart-title {
+                font-size: 1.1rem !important;
+            }
+
+            .heatmap-fullscreen .heatmap-wrapper {
+                height: calc(100vh - 70px) !important;
+            }
+
+            .heatmap-fullscreen .heatmap-stats {
+                padding: 0.375rem 0.5rem !important;
+                font-size: 0.75rem !important;
+            }
+
+            .heatmap-fullscreen .heatmap-stats .stat-item {
+                flex-direction: column !important;
+                align-items: center !important;
+                text-align: center !important;
+                min-width: 60px !important;
+            }
+
+            .fullscreen-close-btn {
+                top: 0.75rem !important;
+                right: 0.75rem !important;
+                width: 32px !important;
+                height: 32px !important;
+            }
+
+            /* Small mobile heatmap fixes - ONLY for phones, not tablets */
+            .heatmap-container:not(.heatmap-fullscreen) .chart-container {
+                margin: 0.5rem;
+                padding: 1rem;
+            }
+
+            .heatmap-container:not(.heatmap-fullscreen) .heatmap-wrapper {
+                height: 280px;
+                width: 100%;
+                max-width: 100%;
+                overflow: hidden;
+                border-radius: 8px;
+                margin: 0;
+            }
+
+            .heatmap-container:not(.heatmap-fullscreen) .heatmap-header {
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 0.75rem;
+                padding: 0 0.25rem;
+            }
+
+            .heatmap-container:not(.heatmap-fullscreen) .heatmap-stats {
+                flex-wrap: wrap;
+                font-size: 0.8rem;
+                gap: 0.5rem;
+                flex: 1;
+                max-width: calc(100% - 80px); /* Leave space for fullscreen button */
+            }
+
+            .heatmap-container:not(.heatmap-fullscreen) .heatmap-fullscreen-btn {
+                padding: 0.25rem 0.5rem;
+                font-size: 0.75rem;
+                margin: 0;
+                flex-shrink: 0;
+                min-width: 70px;
+            }
+
+            /* Mobile heatmap legend positioning */
+            .heatmap-legend {
+                right: 10px !important; /* Closer to edge on mobile */
+                bottom: 50px !important; /* Higher up to avoid mobile UI */
+                font-size: 0.75rem !important;
+                padding: 8px 10px !important;
+            }
+
+            .heatmap-legend .legend-title {
+                font-size: 0.75rem !important;
+            }
+
+            /* Mobile styles for new organized layout */
+            .chart-title-main {
+                font-size: 1rem;
+                text-align: center;
+            }
+
+            .heatmap-dropdown-row {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .heatmap-dropdown {
+                max-width: none;
+                font-size: 0.8rem;
+            }
+
+            .heatmap-stats-row {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                justify-content: center;
+            }
+
+            .heatmap-stats-overflow {
+                flex-direction: column;
+                gap: 0.5rem;
+                text-align: center;
+                overflow: visible;
+                white-space: normal;
+            }
+
+            .stat-item-compact {
+                font-size: 0.8rem;
+                flex-shrink: 0;
+            }
+
+            .heatmap-fullscreen-btn-fixed {
+                font-size: 0.75rem;
+                padding: 0.2rem 0.4rem;
+                min-width: 70px;
             }
         }
         
@@ -4302,16 +4826,24 @@ class AGIAnalytics {
             border-radius: 0.75rem;
             max-width: 90vw;
             max-height: 90vh;
-            overflow: auto;
+            overflow: hidden;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
         }
-        
+
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 1.5rem;
             border-bottom: 1px solid var(--gray-200);
+            background: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-top-left-radius: 0.75rem;
+            border-top-right-radius: 0.75rem;
         }
         
         .modal-actions {
@@ -4337,6 +4869,9 @@ class AGIAnalytics {
         
         .modal-body {
             padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+            max-height: calc(90vh - 140px); /* Account for header height */
         }
         
         .call-detail-grid {
@@ -4644,6 +5179,90 @@ class AGIAnalytics {
             color: #495057;
             border-color: #adb5bd;
         }
+
+        /* New organized heatmap layout */
+        .heatmap-title-row {
+            margin-bottom: 0.75rem;
+        }
+
+        .chart-title-main {
+            font-size: 1.2rem;
+            margin: 0;
+            color: var(--gray-700);
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .chart-title-main i {
+            color: var(--primary-color);
+            margin-right: 0.5rem;
+        }
+
+        .heatmap-dropdown-row {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+            justify-content: flex-start;
+        }
+
+        .heatmap-dropdown {
+            flex: 1;
+            max-width: 200px;
+            font-size: 0.9rem;
+            padding: 0.375rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+
+        .heatmap-stats-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            gap: 0.5rem;
+        }
+
+        .heatmap-stats-overflow {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex: 1;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            min-width: 0; /* Allow flex item to shrink below content size */
+        }
+
+        .stat-item-compact {
+            font-size: 0.9rem;
+            color: var(--gray-600);
+            white-space: nowrap;
+            flex-shrink: 1;
+        }
+
+        .stat-item-compact i {
+            margin-right: 0.25rem;
+        }
+
+        .heatmap-fullscreen-btn-fixed {
+            background: transparent;
+            border: 1px solid #ddd;
+            color: #6c757d;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+            white-space: nowrap;
+            flex-shrink: 0;
+            min-width: 80px;
+        }
+
+        .heatmap-fullscreen-btn-fixed:hover {
+            background: #f8f9fa;
+            color: #495057;
+            border-color: #adb5bd;
+        }
         
         .stat-item {
             display: flex;
@@ -4721,14 +5340,14 @@ class AGIAnalytics {
         .heatmap-legend {
             position: absolute;
             bottom: 15px;
-            right: 15px;
+            right: 120px; /* Move further left to avoid overlapping fullscreen button and stats */
             background: rgba(255, 255, 255, 0.95);
             padding: 10px 12px;
             border-radius: 6px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
             backdrop-filter: blur(10px);
             font-size: 0.8rem;
-            z-index: 1000;
+            z-index: 1001; /* Higher z-index to stay above map controls */
         }
         
         .legend-title {
@@ -4986,7 +5605,7 @@ class AGIAnalytics {
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label"><?php echo $this->t('extension'); ?></label>
-                            <input type="text" name="extension" class="form-control" placeholder="<?php echo $this->t('placeholder_extension'); ?>">
+                            <input type="text" name="extension" class="form-control" placeholder="<?php echo $this->t('placeholder_extension'); ?>" value="<?php echo htmlspecialchars($this->globalExtensionFilter ?? ''); ?>">
                         </div>
                         
                         <div class="form-group">
@@ -5069,6 +5688,12 @@ class AGIAnalytics {
                     </div>
                     <div class="header-right">
                         <div class="header-actions">
+                            <button id="filterToggleHeader" class="btn btn-primary">
+                                <i class="fas fa-filter"></i> <?php echo $this->t('filters'); ?>
+                            </button>
+                            <button id="exportBtnHeader" class="btn btn-success">
+                                <i class="fas fa-download"></i> <?php echo $this->t('export'); ?>
+                            </button>
                             <button id="refreshBtn" class="btn btn-secondary">
                                 <i class="fas fa-refresh"></i> <?php echo $this->t('refresh'); ?>
                             </button>
@@ -5081,6 +5706,12 @@ class AGIAnalytics {
                                 <i class="fas fa-ellipsis-v"></i>
                             </button>
                             <div class="mobile-menu-dropdown" id="mobileMenuDropdown">
+                                <button id="filterToggleMobile" class="btn btn-primary">
+                                    <i class="fas fa-filter"></i> <?php echo $this->t('filters'); ?>
+                                </button>
+                                <button id="exportBtnMobile" class="btn btn-success">
+                                    <i class="fas fa-download"></i> <?php echo $this->t('export'); ?>
+                                </button>
                                 <button id="refreshBtnMobile" class="btn btn-secondary">
                                     <i class="fas fa-refresh"></i> <?php echo $this->t('refresh'); ?>
                                 </button>
@@ -5109,7 +5740,6 @@ class AGIAnalytics {
                     <div class="chart-header">
                         <h3 class="chart-title"><?php echo $this->t('calls_per_hour'); ?></h3>
                         <select id="hourlyDateSelect" class="form-control" style="width: auto;">
-                            <option value=""><?php echo $this->t('today'); ?></option>
                         </select>
                     </div>
                     <div class="chart-canvas-container">
@@ -5119,38 +5749,45 @@ class AGIAnalytics {
                 
                 <!-- Location Heatmap -->
                 <div class="chart-container heatmap-container">
-                    <div class="chart-header">
-                        <h3 class="chart-title">
+                    <!-- Title at the top -->
+                    <div class="heatmap-title-row">
+                        <h3 class="chart-title-main">
                             <i class="fas fa-map-marked-alt"></i> <?php echo $this->t('location_heatmap'); ?>
                         </h3>
-                        <div class="heatmap-controls">
-                            <select id="heatmapDuration" class="form-control">
-                                <option value="30"><?php echo $this->t('last_30_minutes'); ?></option>
-                                <option value="60"><?php echo $this->t('last_1_hour'); ?></option>
-                                <option value="180"><?php echo $this->t('last_3_hours'); ?></option>
-                                <option value="360"><?php echo $this->t('last_6_hours'); ?></option>
-                                <option value="720"><?php echo $this->t('last_12_hours'); ?></option>
-                                <option value="1440"><?php echo $this->t('last_24_hours'); ?></option>
-                            </select>
-                            <select id="heatmapMode" class="form-control">
-                                <option value="heatmap">🔥 Heatmap</option>
-                                <option value="clusters">📍 Clustered Markers</option>
-                                <option value="markers">🎯 Individual Markers</option>
-                            </select>
-                            <div id="heatmapStats" class="heatmap-stats">
-                                <span class="stat-item">
-                                    <i class="fas fa-map-pin text-success"></i>
-                                    <span id="pickupCount">0</span> <?php echo $this->t('pickups'); ?>
-                                </span>
-                                <span class="stat-item">
-                                    <i class="fas fa-flag-checkered text-danger"></i>
-                                    <span id="destinationCount">0</span> <?php echo $this->t('destinations'); ?>
-                                </span>
-                                <button id="heatmapFullscreen" class="heatmap-fullscreen-btn" title="Fullscreen">
-                                    <i class="fas fa-expand"></i>
-                                </button>
-                            </div>
+                    </div>
+
+                    <!-- Dropdowns under title -->
+                    <div class="heatmap-dropdown-row">
+                        <select id="heatmapDuration" class="form-control heatmap-dropdown">
+                            <option value="30"><?php echo $this->t('last_30_minutes'); ?></option>
+                            <option value="60"><?php echo $this->t('last_1_hour'); ?></option>
+                            <option value="180"><?php echo $this->t('last_3_hours'); ?></option>
+                            <option value="360"><?php echo $this->t('last_6_hours'); ?></option>
+                            <option value="720"><?php echo $this->t('last_12_hours'); ?></option>
+                            <option value="1440"><?php echo $this->t('last_24_hours'); ?></option>
+                        </select>
+                        <select id="heatmapMode" class="form-control heatmap-dropdown">
+                            <option value="heatmap">🔥 Heatmap</option>
+                            <option value="clusters">📍 Clustered Markers</option>
+                            <option value="markers">🎯 Individual Markers</option>
+                        </select>
+                    </div>
+
+                    <!-- Stats and fullscreen button with ellipsis for overflow -->
+                    <div class="heatmap-stats-row">
+                        <div id="heatmapStats" class="heatmap-stats-overflow">
+                            <span class="stat-item-compact">
+                                <i class="fas fa-map-pin text-success"></i>
+                                <span id="pickupCount">0</span> <?php echo $this->t('pickups'); ?>
+                            </span>
+                            <span class="stat-item-compact">
+                                <i class="fas fa-flag-checkered text-danger"></i>
+                                <span id="destinationCount">0</span> <?php echo $this->t('destinations'); ?>
+                            </span>
                         </div>
+                        <button id="heatmapFullscreen" class="heatmap-fullscreen-btn-fixed" title="Fullscreen">
+                            <i class="fas fa-expand"></i>
+                        </button>
                     </div>
                     <div id="heatmapContainer" class="heatmap-wrapper">
                         <!-- Loading State -->
@@ -5198,14 +5835,6 @@ class AGIAnalytics {
                 <div class="table-header">
                     <h3 class="table-title"><?php echo $this->t('recent_calls'); ?></h3>
                     <div class="table-actions">
-                        <div class="btn-group-left">
-                            <button id="filterToggle" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-filter"></i> <?php echo $this->t('filters'); ?>
-                            </button>
-                            <button id="exportBtn" class="btn btn-success btn-sm">
-                                <i class="fas fa-download"></i> <?php echo $this->t('export'); ?>
-                            </button>
-                        </div>
                         <div class="btn-group-right">
                             <select id="limitSelect" class="form-control form-control-sm" style="width: auto; min-width: 120px;">
                                 <option value="25"><?php echo $this->t('25_per_page'); ?></option>
@@ -5478,6 +6107,97 @@ class AGIAnalytics {
         window.lastMapCenter = null;
         window.lastMapZoom = null;
         window.mapMovementTimeout = 30000; // 30 seconds
+
+        // Timezone conversion utilities - Server stores all times in UTC
+        let browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        console.log('Browser timezone detected:', browserTimezone);
+
+        // Convert server UTC time to browser local time (simple and correct approach)
+        function convertToBrowserTime(dateTimeStr) {
+            if (!dateTimeStr) return new Date();
+
+            // Server stores times in UTC, parse them correctly as UTC
+            let date;
+            if (dateTimeStr.includes('T')) {
+                // Already in ISO format, might have Z or not
+                if (!dateTimeStr.endsWith('Z') && !dateTimeStr.includes('+') && !dateTimeStr.includes('-', 10)) {
+                    // No timezone info, assume UTC
+                    date = new Date(dateTimeStr + 'Z');
+                } else {
+                    date = new Date(dateTimeStr);
+                }
+            } else {
+                // MySQL datetime format 'YYYY-MM-DD HH:mm:ss' - treat as UTC
+                date = new Date(dateTimeStr.replace(' ', 'T') + 'Z');
+            }
+
+            if (isNaN(date.getTime())) {
+                console.warn('Invalid date parsed:', dateTimeStr);
+                return new Date(); // Return current time as fallback
+            }
+
+            return date;
+        }
+
+        // Format datetime for display
+        function formatDateTime(dateTimeStr, includeTime = true) {
+            if (!dateTimeStr || dateTimeStr === '0000-00-00 00:00:00') return '-';
+            const date = convertToBrowserTime(dateTimeStr);
+            if (isNaN(date.getTime())) return dateTimeStr;
+
+            const options = {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            };
+            if (includeTime) {
+                options.hour = '2-digit';
+                options.minute = '2-digit';
+                options.second = '2-digit';
+            }
+            return date.toLocaleString(LANG.current === 'el' ? 'el-GR' : 'en-US', options);
+        }
+
+        // Convert all datetime elements on page load
+        function convertAllDateTimes() {
+            // Convert data-datetime attributes
+            document.querySelectorAll('[data-datetime]').forEach(element => {
+                const datetime = element.getAttribute('data-datetime');
+                if (datetime) {
+                    element.textContent = formatDateTime(datetime);
+                }
+            });
+
+            // Convert specific date/time cells in tables
+            document.querySelectorAll('td[data-field="call_start_time"], td[data-field="call_end_time"], td[data-field="created_at"], td[data-field="updated_at"]').forEach(element => {
+                const originalText = element.textContent.trim();
+                if (originalText && originalText !== '-') {
+                    element.textContent = formatDateTime(originalText);
+                }
+            });
+        }
+
+        // Convert browser local time to server UTC time for filtering
+        function convertToServerTime(localDateStr) {
+            if (!localDateStr) return '';
+            // Create date in local timezone
+            const localDate = new Date(localDateStr);
+            if (isNaN(localDate.getTime())) return localDateStr;
+            // Convert to UTC
+            const utcYear = localDate.getUTCFullYear();
+            const utcMonth = String(localDate.getUTCMonth() + 1).padStart(2, '0');
+            const utcDay = String(localDate.getUTCDate()).padStart(2, '0');
+            const utcHours = String(localDate.getUTCHours()).padStart(2, '0');
+            const utcMinutes = String(localDate.getUTCMinutes()).padStart(2, '0');
+            const utcSeconds = String(localDate.getUTCSeconds()).padStart(2, '0');
+            return `${utcYear}-${utcMonth}-${utcDay} ${utcHours}:${utcMinutes}:${utcSeconds}`;
+        }
+
+        // Initialize timezone conversion on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Timezone conversion ready. Browser timezone:', browserTimezone);
+            convertAllDateTimes();
+        });
         
         // Language switching function
         function switchLanguage(lang) {
@@ -5500,6 +6220,10 @@ class AGIAnalytics {
                 hangup: '<?php echo $this->t('hangup'); ?>',
                 operator_transfer: '<?php echo $this->t('operator_transfer'); ?>',
                 in_progress: '<?php echo $this->t('in_progress'); ?>',
+                immediate: '<?php echo $this->t('immediate'); ?>',
+                reservation: '<?php echo $this->t('reservation'); ?>',
+                operator: '<?php echo $this->t('operator'); ?>',
+                no_location: '<?php echo $this->language === 'el' ? 'Χωρίς τοποθεσία' : 'No location'; ?>',
                 completed: '<?php echo $this->t('completed'); ?>',
                 answered: '<?php echo $this->t('answered'); ?>',
                 failed: '<?php echo $this->t('failed'); ?>',
@@ -5532,6 +6256,11 @@ class AGIAnalytics {
                 destination_address_label: '<?php echo $this->t('destination_address_label'); ?>',
                 confirmation_audio: '<?php echo $this->t('confirmation_audio'); ?>',
                 system_generated_confirmation: '<?php echo $this->t('system_generated_confirmation'); ?>',
+                user_recordings: '<?php echo $this->t('user_recordings'); ?>',
+                system_recordings: '<?php echo $this->t('system_recordings'); ?>',
+                audio_not_supported: '<?php echo $this->t('audio_not_supported'); ?>',
+                kb_size: '<?php echo $this->t('kb_size'); ?>',
+                attempt: '<?php echo $this->t('attempt'); ?>',
                 stop: '<?php echo $this->t('stop'); ?>',
                 live: '<?php echo $this->t('live'); ?>'
             }
@@ -5661,10 +6390,10 @@ class AGIAnalytics {
         
         // Setup event listeners
         function setupEventListeners() {
-            // Filter modal toggle
-            const filterToggle = document.getElementById('filterToggle');
-            if (filterToggle) {
-                filterToggle.addEventListener('click', function() {
+            // Filter modal toggle - header button
+            const filterToggleHeader = document.getElementById('filterToggleHeader');
+            if (filterToggleHeader) {
+                filterToggleHeader.addEventListener('click', function() {
                     document.getElementById('filterModal').classList.add('show');
                     // Re-initialize date pickers when modal opens
                     setTimeout(function() {
@@ -5782,6 +6511,43 @@ class AGIAnalytics {
                 closeBtn.id = 'fullscreenCloseBtn';
                 closeBtn.innerHTML = '<i class="fas fa-times"></i>';
                 closeBtn.title = 'Close Fullscreen';
+
+                // Mobile-specific enhancements
+                if (window.innerWidth <= 768) {
+                    // Create mobile stats overlay
+                    var statsOverlay = document.createElement('div');
+                    statsOverlay.className = 'mobile-stats-overlay';
+                    statsOverlay.id = 'mobileStatsOverlay';
+
+                    // Copy stats from header
+                    var originalStats = container.querySelector('.heatmap-stats');
+                    if (originalStats) {
+                        statsOverlay.innerHTML = originalStats.innerHTML;
+                    }
+
+                    container.appendChild(statsOverlay);
+
+                    // Add tap hint
+                    var tapHint = document.createElement('div');
+                    tapHint.className = 'mobile-tap-hint';
+                    tapHint.innerHTML = '<?php echo $this->language === "el" ? "Πατήστε για στατιστικά" : "Tap for statistics"; ?>';
+                    container.appendChild(tapHint);
+
+                    // Add tap listener to show/hide stats
+                    var tapTimeout;
+                    container.addEventListener('click', function(e) {
+                        if (e.target.closest('.fullscreen-close-btn')) return;
+
+                        clearTimeout(tapTimeout);
+                        statsOverlay.classList.toggle('show');
+
+                        if (statsOverlay.classList.contains('show')) {
+                            tapTimeout = setTimeout(function() {
+                                statsOverlay.classList.remove('show');
+                            }, 3000);
+                        }
+                    });
+                }
                 closeBtn.onclick = exitHeatmapFullscreen;
                 container.appendChild(closeBtn);
 
@@ -5826,6 +6592,20 @@ class AGIAnalytics {
                 if (closeBtn) {
                     closeBtn.remove();
                 }
+
+                // Clean up mobile elements
+                var mobileStatsOverlay = document.getElementById('mobileStatsOverlay');
+                if (mobileStatsOverlay) {
+                    mobileStatsOverlay.remove();
+                }
+
+                var tapHint = container.querySelector('.mobile-tap-hint');
+                if (tapHint) {
+                    tapHint.remove();
+                }
+
+                // Reset container reference since we might have modified it
+                container = document.querySelector('.heatmap-container');
 
                 // Re-enable body scroll
                 document.body.style.overflow = '';
@@ -5893,10 +6673,10 @@ class AGIAnalytics {
                 });
             }
             
-            // Export button - show modal
-            const exportBtn = document.getElementById('exportBtn');
-            if (exportBtn) {
-                exportBtn.addEventListener('click', function() {
+            // Export button - show modal (Header)
+            const exportBtnHeader = document.getElementById('exportBtnHeader');
+            if (exportBtnHeader) {
+                exportBtnHeader.addEventListener('click', function() {
                     showExportModal();
                 });
             }
@@ -5923,7 +6703,14 @@ class AGIAnalytics {
                 mobileMenuToggle.addEventListener('click', function(e) {
                     e.stopPropagation();
                     const dropdown = document.getElementById('mobileMenuDropdown');
+
+                    // Simple toggle - CSS handles the positioning
                     dropdown.classList.toggle('show');
+
+                    // Debug logging for mobile
+                    if (window.innerWidth <= 768) {
+                        console.log('Mobile menu toggled:', dropdown.classList.contains('show'));
+                    }
                 });
             }
             
@@ -5943,6 +6730,17 @@ class AGIAnalytics {
                 exportBtnMobile.addEventListener('click', function() {
                     document.getElementById('mobileMenuDropdown').classList.remove('show');
                     showExportModal();
+                });
+            }
+
+            const filterToggleMobile = document.getElementById('filterToggleMobile');
+            if (filterToggleMobile) {
+                filterToggleMobile.addEventListener('click', function() {
+                    document.getElementById('mobileMenuDropdown').classList.remove('show');
+                    document.getElementById('filterModal').classList.add('show');
+                    setTimeout(function() {
+                        setupGreekDatePickers();
+                    }, 100);
                 });
             }
 
@@ -6008,12 +6806,17 @@ class AGIAnalytics {
         
         // Load statistics
         function loadStats() {
-            fetch('?endpoint=dashboard')
-                .then(function(response) { 
+            // Build URL with current filters including extension
+            const params = new URLSearchParams(window.location.search);
+            params.set('endpoint', 'dashboard');
+            const url = '?' + params.toString();
+
+            fetch(url)
+                .then(function(response) {
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
                     }
-                    return response.json(); 
+                    return response.json();
                 })
                 .then(function(data) { 
                     var stats = data.today_summary || data.realtime_stats || {};
@@ -6166,14 +6969,24 @@ class AGIAnalytics {
             var params = new URLSearchParams();
             params.set('page', currentPage);
             params.set('limit', currentLimit);
-            
+
+            // Always include the extension from URL if present (priority for URL parameter)
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('extension')) {
+                params.set('extension', urlParams.get('extension'));
+            }
+
             for (var key in currentFilters) {
                 if (currentFilters.hasOwnProperty(key)) {
                     params.set(key, currentFilters[key]);
                 }
             }
-            
-            fetch('?endpoint=calls&' + params.toString())
+
+            const finalUrl = '?endpoint=calls&' + params.toString();
+            console.log('loadCalls URL:', finalUrl);
+            console.log('loadCalls parameters:', Object.fromEntries(params.entries()));
+
+            fetch(finalUrl)
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     renderCalls(data.calls);
@@ -6204,11 +7017,9 @@ class AGIAnalytics {
                 var duration = call.call_duration;
                 var durationCell = '';
                 if (call.call_outcome === 'in_progress' && call.call_start_time) {
-                    // Parse UTC timestamp correctly for live duration calculation
-                    var utcDate = call.call_start_time.includes('T') ? 
-                        new Date(call.call_start_time) : 
-                        new Date(call.call_start_time.replace(' ', 'T') + 'Z');
-                    var startTime = utcDate.getTime();
+                    // Convert server time to browser time for live duration calculation
+                    var browserDate = convertToBrowserTime(call.call_start_time);
+                    var startTime = browserDate.getTime();
                     // Use server-calculated duration, but still mark for live updates
                     durationCell = '<td class="live-duration" data-start="' + startTime + '" data-server-duration="' + duration + '">' + formatDuration(duration, true) + '</td>';
                 } else {
@@ -6220,7 +7031,7 @@ class AGIAnalytics {
                     '<td>' + formatDate(call.call_start_time) + '</td>' +
                     durationCell +
                     '<td>' + renderStatusBadge(call.call_outcome) + '</td>' +
-                    '<td>' + (call.is_reservation ? 'Reservation' : 'Immediate') + '</td>' +
+                    '<td>' + (call.is_reservation ? LANG.translations.reservation : LANG.translations.immediate) + '</td>' +
                     '<td>' + truncate(call.user_name || 'N/A', 20) + '</td>' +
                     '<td>' + renderLocationInfo(call) + '</td>' +
                     '<td>' + renderAPIUsage(call) + '</td>' +
@@ -6248,7 +7059,15 @@ class AGIAnalytics {
             };
 
             var badgeClass = badges[status] || 'badge-info';
-            var displayName = status.replace('_', ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+
+            // Use translations for status display names
+            var displayName;
+            if (LANG.translations[status]) {
+                displayName = LANG.translations[status];
+            } else {
+                // Fallback to formatted status name
+                displayName = status.replace('_', ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+            }
 
             return '<span class="badge ' + badgeClass + '">' + displayName + '</span>';
         }
@@ -6278,7 +7097,7 @@ class AGIAnalytics {
             }
             
             if (html === '') {
-                return '<span class="no-location"><i class="fas fa-map text-muted"></i> No location</span>';
+                return '<span class="no-location"><i class="fas fa-map text-muted"></i> ' + LANG.translations.no_location + '</span>';
             }
             
             return '<div class="location-info">' + html + '</div>';
@@ -6296,10 +7115,16 @@ class AGIAnalytics {
         // Load hourly chart
         function loadHourlyChart(date) {
             if (!date) date = '';
-            
-            var params = date ? '?endpoint=hourly&date=' + encodeURIComponent(date) : '?endpoint=hourly';
-            
-            fetch(params)
+
+            // Build URL with current filters including extension
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('endpoint', 'hourly');
+            if (date) {
+                urlParams.set('date', date);
+            }
+            const url = '?' + urlParams.toString();
+
+            fetch(url)
                 .then(function(response) { 
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
@@ -6346,12 +7171,14 @@ class AGIAnalytics {
             var successfulCallsData = [];
             
             for (var i = 0; i < hourlyData.length; i++) {
-                // Convert UTC hour to local time for display
-                var utcHour = hourlyData[i].hour;
-                var utcDate = new Date();
-                utcDate.setUTCHours(utcHour, 0, 0, 0);
-                var localHour = utcDate.getHours();
-                
+                // Convert server UTC hour to browser timezone for display
+                var serverHour = hourlyData[i].hour;
+                // Create a UTC timestamp for today at this hour
+                var today = new Date();
+                var utcTimestamp = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), serverHour, 0, 0);
+                var localDate = new Date(utcTimestamp);
+                var localHour = localDate.getHours();
+
                 hourLabels.push(localHour + ':00');
                 totalCallsData.push(hourlyData[i].total_calls || 0);
                 successfulCallsData.push(hourlyData[i].successful_calls || 0);
@@ -6371,7 +7198,7 @@ class AGIAnalytics {
                 data: {
                     labels: hourLabels,
                     datasets: [{
-                        label: 'Total Calls',
+                        label: '<?php echo $this->t('total_calls'); ?>',
                         data: totalCallsData,
                         borderColor: 'rgb(59, 130, 246)',
                         backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -6379,7 +7206,7 @@ class AGIAnalytics {
                         tension: 0.4,
                         borderWidth: 2
                     }, {
-                        label: 'Successful Calls',
+                        label: '<?php echo $this->t('successful_calls'); ?>',
                         data: successfulCallsData,
                         borderColor: 'rgb(16, 185, 129)',
                         backgroundColor: 'rgba(16, 185, 129, 0.1)',
@@ -6466,13 +7293,19 @@ class AGIAnalytics {
         // Load location heatmap
         function loadLocationHeatmap() {
             var duration = document.getElementById('heatmapDuration').value || 30;
-            
+
             // Always show loading state when changing duration
             console.log('Loading heatmap for duration:', duration, 'minutes');
             showHeatmapLoading();
-            
-            console.log('Fetching location data for duration:', duration, 'minutes');
-            fetch('?endpoint=locations&minutes=' + duration)
+
+            // Build URL with current filters including extension
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('endpoint', 'locations');
+            urlParams.set('minutes', duration);
+            const url = '?' + urlParams.toString();
+
+            console.log('Fetching location data for duration:', duration, 'minutes with URL:', url);
+            fetch(url)
                 .then(function(response) { 
                     console.log('Response received:', response.status);
                     if (!response.ok) {
@@ -6974,54 +7807,62 @@ class AGIAnalytics {
             
             var html = '<div class="call-detail-grid">' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">' + LANG.translations.call_id + '</div>' +
-                    '<div class="detail-value">' + (call.call_id || 'N/A') + '</div>' +
+                    '<div class="detail-label">' + (LANG.translations.call_id || 'Call ID') + '</div>' +
+                    '<div class="detail-value">' + (call.call_id && call.call_id !== 'UNDEFINED' ? call.call_id : (call.unique_id || 'N/A')) + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">' + LANG.translations.phone_number_label + '</div>' +
+                    '<div class="detail-label">' + (LANG.translations.phone_number_label || 'Phone Number') + '</div>' +
                     '<div class="detail-value">' + (call.phone_number || 'N/A') + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">' + LANG.translations.extension_label + '</div>' +
+                    '<div class="detail-label">' + (LANG.translations.extension_label || 'Extension') + '</div>' +
                     '<div class="detail-value">' + (call.extension || 'N/A') + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">' + LANG.translations.duration_label + '</div>' +
-                    '<div class="detail-value" ' + 
-                        (call.call_outcome === 'in_progress' ? 'class="live-duration-detail" data-start="' + new Date(call.call_start_time).getTime() + '" data-server-duration="' + call.call_duration + '"' : '') + '>' + 
-                        formatDuration(call.call_duration, call.call_outcome === 'in_progress') + 
+                    '<div class="detail-label">' + (LANG.translations.duration_label || 'Duration') + '</div>' +
+                    '<div class="detail-value" ' +
+                        (call.call_outcome === 'in_progress' ? 'class="live-duration-detail" data-start="' + convertToBrowserTime(call.call_start_time).getTime() + '" data-server-duration="' + call.call_duration + '"' : '') + '>' +
+                        formatDuration(call.call_duration, call.call_outcome === 'in_progress') +
                     '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">' + LANG.translations.status_label + '</div>' +
+                    '<div class="detail-label">' + (LANG.translations.status_label || 'Status') + '</div>' +
                     '<div class="detail-value">' + renderStatusBadge(call.call_outcome) + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">' + LANG.translations.user_name_label + '</div>' +
+                    '<div class="detail-label">' + (LANG.translations.user_name_label || 'User Name') + '</div>' +
                     '<div class="detail-value">' + (call.user_name || 'N/A') + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">' + LANG.translations.language_label + '</div>' +
+                    '<div class="detail-label">' + (LANG.translations.language_label || 'Language') + '</div>' +
                     '<div class="detail-value">' + (call.language_used || 'N/A') + '</div>' +
                 '</div>' +
                 '<div class="detail-item">' +
-                    '<div class="detail-label">' + LANG.translations.api_calls_label + '</div>' +
+                    '<div class="detail-label">' + (LANG.translations.api_calls_label || 'API Calls') + '</div>' +
                     '<div class="detail-value">' + (call.total_api_calls || 0) + '</div>' +
+                '</div>' +
+                '<div class="detail-item">' +
+                    '<div class="detail-label">' + (LANG.translations.start_time || 'Start Time') + '</div>' +
+                    '<div class="detail-value">' + formatDateTime(call.call_start_time, true) + '</div>' +
+                '</div>' +
+                '<div class="detail-item">' +
+                    '<div class="detail-label">' + (LANG.translations.end_time || 'End Time') + '</div>' +
+                    '<div class="detail-value">' + (call.call_end_time ? formatDateTime(call.call_end_time, true) : 'N/A') + '</div>' +
                 '</div>' +
             '</div>';
             
             // Add location information
             if (call.pickup_address) {
-                html += '<h4 style="margin: 1.5rem 0 1rem;">' + LANG.translations.location_information + '</h4>' +
+                html += '<h4 style="margin: 1.5rem 0 1rem;">' + (LANG.translations.location_information || 'Location Information') + '</h4>' +
                        '<div class="call-detail-grid">' +
                            '<div class="detail-item" style="grid-column: 1 / -1;">' +
-                               '<div class="detail-label">' + LANG.translations.pickup_address_label + '</div>' +
+                               '<div class="detail-label">' + (LANG.translations.pickup_address_label || 'Pickup Address') + '</div>' +
                                '<div class="detail-value">' + call.pickup_address + '</div>' +
                            '</div>';
                 
                 if (call.destination_address) {
                     html += '<div class="detail-item" style="grid-column: 1 / -1;">' +
-                               '<div class="detail-label">' + LANG.translations.destination_address_label + '</div>' +
+                               '<div class="detail-label">' + (LANG.translations.destination_address_label || 'Destination Address') + '</div>' +
                                '<div class="detail-value">' + call.destination_address + '</div>' +
                            '</div>';
                 }
@@ -7165,7 +8006,7 @@ class AGIAnalytics {
                     var category = log.category || 'general';
                     var color = categoryColors[category] || '#6b7280';
                     var icon = categoryIcons[category] || '📝';
-                    var timestamp = log.timestamp ? '<span style="color: #9ca3af; font-size: 0.7rem;">' + log.timestamp + '</span> ' : '';
+                    var timestamp = log.timestamp ? '<span style="color: #9ca3af; font-size: 0.7rem;">' + formatDateTime(log.timestamp, true) + '</span> ' : '';
                     var bgColor = (i % 2 === 0) ? '#f9fafb' : '#ffffff';
                     
                     html += '<div style="padding: 0.5rem 1rem; border-bottom: 1px solid var(--gray-100); background: ' + bgColor + ';">' +
@@ -7600,6 +8441,11 @@ class AGIAnalytics {
                             value = year + '-' + month + '-' + day;
                         }
                     }
+                    // Convert date fields from browser local time to server UTC time
+                    if ((key === 'date_from' || key === 'date_to') && value.includes('-')) {
+                        // The date input is in browser local time, convert to UTC for server
+                        value = convertToServerTime(value + 'T00:00:00').split(' ')[0];
+                    }
                     currentFilters[key] = value;
                 }
                 entry = entries.next();
@@ -7685,40 +8531,55 @@ class AGIAnalytics {
             for (var i = 0; i < 7; i++) {
                 var date = new Date(today);
                 date.setDate(date.getDate() - i);
-                var dateStr = date.toISOString().split('T')[0];
-                var label = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : dateStr;
-                
-                var option = new Option(label, dateStr);
+                var dateStr = date.toISOString().split('T')[0]; // Keep ISO format for value
+
+                var displayLabel;
+                if (i === 0) {
+                    displayLabel = '<?php echo $this->t('today'); ?>';
+                } else if (i === 1) {
+                    displayLabel = '<?php echo $this->t('yesterday'); ?>';
+                } else {
+                    // Always use DD/MM/YYYY format for all languages
+                    var day = date.getDate().toString().padStart(2, '0');
+                    var month = (date.getMonth() + 1).toString().padStart(2, '0');
+                    var year = date.getFullYear();
+                    displayLabel = day + '/' + month + '/' + year;
+                }
+
+                var option = new Option(displayLabel, dateStr);
                 select.appendChild(option);
             }
         }
         
         // Utility functions
         function formatDate(dateStr) {
-            if (!dateStr) return 'N/A';
-            
-            // Parse as UTC timestamp from server
-            let date;
-            if (dateStr.includes('T')) {
-                // Already in ISO format
-                date = new Date(dateStr);
-            } else {
-                // MySQL datetime format - append UTC indicator
-                date = new Date(dateStr.replace(' ', 'T') + 'Z');
+            // For table display, preserve the original date to avoid confusion
+            // when filtering by date ranges
+            return formatDateTimePreserveDate(dateStr, true);
+        }
+
+        function formatDateTimePreserveDate(dateTimeStr, includeTime = true) {
+            if (!dateTimeStr || dateTimeStr === '0000-00-00 00:00:00') return '-';
+
+            // Parse the server datetime but preserve the date part
+            // Extract the original date parts from the server string
+            const dateParts = dateTimeStr.split(' ')[0]; // Get "2025-09-25" part
+            const timeParts = dateTimeStr.split(' ')[1] || '00:00:00'; // Get "23:59:49" part
+
+            if (!dateParts) return dateTimeStr;
+
+            const [year, month, day] = dateParts.split('-');
+            const [hour, minute, second] = timeParts.split(':');
+
+            // Create formatted date string preserving the original date
+            const localDate = `${day}/${month}/${year}`;
+
+            if (includeTime) {
+                const localTime = `${hour}:${minute}:${second}`;
+                return `${localDate}, ${localTime}`;
             }
-            
-            // Convert to user's local timezone automatically
-            const locale = LANG.current === 'el' ? 'el-GR' : 'en-US';
-            const options = { 
-                day: '2-digit', 
-                month: '2-digit', 
-                year: 'numeric',
-                hour: '2-digit', 
-                minute: '2-digit',
-                hour12: LANG.current === 'en'
-            };
-            
-            return date.toLocaleString(locale, options);
+
+            return localDate;
         }
         
         
@@ -7784,16 +8645,19 @@ class AGIAnalytics {
         
         // Load initial filters from URL
         const urlParams = new URLSearchParams(window.location.search);
+        console.log('URL parameters on page load:', Object.fromEntries(urlParams.entries()));
         for (let [key, value] of urlParams.entries()) {
             if (['page', 'limit'].includes(key)) {
                 if (key === 'page') currentPage = parseInt(value) || 1;
                 if (key === 'limit') currentLimit = parseInt(value) || 50;
             } else {
                 currentFilters[key] = value;
+                console.log('Added to currentFilters:', key, '=', value);
                 const input = document.querySelector(`[name="${key}"]`);
                 if (input) input.value = value;
             }
         }
+        console.log('Final currentFilters:', currentFilters);
     </script>
 </body>
 </html>
