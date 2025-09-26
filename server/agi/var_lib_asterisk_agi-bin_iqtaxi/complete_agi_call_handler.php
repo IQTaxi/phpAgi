@@ -760,16 +760,6 @@ class AGICallHandler
                 'en' => 'Something went wrong with registering your route',
                 'bg' => 'Нещо се обърка с регистрирането на вашия маршрут'
             ],
-            'automated_call_comment' => [
-                'el' => '[ΨΗΦΙΑΚΗ ΚΛΗΣΗ]',
-                'en' => '[AUTOMATED CALL]',
-                'bg' => '[АВТОМАТИЗИРАНО ОБАЖДАНЕ]'
-            ],
-            'automated_reservation_comment' => [
-                'el' => '[ΨΗΦΙΑΚΗ ΚΡΑΤΗΣΗ]',
-                'en' => '[AUTOMATED RESERVATION]',
-                'bg' => '[АВТОМАТИЗИРАНА РЕЗЕРВАЦИЯ]'
-            ]
         ];
 
         if (isset($texts[$key][$this->current_language])) {
@@ -2202,20 +2192,8 @@ class AGICallHandler
 
     private function getCallComment()
     {
-        $comment = '';
-
-        if ($this->is_reservation) {
-            $comment = str_replace('{time}', $this->reservation_result, $this->getLocalizedText('automated_reservation_comment'));
-        } else {
-            $comment = $this->getLocalizedText('automated_call_comment');
-        }
-
-        // Append user comments if they exist
-        if (!empty($this->user_comments)) {
-            $comment .= ' - ' . $this->user_comments;
-        }
-
-        return $comment;
+        // Return only user comments if they exist
+        return !empty($this->user_comments) ? $this->user_comments : '';
     }
 
     private function processRegistrationResponse($response, $http_code, $curl_error)
