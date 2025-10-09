@@ -29,7 +29,7 @@ class AGIAnalytics {
         'host' => '127.0.0.1',
         'dbname' => 'asterisk',
         'primary_user' => 'freepbxuser',
-        'primary_pass' => 'nFDuTRLJSY0n',
+        'primary_pass' => '18r4QZANKtuQ',
         'fallback_user' => 'root',
         'fallback_pass' => '',
         'port' => '3306',
@@ -37,8 +37,8 @@ class AGIAnalytics {
     ];
     
     public function __construct() {
-        // Keep server in UTC for universal compatibility
-        date_default_timezone_set('UTC');
+        // Set Greece timezone to match server
+        date_default_timezone_set('Europe/Athens');
 
         $this->initializeLanguage();
         $this->loadTranslations();
@@ -973,21 +973,21 @@ class AGIAnalytics {
         
         // Date range filtering
         if (!empty($_GET['date_from'])) {
-            $where[] = 'DATE(call_start_time) >= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL 3 HOUR) >= ?';
             $params[] = $_GET['date_from'];
         }
         if (!empty($_GET['date_to'])) {
-            $where[] = 'DATE(call_start_time) <= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL 3 HOUR) <= ?';
             $params[] = $_GET['date_to'];
         }
-        
+
         // Time range filtering
         if (!empty($_GET['time_from'])) {
-            $where[] = 'TIME(call_start_time) >= ?';
+            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) >= ?';
             $params[] = $_GET['time_from'];
         }
         if (!empty($_GET['time_to'])) {
-            $where[] = 'TIME(call_start_time) <= ?';
+            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) <= ?';
             $params[] = $_GET['time_to'];
         }
         
@@ -1017,8 +1017,13 @@ class AGIAnalytics {
         $countStmt->execute($params);
         $total = intval($countStmt->fetchColumn());
         
-        // Get data
-        $sql = "SELECT * FROM {$this->table} WHERE {$whereClause} ORDER BY {$sort} {$direction} LIMIT {$limit} OFFSET {$offset}";
+        // Get data - Convert TIMESTAMP columns to Greek timezone
+        $sql = "SELECT *,
+                       DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                       CASE WHEN call_end_time IS NOT NULL
+                            THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                            ELSE NULL END as call_end_time
+                FROM {$this->table} WHERE {$whereClause} ORDER BY {$sort} {$direction} LIMIT {$limit} OFFSET {$offset}";
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         $calls = $stmt->fetchAll();
@@ -1052,7 +1057,12 @@ class AGIAnalytics {
             return;
         }
         
-        $sql = "SELECT * FROM {$this->table} WHERE " . (!empty($id) ? "id = ?" : "call_id = ?");
+        $sql = "SELECT *,
+                       DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                       CASE WHEN call_end_time IS NOT NULL
+                            THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                            ELSE NULL END as call_end_time
+                FROM {$this->table} WHERE " . (!empty($id) ? "id = ?" : "call_id = ?");
         $stmt = $this->db->prepare($sql);
         $stmt->execute([!empty($id) ? $id : $call_id]);
         $call = $stmt->fetch();
@@ -1116,7 +1126,7 @@ class AGIAnalytics {
                 destination_address LIKE ? OR
                 extension LIKE ? OR
                 registration_id LIKE ?
-                ORDER BY call_start_time DESC
+                ORDER BY DATE_ADD(call_start_time, INTERVAL 3 HOUR) DESC
                 LIMIT {$limit}";
 
         $searchTerm = "%{$query}%";
@@ -1181,12 +1191,12 @@ class AGIAnalytics {
         $date = $_GET['date'] ?? date('Y-m-d');
 
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(call_start_time) = ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
         $sql = "SELECT
-                    HOUR(call_start_time) as hour,
+                    HOUR(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) as hour,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                     COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
@@ -1196,7 +1206,7 @@ class AGIAnalytics {
                     SUM(google_stt_calls) as stt_usage
                 FROM {$this->table}
                 WHERE {$whereClause}
-                GROUP BY HOUR(call_start_time)
+                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL 3 HOUR))
                 ORDER BY hour";
 
         $params = array_merge([$date], $extParams);
@@ -1236,7 +1246,7 @@ class AGIAnalytics {
         $dateTo = $_GET['date_to'] ?? date('Y-m-d');
         
         $sql = "SELECT 
-                    DATE(call_start_time) as date,
+                    DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) as date,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                     COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
@@ -1245,8 +1255,8 @@ class AGIAnalytics {
                     SUM(google_stt_calls) as stt_usage,
                     COUNT(DISTINCT phone_number) as unique_callers
                 FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ?
-                GROUP BY DATE(call_start_time)
+                WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?
+                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR))
                 ORDER BY date";
         
         $stmt = $this->db->prepare($sql);
@@ -1638,10 +1648,11 @@ class AGIAnalytics {
             ($call['user_api_calls'] ?? 0) +
             ($call['registration_api_calls'] ?? 0);
         
-        // Calculate live duration for in-progress calls using server time
+        // Calculate live duration for in-progress calls using Greek timezone
         if ($call['call_outcome'] === 'in_progress' && !empty($call['call_start_time'])) {
-            $startTime = strtotime($call['call_start_time']);
-            $currentTime = time(); // Server time
+            // Parse Greek time correctly
+            $startTime = (new DateTime($call['call_start_time'], new DateTimeZone('Europe/Athens')))->getTimestamp();
+            $currentTime = (new DateTime('now', new DateTimeZone('Europe/Athens')))->getTimestamp();
             $call['call_duration'] = $currentTime - $startTime; // Override with live duration
             $call['is_live'] = true; // Flag to indicate this is a live call
         } else {
@@ -1736,7 +1747,7 @@ class AGIAnalytics {
     
     private function getAnalyticsSummary($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1771,9 +1782,9 @@ class AGIAnalytics {
         $sql = "SELECT 
                     call_outcome, 
                     COUNT(*) as count,
-                    ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM {$this->table} WHERE DATE(call_start_time) BETWEEN ? AND ?)), 2) as percentage
+                    ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM {$this->table} WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?)), 2) as percentage
                 FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ?
+                WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?
                 GROUP BY call_outcome 
                 ORDER BY count DESC";
         
@@ -1784,11 +1795,11 @@ class AGIAnalytics {
     
     private function getHourlyDistribution($dateFrom, $dateTo) {
         $sql = "SELECT 
-                    HOUR(call_start_time) as hour,
+                    HOUR(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) as hour,
                     COUNT(*) as count
                 FROM {$this->table} 
-                WHERE DATE(call_start_time) BETWEEN ? AND ?
-                GROUP BY HOUR(call_start_time)
+                WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?
+                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL 3 HOUR))
                 ORDER BY hour";
         
         $stmt = $this->db->prepare($sql);
@@ -1798,17 +1809,17 @@ class AGIAnalytics {
     
     private function getDailyTrend($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
         $sql = "SELECT
-                    DATE(call_start_time) as date,
+                    DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) as date,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls
                 FROM {$this->table}
                 WHERE {$whereClause}
-                GROUP BY DATE(call_start_time)
+                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR))
                 ORDER BY date";
 
         $params = array_merge([$dateFrom, $dateTo], $extParams);
@@ -1819,7 +1830,7 @@ class AGIAnalytics {
     
     private function getExtensionPerformance($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?", "extension IS NOT NULL"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?", "extension IS NOT NULL"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1842,7 +1853,7 @@ class AGIAnalytics {
     
     private function getAPIUsageAnalytics($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1875,10 +1886,13 @@ class AGIAnalytics {
             $stmt = $this->db->prepare($sql);
             $stmt->execute();
             $result = $stmt->fetch();
-            
+
+            // Create DateTime object with Greek timezone
+            $greekDateTime = new DateTime($result['server_time'], new DateTimeZone('Europe/Athens'));
+
             $this->sendResponse([
                 'server_time' => $result['server_time'],
-                'timestamp' => strtotime($result['server_time']) * 1000 // JavaScript timestamp
+                'timestamp' => $greekDateTime->getTimestamp() * 1000 // Correct Greek timestamp
             ]);
         } catch (Exception $e) {
             error_log("Server Time API Error: " . $e->getMessage());
@@ -1894,7 +1908,7 @@ class AGIAnalytics {
         $dateFrom = date('Y-m-d H:i:s', strtotime("-{$minutes} minutes"));
 
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["call_start_time >= ?", "(pickup_lat IS NOT NULL OR destination_lat IS NOT NULL)"];
+        $whereConditions = ["DATE_ADD(call_start_time, INTERVAL 3 HOUR) >= ?", "(pickup_lat IS NOT NULL OR destination_lat IS NOT NULL)"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1906,7 +1920,7 @@ class AGIAnalytics {
                     destination_lat,
                     destination_lng,
                     call_outcome,
-                    call_start_time
+                    DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time
                 FROM {$this->table}
                 WHERE {$whereClause}
                 ORDER BY call_start_time DESC";
@@ -1949,7 +1963,7 @@ class AGIAnalytics {
     
     private function getGeographicAnalytics($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?", "pickup_lat IS NOT NULL", "pickup_lng IS NOT NULL"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?", "pickup_lat IS NOT NULL", "pickup_lng IS NOT NULL"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1975,7 +1989,7 @@ class AGIAnalytics {
     
     private function getCallDurationStats($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1998,7 +2012,7 @@ class AGIAnalytics {
     
     private function getLanguageStats($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(call_start_time) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -2042,7 +2056,12 @@ class AGIAnalytics {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
             $whereClause = $extWhere ? "WHERE {$extWhere}" : "";
-            $sql = "SELECT * FROM {$this->table} {$whereClause} ORDER BY call_start_time DESC LIMIT ?";
+            $sql = "SELECT *,
+                           DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                           CASE WHEN call_end_time IS NOT NULL
+                                THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                                ELSE NULL END as call_end_time
+                    FROM {$this->table} {$whereClause} ORDER BY call_start_time DESC LIMIT ?";
             $params = array_merge($extParams, [$limit]);
             $stmt = $this->db->prepare($sql);
             $stmt->execute($params);
@@ -2066,7 +2085,7 @@ class AGIAnalytics {
     private function getTodaySummary() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(call_start_time) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
 
@@ -2140,7 +2159,7 @@ class AGIAnalytics {
     private function getTodayCallCount() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(call_start_time) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$whereClause}";
@@ -2166,7 +2185,7 @@ class AGIAnalytics {
     private function getCurrentHourCallCount() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["call_start_time >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"];
+            $whereConditions = ["DATE_ADD(call_start_time, INTERVAL 3 HOUR) >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$whereClause}";
@@ -2196,7 +2215,7 @@ class AGIAnalytics {
     private function getTodaySuccessRate() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(call_start_time) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
 
@@ -2231,7 +2250,7 @@ class AGIAnalytics {
     private function getTodayAvgDuration() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(call_start_time) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT AVG(call_duration) FROM {$this->table} WHERE {$whereClause}";
@@ -2258,7 +2277,7 @@ class AGIAnalytics {
     private function getAverageResponseTime() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(call_start_time) = CURDATE()", "api_response_time > 0"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()", "api_response_time > 0"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT AVG(api_response_time) FROM {$this->table} WHERE {$whereClause}";
@@ -2293,7 +2312,7 @@ class AGIAnalytics {
     
     private function getLastCallTime() {
         try {
-            $sql = "SELECT MAX(call_start_time) FROM {$this->table}";
+            $sql = "SELECT MAX(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) FROM {$this->table}";
             $result = $this->db->query($sql);
             if ($result === false) {
                 error_log("getLastCallTime query failed: " . implode(" ", $this->db->errorInfo()));
@@ -2311,7 +2330,7 @@ class AGIAnalytics {
             $sql = "SELECT 
                         COUNT(CASE WHEN call_outcome = 'error' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) as error_rate
                     FROM {$this->table} 
-                    WHERE DATE(call_start_time) = CURDATE()";
+                    WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()";
             $result = $this->db->query($sql);
             if ($result === false) {
                 error_log("getTodayErrorRate query failed: " . implode(" ", $this->db->errorInfo()));
@@ -2431,7 +2450,12 @@ class AGIAnalytics {
     }
     
     private function getRelatedCalls($phoneNumber, $excludeId) {
-        $sql = "SELECT * FROM {$this->table} WHERE phone_number = ? AND id != ? ORDER BY call_start_time DESC LIMIT 10";
+        $sql = "SELECT *,
+                       DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                       CASE WHEN call_end_time IS NOT NULL
+                            THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                            ELSE NULL END as call_end_time
+                FROM {$this->table} WHERE phone_number = ? AND id != ? ORDER BY call_start_time DESC LIMIT 10";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$phoneNumber, $excludeId]);
         return $stmt->fetchAll();
@@ -3193,11 +3217,11 @@ class AGIAnalytics {
         }
 
         if (!empty($_GET['date_from'])) {
-            $where[] = 'DATE(call_start_time) >= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL 3 HOUR) >= ?';
             $params[] = $_GET['date_from'];
         }
         if (!empty($_GET['date_to'])) {
-            $where[] = 'DATE(call_start_time) <= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL 3 HOUR) <= ?';
             $params[] = $_GET['date_to'];
         }
         if (!empty($_GET['phone'])) {
@@ -3215,7 +3239,12 @@ class AGIAnalytics {
         }
 
         $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
-        $sql = "SELECT * FROM {$this->table} WHERE {$whereClause} ORDER BY call_start_time DESC";
+        $sql = "SELECT *,
+                       DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                       CASE WHEN call_end_time IS NOT NULL
+                            THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                            ELSE NULL END as call_end_time
+                FROM {$this->table} WHERE {$whereClause} ORDER BY call_start_time DESC";
         
         // Add limit if specified
         if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
@@ -5952,9 +5981,15 @@ class AGIAnalytics {
                         <div class="form-group">
                             <label><?php echo $this->t('date_range'); ?></label>
                             <div class="date-range-inputs">
-                                <input type="datetime-local" id="exportDateFrom" class="form-control">
+                                <div class="input-with-icon">
+                                    <input type="text" id="exportDateFrom" class="form-control export-date-picker" placeholder="DD/MM/YYYY HH:MM">
+                                    <span class="date-icon"><i class="fas fa-calendar-alt"></i></span>
+                                </div>
                                 <span><?php echo $this->t('to'); ?></span>
-                                <input type="datetime-local" id="exportDateTo" class="form-control">
+                                <div class="input-with-icon">
+                                    <input type="text" id="exportDateTo" class="form-control export-date-picker" placeholder="DD/MM/YYYY HH:MM">
+                                    <span class="date-icon"><i class="fas fa-calendar-alt"></i></span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -6108,41 +6143,20 @@ class AGIAnalytics {
         window.lastMapZoom = null;
         window.mapMovementTimeout = 30000; // 30 seconds
 
-        // Timezone conversion utilities - Server stores all times in UTC
-        let browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        console.log('Browser timezone detected:', browserTimezone);
 
-        // Convert server UTC time to browser local time (simple and correct approach)
-        function convertToBrowserTime(dateTimeStr) {
-            if (!dateTimeStr) return new Date();
-
-            // Server stores times in UTC, parse them correctly as UTC
-            let date;
-            if (dateTimeStr.includes('T')) {
-                // Already in ISO format, might have Z or not
-                if (!dateTimeStr.endsWith('Z') && !dateTimeStr.includes('+') && !dateTimeStr.includes('-', 10)) {
-                    // No timezone info, assume UTC
-                    date = new Date(dateTimeStr + 'Z');
-                } else {
-                    date = new Date(dateTimeStr);
-                }
-            } else {
-                // MySQL datetime format 'YYYY-MM-DD HH:mm:ss' - treat as UTC
-                date = new Date(dateTimeStr.replace(' ', 'T') + 'Z');
-            }
-
-            if (isNaN(date.getTime())) {
-                console.warn('Invalid date parsed:', dateTimeStr);
-                return new Date(); // Return current time as fallback
-            }
-
-            return date;
-        }
-
-        // Format datetime for display
+        // Format datetime for display - Server now returns Greek time directly
         function formatDateTime(dateTimeStr, includeTime = true) {
             if (!dateTimeStr || dateTimeStr === '0000-00-00 00:00:00') return '-';
-            const date = convertToBrowserTime(dateTimeStr);
+
+            // Parse server datetime directly - no timezone conversion needed
+            let date;
+            if (dateTimeStr.includes('T')) {
+                date = new Date(dateTimeStr);
+            } else {
+                // MySQL datetime format 'YYYY-MM-DD HH:mm:ss'
+                date = new Date(dateTimeStr.replace(' ', 'T'));
+            }
+
             if (isNaN(date.getTime())) return dateTimeStr;
 
             const options = {
@@ -6158,46 +6172,6 @@ class AGIAnalytics {
             return date.toLocaleString(LANG.current === 'el' ? 'el-GR' : 'en-US', options);
         }
 
-        // Convert all datetime elements on page load
-        function convertAllDateTimes() {
-            // Convert data-datetime attributes
-            document.querySelectorAll('[data-datetime]').forEach(element => {
-                const datetime = element.getAttribute('data-datetime');
-                if (datetime) {
-                    element.textContent = formatDateTime(datetime);
-                }
-            });
-
-            // Convert specific date/time cells in tables
-            document.querySelectorAll('td[data-field="call_start_time"], td[data-field="call_end_time"], td[data-field="created_at"], td[data-field="updated_at"]').forEach(element => {
-                const originalText = element.textContent.trim();
-                if (originalText && originalText !== '-') {
-                    element.textContent = formatDateTime(originalText);
-                }
-            });
-        }
-
-        // Convert browser local time to server UTC time for filtering
-        function convertToServerTime(localDateStr) {
-            if (!localDateStr) return '';
-            // Create date in local timezone
-            const localDate = new Date(localDateStr);
-            if (isNaN(localDate.getTime())) return localDateStr;
-            // Convert to UTC
-            const utcYear = localDate.getUTCFullYear();
-            const utcMonth = String(localDate.getUTCMonth() + 1).padStart(2, '0');
-            const utcDay = String(localDate.getUTCDate()).padStart(2, '0');
-            const utcHours = String(localDate.getUTCHours()).padStart(2, '0');
-            const utcMinutes = String(localDate.getUTCMinutes()).padStart(2, '0');
-            const utcSeconds = String(localDate.getUTCSeconds()).padStart(2, '0');
-            return `${utcYear}-${utcMonth}-${utcDay} ${utcHours}:${utcMinutes}:${utcSeconds}`;
-        }
-
-        // Initialize timezone conversion on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('Timezone conversion ready. Browser timezone:', browserTimezone);
-            convertAllDateTimes();
-        });
         
         // Language switching function
         function switchLanguage(lang) {
@@ -6323,7 +6297,7 @@ class AGIAnalytics {
                 .then(data => {
                     serverTimeOffset = data.timestamp - Date.now();
                     serverTimeSynced = true;
-                    console.log('Server time synced. Offset:', serverTimeOffset + 'ms');
+                    console.log('Server time synced. UTC offset:', serverTimeOffset + 'ms');
                     if (callback) callback();
                 })
                 .catch(error => {
@@ -7017,9 +6991,9 @@ class AGIAnalytics {
                 var duration = call.call_duration;
                 var durationCell = '';
                 if (call.call_outcome === 'in_progress' && call.call_start_time) {
-                    // Convert server time to browser time for live duration calculation
-                    var browserDate = convertToBrowserTime(call.call_start_time);
-                    var startTime = browserDate.getTime();
+                    // Parse server time as Greek timezone for live duration calculation
+                    var serverDate = new Date((call.call_start_time.includes('T') ? call.call_start_time : call.call_start_time.replace(' ', 'T')) );
+                    var startTime = serverDate.getTime();
                     // Use server-calculated duration, but still mark for live updates
                     durationCell = '<td class="live-duration" data-start="' + startTime + '" data-server-duration="' + duration + '">' + formatDuration(duration, true) + '</td>';
                 } else {
@@ -7171,15 +7145,10 @@ class AGIAnalytics {
             var successfulCallsData = [];
             
             for (var i = 0; i < hourlyData.length; i++) {
-                // Convert server UTC hour to browser timezone for display
-                var serverHour = hourlyData[i].hour;
-                // Create a UTC timestamp for today at this hour
-                var today = new Date();
-                var utcTimestamp = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), serverHour, 0, 0);
-                var localDate = new Date(utcTimestamp);
-                var localHour = localDate.getHours();
+                // Use server hour directly (no timezone conversion needed)
+                var hour = hourlyData[i].hour;
 
-                hourLabels.push(localHour + ':00');
+                hourLabels.push(hour + ':00');
                 totalCallsData.push(hourlyData[i].total_calls || 0);
                 successfulCallsData.push(hourlyData[i].successful_calls || 0);
             }
@@ -7821,7 +7790,7 @@ class AGIAnalytics {
                 '<div class="detail-item">' +
                     '<div class="detail-label">' + (LANG.translations.duration_label || 'Duration') + '</div>' +
                     '<div class="detail-value" ' +
-                        (call.call_outcome === 'in_progress' ? 'class="live-duration-detail" data-start="' + convertToBrowserTime(call.call_start_time).getTime() + '" data-server-duration="' + call.call_duration + '"' : '') + '>' +
+                        (call.call_outcome === 'in_progress' ? 'class="live-duration-detail" data-start="' + new Date((call.call_start_time.includes('T') ? call.call_start_time : call.call_start_time.replace(' ', 'T')) ).getTime() + '" data-server-duration="' + call.call_duration + '"' : '') + '>' +
                         formatDuration(call.call_duration, call.call_outcome === 'in_progress') +
                     '</div>' +
                 '</div>' +
@@ -8179,7 +8148,7 @@ class AGIAnalytics {
             
             // Format reservation time for datetime-local input
             if (call.reservation_time) {
-                const date = new Date(call.reservation_time);
+                const date = new Date((call.reservation_time.includes('T') ? call.reservation_time : call.reservation_time.replace(' ', 'T')) );
                 const formatted = date.getFullYear() + '-' + 
                     String(date.getMonth() + 1).padStart(2, '0') + '-' + 
                     String(date.getDate()).padStart(2, '0') + 'T' + 
@@ -8285,14 +8254,102 @@ class AGIAnalytics {
         function showExportModal() {
             const modal = document.getElementById('exportModal');
             modal.classList.add('show');
-            
-            // Set default date range to last 30 days
+
+            // Initialize export date pickers with current filter dates or defaults
+            setupExportDatePickers();
+        }
+
+        // Setup export modal date pickers with DD/MM/YYYY HH:MM format
+        function setupExportDatePickers() {
             const now = new Date();
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(now.getDate() - 30);
-            
-            document.getElementById('exportDateTo').value = formatDateTimeLocal(now);
-            document.getElementById('exportDateFrom').value = formatDateTimeLocal(thirtyDaysAgo);
+
+            // Check if we have date filters applied
+            let defaultFromDate = thirtyDaysAgo;
+            let defaultToDate = now;
+
+            if (currentFilters.date_from) {
+                // Parse YYYY-MM-DD format from currentFilters
+                const parts = currentFilters.date_from.split('-');
+                if (parts.length === 3) {
+                    defaultFromDate = new Date(parts[0], parseInt(parts[1]) - 1, parts[2], 0, 0);
+                }
+            }
+
+            if (currentFilters.date_to) {
+                // Parse YYYY-MM-DD format from currentFilters
+                const parts = currentFilters.date_to.split('-');
+                if (parts.length === 3) {
+                    defaultToDate = new Date(parts[0], parseInt(parts[1]) - 1, parts[2], 23, 59);
+                }
+            }
+
+            // Initialize export date from picker
+            if (document.getElementById('exportDateFrom')) {
+                flatpickr("#exportDateFrom", {
+                    enableTime: true,
+                    time_24hr: true,
+                    dateFormat: "d/m/Y H:i",  // DD/MM/YYYY HH:MM format
+                    locale: "gr",
+                    allowInput: true,
+                    clickOpens: true,
+                    disableMobile: true,
+                    defaultDate: defaultFromDate,
+                    onChange: function(selectedDates, dateStr, instance) {
+                        if (selectedDates.length > 0) {
+                            var dateToPicker = document.getElementById('exportDateTo')._flatpickr;
+                            if (dateToPicker) {
+                                dateToPicker.set('minDate', selectedDates[0]);
+                            }
+                        }
+                    }
+                });
+
+                // Make calendar icon clickable
+                var dateFromIcon = document.querySelector('#exportDateFrom').parentElement.querySelector('.date-icon');
+                if (dateFromIcon) {
+                    dateFromIcon.style.pointerEvents = 'auto';
+                    dateFromIcon.style.cursor = 'pointer';
+                    dateFromIcon.addEventListener('click', function() {
+                        var picker = document.getElementById('exportDateFrom')._flatpickr;
+                        if (picker) picker.open();
+                    });
+                }
+            }
+
+            // Initialize export date to picker
+            if (document.getElementById('exportDateTo')) {
+                flatpickr("#exportDateTo", {
+                    enableTime: true,
+                    time_24hr: true,
+                    dateFormat: "d/m/Y H:i",  // DD/MM/YYYY HH:MM format
+                    locale: "gr",
+                    allowInput: true,
+                    clickOpens: true,
+                    disableMobile: true,
+                    defaultDate: defaultToDate,
+                    onChange: function(selectedDates, dateStr, instance) {
+                        if (selectedDates.length > 0) {
+                            var dateFromPicker = document.getElementById('exportDateFrom')._flatpickr;
+                            if (dateFromPicker) {
+                                dateFromPicker.set('maxDate', selectedDates[0]);
+                            }
+                        }
+                    }
+                });
+
+                // Make calendar icon clickable
+                var dateToIcon = document.querySelector('#exportDateTo').parentElement.querySelector('.date-icon');
+                if (dateToIcon) {
+                    dateToIcon.style.pointerEvents = 'auto';
+                    dateToIcon.style.cursor = 'pointer';
+                    dateToIcon.addEventListener('click', function() {
+                        var picker = document.getElementById('exportDateTo')._flatpickr;
+                        if (picker) picker.open();
+                    });
+                }
+            }
         }
         
         function formatDateTimeLocal(date) {
@@ -8310,34 +8367,45 @@ class AGIAnalytics {
             const dateTo = document.getElementById('exportDateTo').value;
             const includeFilters = document.getElementById('includeCurrentFilters').checked;
             const limit = document.getElementById('exportLimit').value;
-            
+
             // Build parameters
             const params = new URLSearchParams();
             params.set('action', 'export');
             params.set('format', format);
-            
+
+            // Convert DD/MM/YYYY HH:MM to YYYY-MM-DD HH:MM:SS for backend
             if (dateFrom) {
-                params.set('date_from', dateFrom.split('T')[0]);
+                const convertedFrom = convertDateTimeToBackend(dateFrom);
+                if (convertedFrom) {
+                    params.set('date_from', convertedFrom);
+                }
             }
             if (dateTo) {
-                params.set('date_to', dateTo.split('T')[0]);
+                const convertedTo = convertDateTimeToBackend(dateTo);
+                if (convertedTo) {
+                    params.set('date_to', convertedTo);
+                }
             }
             if (limit !== 'all') {
                 params.set('limit', limit);
             }
-            
+
             // Include current filters if checked
             if (includeFilters) {
                 for (const key in currentFilters) {
                     if (currentFilters.hasOwnProperty(key)) {
+                        // Skip date filters if export modal has its own dates
+                        if ((key === 'date_from' || key === 'date_to') && (dateFrom || dateTo)) {
+                            continue;
+                        }
                         params.set(key, currentFilters[key]);
                     }
                 }
             }
-            
+
             // Close modal
             document.getElementById('exportModal').classList.remove('show');
-            
+
             if (format === 'print') {
                 // Open in new window for printing
                 window.open('?' + params.toString(), '_blank');
@@ -8348,6 +8416,28 @@ class AGIAnalytics {
                 // Generate PDF
                 window.open('?' + params.toString(), '_blank');
             }
+        }
+
+        // Helper function to convert DD/MM/YYYY HH:MM to YYYY-MM-DD HH:MM:SS
+        function convertDateTimeToBackend(dateTimeStr) {
+            if (!dateTimeStr) return null;
+
+            // Parse DD/MM/YYYY HH:MM format
+            const parts = dateTimeStr.trim().split(' ');
+            if (parts.length !== 2) return null;
+
+            const dateParts = parts[0].split('/');
+            const timeParts = parts[1].split(':');
+
+            if (dateParts.length !== 3 || timeParts.length !== 2) return null;
+
+            const day = dateParts[0].padStart(2, '0');
+            const month = dateParts[1].padStart(2, '0');
+            const year = dateParts[2];
+            const hours = timeParts[0].padStart(2, '0');
+            const minutes = timeParts[1].padStart(2, '0');
+
+            return `${year}-${month}-${day} ${hours}:${minutes}:00`;
         }
 
         // Setup Greek date pickers with dd/mm/yyyy format
@@ -8440,11 +8530,6 @@ class AGIAnalytics {
                             var year = parts[2];
                             value = year + '-' + month + '-' + day;
                         }
-                    }
-                    // Convert date fields from browser local time to server UTC time
-                    if ((key === 'date_from' || key === 'date_to') && value.includes('-')) {
-                        // The date input is in browser local time, convert to UTC for server
-                        value = convertToServerTime(value + 'T00:00:00').split(' ')[0];
                     }
                     currentFilters[key] = value;
                 }

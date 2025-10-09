@@ -35,6 +35,11 @@
 // true = Ask customer for their name during call (default behavior)
 // false = Skip name collection, don't include name in registration API call
 
+// foreignRedirect configuration:
+// true = Check if incoming number is from foreign country (not in allowed prefixes list) and redirect to operator
+// false = Accept all international numbers and process normally (default behavior)
+// When enabled, numbers > 10 digits that don't start with allowed prefixes (+30, +359, 0030) are redirected
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -62,7 +67,8 @@ class AGICallHandlerConfig
         "boundsRestrictionMode" => null,
         "askForName" => true,
         "customFallCallTo" => false,
-        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
+        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
+        "foreignRedirect" => false
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -88,7 +94,8 @@ class AGICallHandlerConfig
         "boundsRestrictionMode" => null,
         "askForName" => true,
         "customFallCallTo" => false,
-        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
+        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
+        "foreignRedirect" => false
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -114,7 +121,8 @@ class AGICallHandlerConfig
         "boundsRestrictionMode" => null,
         "askForName" => true,
         "customFallCallTo" => false,
-        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
+        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
+        "foreignRedirect" => false
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -140,7 +148,8 @@ class AGICallHandlerConfig
         "boundsRestrictionMode" => null,
         "askForName" => true,
         "customFallCallTo" => false,
-        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
+        "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
+        "foreignRedirect" => false
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -165,7 +174,8 @@ class AGICallHandlerConfig
 		"centerBias" => null,
 		"boundsRestrictionMode" => null,
 		"askForName" => true,
-		"requireLocality" => false
+		"requireLocality" => false,
+		"foreignRedirect" => false
     ]
 ];
 }

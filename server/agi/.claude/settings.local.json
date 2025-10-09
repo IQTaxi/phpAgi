@@ -14,7 +14,8 @@
       "WebFetch(domain:project-osrm.org)",
       "Bash(dir:*)",
       "Bash(md5sum:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(paste:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\billy\\Documents\\phpAgi\\server",

@@ -84,6 +84,7 @@ class AGICallHandler
     private $analytics_url = 'http://127.0.0.1/agi_analytics.php';
     private $start_time;
     private $db_connection = null;
+    private $call_finalized = false;
 
     // === INITIALIZATION ===
     
@@ -124,30 +125,59 @@ class AGICallHandler
     /**
      * Filter phone number prefixes (remove country codes)
      * Removes prefixes like +30 (Greece), +359 (Bulgaria), 0030 (Greece alternative)
+     * If foreignRedirect is enabled, redirects foreign numbers to operator
      */
     private function filterPhoneNumberPrefix($phone_number)
     {
-        // List of country code prefixes to remove
-        $prefixes_to_remove = [
+        // List of allowed country code prefixes to accept and remove
+        $allowed_prefixes = [
             '+30',   // Greece
-            '+359',  // Bulgaria
-            '0030'   // Greece alternative format
+            '0030'   // Greece alternative
         ];
 
         // Clean the phone number first (remove any spaces, dashes, etc.)
         $cleaned_number = preg_replace('/[^+\d]/', '', $phone_number);
 
-        // Check each prefix and remove if found at the beginning
-        foreach ($prefixes_to_remove as $prefix) {
-            if (strpos($cleaned_number, $prefix) === 0) {
-                $filtered_number = substr($cleaned_number, strlen($prefix));
-                $this->logMessage("Phone number prefix filter: '{$phone_number}' -> '{$filtered_number}' (removed {$prefix})");
-                return $filtered_number;
-            }
-        }
+        // Check if foreign number redirect is enabled
+        $foreign_redirect = $this->config[$this->extension]['foreignRedirect'] ?? false;
 
-        // If no prefix matched, return the cleaned number as is
-        return $cleaned_number;
+        if ($foreign_redirect) {
+            // Check if number starts with an allowed prefix
+            $has_allowed_prefix = false;
+            foreach ($allowed_prefixes as $prefix) {
+                if (strpos($cleaned_number, $prefix) === 0) {
+                    $has_allowed_prefix = true;
+                    $filtered_number = substr($cleaned_number, strlen($prefix));
+                    $this->logMessage("Phone number prefix filter: '{$phone_number}' -> '{$filtered_number}' (removed allowed prefix {$prefix})");
+                    return $filtered_number;
+                }
+            }
+
+            // If number is > 10 digits and doesn't have an allowed prefix, it's foreign
+            if (strlen($cleaned_number) > 10 && !$has_allowed_prefix) {
+                $this->logMessage("Foreign number detected: '{$phone_number}' (length: " . strlen($cleaned_number) . ", no allowed prefix) - redirecting to operator with EN message", 'INFO', 'GENERAL');
+                $this->setCallOutcome('operator_transfer', 'Foreign number - not in allowed prefixes list');
+                $this->finalizeCall();
+                $this->redirectToOperator('en'); // Use English operator message for foreign numbers
+                exit(0);
+            }
+
+            // Number is <= 10 digits or has allowed prefix already handled above
+            return $cleaned_number;
+        } else {
+            // Foreign redirect disabled - use original behavior
+            // Check each prefix and remove if found at the beginning
+            foreach ($allowed_prefixes as $prefix) {
+                if (strpos($cleaned_number, $prefix) === 0) {
+                    $filtered_number = substr($cleaned_number, strlen($prefix));
+                    $this->logMessage("Phone number prefix filter: '{$phone_number}' -> '{$filtered_number}' (removed {$prefix})");
+                    return $filtered_number;
+                }
+            }
+
+            // If no prefix matched, return the cleaned number as is
+            return $cleaned_number;
+        }
     }
 
     /**
@@ -537,25 +567,34 @@ class AGICallHandler
     
     private function finalizeCall()
     {
+        // Prevent double-finalization (important for callback mode 1 where we finalize early)
+        if ($this->call_finalized) {
+            $this->logMessage("ANALYTICS: Call already finalized, skipping duplicate finalization");
+            return;
+        }
+
         $this->logMessage("ANALYTICS: Starting finalizeCall()");
-        
+
         // Calculate total call duration
         $endTime = microtime(true);
         $this->analytics_data['call_duration'] = round($endTime - $this->start_time);
         $this->analytics_data['call_end_time'] = date('Y-m-d H:i:s');
-        
+
         // Calculate total processing time
         $this->analytics_data['total_processing_time'] = round(
-            $this->analytics_data['tts_processing_time'] + 
-            $this->analytics_data['stt_processing_time'] + 
+            $this->analytics_data['tts_processing_time'] +
+            $this->analytics_data['stt_processing_time'] +
             $this->analytics_data['geocoding_processing_time']
         );
-        
+
         // Send to analytics via HTTP
         $this->sendAnalyticsData('call', 'PUT');
-        
+
+        // Mark as finalized
+        $this->call_finalized = true;
+
         $this->logMessage("ANALYTICS: finalizeCall() completed");
-        
+
         // Log call completion summary
         $this->logCallComplete();
     }
@@ -674,19 +713,22 @@ class AGICallHandler
     /**
      * Get sound file path for current language with fallback to iqtaxi
      * Supports both WAV and MP3 formats (WAV preferred)
+     * @param string $sound_name Name of the sound file
+     * @param string|null $language_override Override language (default: use current_language)
      */
-    private function getSoundFile($sound_name)
+    private function getSoundFile($sound_name, $language_override = null)
     {
+        $language = $language_override ?? $this->current_language;
         $sound_path = $this->config[$this->extension]['soundPath'] ?? '/var/sounds/iqtaxi';
-        $primary_file = "{$sound_path}/{$sound_name}_{$this->current_language}";
-        
+        $primary_file = "{$sound_path}/{$sound_name}_{$language}";
+
         // Check if primary file exists (WAV preferred, then MP3)
         $file_exists = $this->checkSoundFileExists($primary_file);
-        
+
         if ($file_exists || $sound_path === '/var/sounds/iqtaxi') {
             return $primary_file;
         } else {
-            $fallback_file = "/var/sounds/iqtaxi/{$sound_name}_{$this->current_language}";
+            $fallback_file = "/var/sounds/iqtaxi/{$sound_name}_{$language}";
             $this->logMessage("Sound file not found at {$primary_file}, using fallback: {$fallback_file}");
             return $fallback_file;
         }
@@ -1210,8 +1252,9 @@ class AGICallHandler
 
     /**
      * Transfer call to human operator
+     * @param string|null $language_override Override language for operator message (default: use current_language)
      */
-    private function redirectToOperator()
+    private function redirectToOperator($language_override = null)
     {
         $this->trackStep('operator_transfer');
 
@@ -1259,8 +1302,12 @@ class AGICallHandler
 
         $this->logMessage("Redirecting to operator: {$phone_to_dial}");
 
-        // Play operator sound before transferring
-        $this->agiCommand('EXEC Playback "' . $this->getSoundFile('operator') . '"');
+        // Play operator sound before transferring (use language override if provided)
+        $operator_sound = $this->getSoundFile('operator', $language_override);
+        if ($language_override) {
+            $this->logMessage("Using language override '{$language_override}' for operator message");
+        }
+        $this->agiCommand('EXEC Playback "' . $operator_sound . '"');
 
         // Ensure call outcome is set if not already
         if ($this->analytics_data['call_outcome'] === 'in_progress') {
@@ -2986,26 +3033,13 @@ class AGICallHandler
                 if (file_exists($register_info_file)) {
                     $this->logMessage("register_info.json found, starting status monitoring");
 
-                    // Read car number from register_info.json and announce taxi
+                    // Log the initial status when file is first found
                     $register_info = json_decode(file_get_contents($register_info_file), true);
-                    if ($register_info && isset($register_info['carNo']) && !empty(trim($register_info['carNo']))) {
-                        $car_no = trim($register_info['carNo']);
-                        $this->logMessage("Found car number in register_info.json: {$car_no}");
-
-                        $status_message = $this->getLocalizedStatusMessage('driver_accepted', $car_no);
-                        $status_file = "{$this->filebase}/taxi_assigned";
-
-                        $this->logMessage("Generating TTS for taxi assignment: {$status_message}");
-                        $this->startMusicOnHold();
-                        $tts_success = $this->callTTS($status_message, $status_file);
-                        $this->stopMusicOnHold();
-
-                        if ($tts_success) {
-                            $this->logMessage("Playing taxi assignment announcement to caller");
-                            $this->agiCommand("EXEC Playback \"{$status_file}\"");
-                        }
-                    } else {
-                        $this->logMessage("No car number found in register_info.json, starting monitoring silently");
+                    if ($register_info && isset($register_info['status'])) {
+                        $initial_status = $register_info['status'];
+                        $initial_car_no = isset($register_info['carNo']) ? trim($register_info['carNo']) : '';
+                        $initial_time = isset($register_info['time']) ? intval($register_info['time']) : 0;
+                        $this->logMessage("Initial status when file found: status={$initial_status}, carNo={$initial_car_no}, time={$initial_time}");
                     }
 
                     break;
@@ -3021,21 +3055,30 @@ class AGICallHandler
                 }
             }
         }
-        $this->monitorStatusUpdates();
-        
-        // After monitoring completes, end the call properly
-        $this->logMessage("Callback monitoring completed - ending call");
-        $this->setCallOutcome('success');
-        $this->finalizeCall();
-        $this->agiCommand('EXEC Wait "1"');
-        $this->agiCommand('HANGUP');
+        $final_status_reached = $this->monitorStatusUpdates();
+
+        // After monitoring completes, either end call or transfer to operator
+        if ($final_status_reached) {
+            $this->logMessage("Callback monitoring completed with final status - ending call");
+            $this->setCallOutcome('success');
+            $this->finalizeCall();
+            $this->agiCommand('EXEC Wait "1"');
+            $this->agiCommand('HANGUP');
+        } else {
+            $this->logMessage("Callback monitoring timed out (max retries reached) - transferring to operator");
+            $this->setCallOutcome('operator_transfer', 'Status monitoring timeout - max retries reached');
+            $this->redirectToOperator();
+        }
     }
 
     private function handleNormalMode($result)
     {
         // Set success outcome BEFORE playing the message (in case user hangs up during playback)
+        // For callback mode 1, immediately finalize to persist SUCCESS before any hangup can occur
         if (!$result['callOperator']) {
             $this->setCallOutcome('success');
+            $this->logMessage("SUCCESS outcome set and finalized for callback mode 1", 'INFO', 'REGISTRATION');
+            $this->finalizeCall();
         }
 
         if (!empty($result['msg'])) {
@@ -3341,8 +3384,11 @@ class AGICallHandler
         $this->stopMusicOnHold();
 
         // Set success outcome BEFORE playing the message (in case user hangs up during playback)
+        // Immediately finalize to persist SUCCESS before any hangup can occur
         if (!$result['callOperator']) {
             $this->setCallOutcome('success');
+            $this->logMessage("SUCCESS outcome set and finalized for reservation", 'INFO', 'REGISTRATION');
+            $this->finalizeCall();
         }
 
         if (!empty($result['msg'])) {
@@ -3383,25 +3429,30 @@ class AGICallHandler
         $this->logMessage("Callback mode enabled - starting status monitoring");
         $register_info_file = $this->filebase . "/register_info.json";
         $repeat_times = $this->config[$this->extension]['repeatTimes'] ?? 10;
-        
+
         $last_status = null;
         $last_car_no = null;
         $last_time = null;
         $status_file = "{$this->filebase}/status_update";
         $has_announced = false;
-        
+        $final_status_reached = false;
+
         for ($i = 0; $i < $repeat_times; $i++) {
             $this->logMessage("Status check attempt " . ($i + 1) . "/{$repeat_times}");
-            
+
             if (file_exists($register_info_file)) {
                 $register_info = json_decode(file_get_contents($register_info_file), true);
-                
+
                 if ($register_info && isset($register_info['status'])) {
                     $current_status = $register_info['status'];
                     $current_car_no = isset($register_info['carNo']) ? trim($register_info['carNo']) : '';
                     $current_time = isset($register_info['time']) ? intval($register_info['time']) : 0;
-                    
+
+                    // Log every status read
+                    $this->logMessage("Status read from register_info.json: status={$current_status}, carNo={$current_car_no}, time={$current_time}");
+
                     if ($this->processStatusUpdate($current_status, $current_car_no, $current_time, $status_file, $has_announced, $last_status, $last_car_no, $last_time)) {
+                        $final_status_reached = true;
                         break;
                     }
                 } else {
@@ -3410,18 +3461,19 @@ class AGICallHandler
             } else {
                 $this->logMessage("register_info.json not found, waiting...");
             }
-            
+
             if ($i < $repeat_times - 1) {
                 $this->agiCommand('EXEC Wait "3"');
             }
         }
-        
-        $this->logMessage("Status monitoring completed");
+
+        $this->logMessage("Status monitoring completed - final status reached: " . ($final_status_reached ? 'yes' : 'no'));
+        return $final_status_reached;
     }
 
     private function processStatusUpdate($current_status, $current_car_no, $current_time, $status_file, &$has_announced, &$last_status, &$last_car_no, &$last_time)
     {
-        // Handle no taxi found
+        // Handle no taxi found (special case - transfer to operator)
         if ($current_status == 20) {
             $this->playStatusMessage('no_taxi_found', '', $status_file);
             // Play transfer message and redirect to operator
@@ -3430,36 +3482,60 @@ class AGICallHandler
             $this->redirectToOperator();
             return true;
         }
-        
-        // Handle driver acceptance
-        if ($current_status == 10 && !empty($current_car_no) && !$has_announced) {
-            $this->logMessage("Driver accepted with car: {$current_car_no}");
-            $this->playStatusMessage('driver_accepted', $current_car_no, $status_file);
-            $has_announced = true;
-            $this->updateLastValues($last_status, $last_car_no, $last_time, $current_status, $current_car_no, $current_time);
+
+        // First announcement - announce current status based on what we have
+        if (!$has_announced) {
+            // Determine which message type to use
+            if ($current_status == -1) {
+                // Status -1: searching
+                $this->logMessage("Searching for taxi");
+                $this->playStatusMessage('searching', '', $status_file);
+                // Don't mark as announced yet, keep searching
+                return false;
+            } else if ($current_status == 10 && !empty($current_car_no)) {
+                // Status 10: driver accepted
+                $this->logMessage("Driver accepted with car: {$current_car_no}");
+                $this->playStatusMessage('driver_accepted', $current_car_no, $status_file);
+                $has_announced = true;
+                $this->updateLastValues($last_status, $last_car_no, $last_time, $current_status, $current_car_no, $current_time);
+                return false;
+            } else if (!empty($current_car_no)) {
+                // Any other status with carNo - announce status update (includes time if > 0)
+                $this->logMessage("Initial status announcement: {$current_status}, CarNo: {$current_car_no}, Time: {$current_time}");
+                $this->playStatusMessage('status_update', $current_car_no, $status_file, $current_status, $current_time);
+                $has_announced = true;
+                $this->updateLastValues($last_status, $last_car_no, $last_time, $current_status, $current_car_no, $current_time);
+
+                // Check if this is a final status - end monitoring immediately
+                if (in_array($current_status, [30, 31, 32, 100, 255])) {
+                    $this->logMessage("Final status on first announcement: {$current_status}");
+                    return true;
+                }
+
+                return false;
+            }
+
+            // No carNo yet, keep waiting
             return false;
         }
-        
-        // Handle status updates after driver acceptance
+
+        // Subsequent checks - announce if something changed
         if ($has_announced && ($current_status != $last_status || $current_car_no != $last_car_no || $current_time != $last_time)) {
             $this->logMessage("Status update: {$current_status}, CarNo: {$current_car_no}, Time: {$current_time}");
             $this->playStatusMessage('status_update', $current_car_no, $status_file, $current_status, $current_time);
             $this->updateLastValues($last_status, $last_car_no, $last_time, $current_status, $current_car_no, $current_time);
-            
+
+            // Check for final statuses
             if (in_array($current_status, [30, 31, 32, 100, 255])) {
                 $this->logMessage("Final status reached: {$current_status}");
                 return true;
             }
         } else if ($has_announced && file_exists($status_file . '.wav')) {
+            // Nothing changed, replay last message
             $this->logMessage("No status change, replaying last message");
             $this->agiCommand("EXEC Playback \"{$status_file}\"");
         }
-        
-        // Handle searching status
-        if (!$has_announced && $current_status == -1) {
-            $this->playStatusMessage('searching', '', $status_file);
-        }
-        
+
         return false;
     }
 
@@ -3503,7 +3579,7 @@ class AGICallHandler
                 31 => 'η κλήση ακυρώθηκε από τον οδηγό',
                 32 => 'η κλήση ακυρώθηκε από το σύστημα',
                 40 => 'καταγράφηκε η πληρωμή',
-                50 => 'καταγράφηκε ο χρόνος του οδηγού',
+                50 => 'θα φτάσει στην τοποθεσία σας',
                 60 => 'αναμένουμε απάντηση από τον οδηγό',
                 70 => 'ο οδηγός απάντησε',
                 80 => 'τροποποιήθηκε η κράτηση',
@@ -3523,7 +3599,7 @@ class AGICallHandler
                 31 => 'the call was cancelled by the driver',
                 32 => 'the call was cancelled by the system',
                 40 => 'payment was registered',
-                50 => 'driver time was registered',
+                50 => 'will arrive at your location',
                 60 => 'waiting for driver response',
                 70 => 'driver responded',
                 80 => 'reservation was modified',
@@ -3543,7 +3619,7 @@ class AGICallHandler
                 31 => 'повикването беше отменено от шофьора',
                 32 => 'повикването беше отменено от системата',
                 40 => 'плащането беше регистрирано',
-                50 => 'времето на шофьора беше регистрирано',
+                50 => 'ще пристигне на вашето местоположение',
                 60 => 'чакаме отговор от шофьора',
                 70 => 'шофьорът отговори',
                 80 => 'резервацията беше променена',

@@ -71,6 +71,10 @@ class ConfigManager {
         $configContent .= "// askForName configuration:\n";
         $configContent .= "// true = Ask customer for their name during call (default behavior)\n";
         $configContent .= "// false = Skip name collection, don't include name in registration API call\n\n";
+        $configContent .= "// foreignRedirect configuration:\n";
+        $configContent .= "// true = Check if incoming number is from foreign country (not in allowed prefixes list) and redirect to operator\n";
+        $configContent .= "// false = Accept all international numbers and process normally (default behavior)\n";
+        $configContent .= "// When enabled, numbers > 10 digits that don't start with allowed prefixes (+30, +359, 0030) are redirected\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         $configContent .= "];\n}\n";
@@ -125,6 +129,10 @@ class ConfigManager {
         $configContent .= "// askForName configuration:\n";
         $configContent .= "// true = Ask customer for their name during call (default behavior)\n";
         $configContent .= "// false = Skip name collection, don't include name in registration API call\n\n";
+        $configContent .= "// foreignRedirect configuration:\n";
+        $configContent .= "// true = Check if incoming number is from foreign country (not in allowed prefixes list) and redirect to operator\n";
+        $configContent .= "// false = Accept all international numbers and process normally (default behavior)\n";
+        $configContent .= "// When enabled, numbers > 10 digits that don't start with allowed prefixes (+30, +359, 0030) are redirected\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
 
@@ -1800,7 +1808,8 @@ $currentConfig = $configManager->getConfig();
             getUser_enabled: true,
             askForName: true,
             customFallCallTo: false,
-            customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
+            customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
+            foreignRedirect: false
         };
         
         const translations = {
@@ -1832,6 +1841,7 @@ $currentConfig = $configManager->getConfig();
                 'askForName': 'Ask For Name',
                 'customFallCallTo': 'Custom Fall Call To',
                 'customFallCallToURL': 'Custom Fall Call To URL',
+                'foreignRedirect': 'Foreign Number Redirect',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -1859,6 +1869,7 @@ $currentConfig = $configManager->getConfig();
                 'askForName_tooltip': 'Enable to ask customer for their name during call. Disable to skip name collection.',
                 'customFallCallTo_tooltip': 'Enable custom API-based fallback number retrieval when redirecting to operator',
                 'customFallCallToURL_tooltip': 'Base URL for custom fallback API. Caller number will be appended to this URL',
+                'foreignRedirect_tooltip': 'Enable to redirect foreign numbers (not in allowed prefixes list) to operator. When enabled, numbers > 10 digits without allowed prefixes (+30, +359, 0030) are redirected',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -1963,6 +1974,7 @@ $currentConfig = $configManager->getConfig();
                 'askForName': 'Ερώτηση για Όνομα',
                 'customFallCallTo': 'Προσαρμοσμένη Εφεδρική Κλήση',
                 'customFallCallToURL': 'URL Προσαρμοσμένης Εφεδρικής Κλήσης',
+                'foreignRedirect': 'Ανακατεύθυνση Αλλοδαπών Αριθμών',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -1990,6 +2002,7 @@ $currentConfig = $configManager->getConfig();
                 'askForName_tooltip': 'Ενεργοποιήστε για να ζητάτε όνομα πελάτη κατά τη διάρκεια της κλήσης. Απενεργοποιήστε για να παραλείπετε τη συλλογή ονόματος.',
                 'customFallCallTo_tooltip': 'Ενεργοποιήστε την ανάκτηση προσαρμοσμένου αριθμού εφεδρείας μέσω API κατά την ανακατεύθυνση σε χειριστή',
                 'customFallCallToURL_tooltip': 'Βασικό URL για προσαρμοσμένο API εφεδρείας. Ο αριθμός καλούντος θα προστεθεί στο τέλος αυτού του URL',
+                'foreignRedirect_tooltip': 'Ενεργοποιήστε για ανακατεύθυνση αλλοδαπών αριθμών (που δεν είναι στη λίστα επιτρεπόμενων προθεμάτων) στον χειριστή. Όταν ενεργοποιηθεί, αριθμοί > 10 ψηφία χωρίς επιτρεπόμενα προθέματα (+30, +359, 0030) ανακατευθύνονται',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',
