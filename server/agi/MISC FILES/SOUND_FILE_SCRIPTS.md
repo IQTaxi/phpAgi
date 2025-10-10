@@ -3,11 +3,11 @@
 ## 1. Welcome Message
 **File:** `welcome_iqtaxi`
 
-**Greek:** "Καλησπέρα, καλώς ήρθατε στο ραδιοταξί IqTaxi. Πατήστε 1 για άμεση διαδρομή, πατήστε 2 για ραντεβού, ή πατήστε 3 για να μιλήσετε με εκπρόσωπο, Press nine for English."
+**Greek:** "Καλώς ήρθατε στο ραδιοταξί IqTaxi. Πατήστε 1 για άμεση διαδρομή, πατήστε 2 για ραντεβού, ή πατήστε 3 για να μιλήσετε με εκπρόσωπο, Press nine for English."
 
 **Bulgarian:** "Добър вечер, добре дошли в радиотакси IqTaxi. Натиснете 1 за незабавно пътуване, натиснете 2 за резервация, или натиснете 3, за да говорите с оператор, Press nine for English."
 
-**English:** "Good evening, welcome to taxi service IqTaxi. Press 1 for immediate trip, press 2 for reservation, or press 3 to speak with an operator, press 9 for Spanish."
+**English:** "Welcome to taxi service IqTaxi. Press 1 for immediate trip, press 2 for reservation, or press 3 to speak with an operator, press 9 for Spanish."
 
 ---
 
