@@ -43,6 +43,20 @@ $SERVER_CONFIGS = [
             ['id' => '4037', 'label' => 'Chania'],
             ['id' => '4038', 'label' => 'Iraklio-Candia']
         ]
+    ],
+    [
+        'name' => 'Taxiplon',
+        'url' => 'http://10.10.10.22/agi_analytics.php',
+        'extensions' => [
+            ['id' => '5039', 'label' => 'Taxiplon']
+        ]
+    ],
+    [
+        'name' => 'Taxiway',
+        'url' => 'http://91.99.135.112/agi_analytics.php',
+        'extensions' => [
+            ['id' => '5040', 'label' => 'Taxiway']
+        ]
     ]
 ];
 
