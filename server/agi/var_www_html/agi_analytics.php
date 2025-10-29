@@ -23,13 +23,14 @@ class AGIAnalytics {
     private $language = 'el'; // Default to Greek
     private $translations = [];
     private $globalExtensionFilter = null; // Global extension filter
-    
+    private $tzOffset; // Greece timezone offset (auto-detected based on DST)
+
     // Database configuration
     private $dbConfig = [
         'host' => '127.0.0.1',
         'dbname' => 'asterisk',
         'primary_user' => 'freepbxuser',
-        'primary_pass' => 'nFDuTRLJSY0n',
+        'primary_pass' => '18r4QZANKtuQ',
         'fallback_user' => 'root',
         'fallback_pass' => '',
         'port' => '3306',
@@ -39,6 +40,9 @@ class AGIAnalytics {
     public function __construct() {
         // Set Greece timezone to match server
         date_default_timezone_set('Europe/Athens');
+
+        // Initialize timezone offset (auto-detects DST)
+        $this->tzOffset = $this->getGreeceTimezoneOffset();
 
         $this->initializeLanguage();
         $this->loadTranslations();
@@ -83,6 +87,17 @@ class AGIAnalytics {
         }
         $field = $prefix ? "{$prefix}.extension" : "extension";
         return ["{$field} = ?", [$this->globalExtensionFilter]];
+    }
+
+    /**
+     * Get Greece timezone offset in hours (automatically handles DST)
+     * Returns 3 for summer time (EEST, UTC+3) or 2 for winter time (EET, UTC+2)
+     * @return int Hours to add to UTC timestamps
+     */
+    private function getGreeceTimezoneOffset() {
+        $dt = new DateTime('now', new DateTimeZone('Europe/Athens'));
+        $offset = $dt->getOffset(); // Offset in seconds from UTC
+        return intval($offset / 3600); // Convert to hours
     }
 
     /**
@@ -973,21 +988,21 @@ class AGIAnalytics {
         
         // Date range filtering
         if (!empty($_GET['date_from'])) {
-            $where[] = 'DATE_ADD(call_start_time, INTERVAL 3 HOUR) >= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?';
             $params[] = $_GET['date_from'];
         }
         if (!empty($_GET['date_to'])) {
-            $where[] = 'DATE_ADD(call_start_time, INTERVAL 3 HOUR) <= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) <= ?';
             $params[] = $_GET['date_to'];
         }
 
         // Time range filtering
         if (!empty($_GET['time_from'])) {
-            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) >= ?';
+            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= ?';
             $params[] = $_GET['time_from'];
         }
         if (!empty($_GET['time_to'])) {
-            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) <= ?';
+            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) <= ?';
             $params[] = $_GET['time_to'];
         }
         
@@ -1019,9 +1034,9 @@ class AGIAnalytics {
         
         // Get data - Convert TIMESTAMP columns to Greek timezone
         $sql = "SELECT *,
-                       DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                       DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
                        CASE WHEN call_end_time IS NOT NULL
-                            THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                            THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
                             ELSE NULL END as call_end_time
                 FROM {$this->table} WHERE {$whereClause} ORDER BY {$sort} {$direction} LIMIT {$limit} OFFSET {$offset}";
         $stmt = $this->db->prepare($sql);
@@ -1058,9 +1073,9 @@ class AGIAnalytics {
         }
         
         $sql = "SELECT *,
-                       DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                       DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
                        CASE WHEN call_end_time IS NOT NULL
-                            THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                            THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
                             ELSE NULL END as call_end_time
                 FROM {$this->table} WHERE " . (!empty($id) ? "id = ?" : "call_id = ?");
         $stmt = $this->db->prepare($sql);
@@ -1126,7 +1141,7 @@ class AGIAnalytics {
                 destination_address LIKE ? OR
                 extension LIKE ? OR
                 registration_id LIKE ?
-                ORDER BY DATE_ADD(call_start_time, INTERVAL 3 HOUR) DESC
+                ORDER BY DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) DESC
                 LIMIT {$limit}";
 
         $searchTerm = "%{$query}%";
@@ -1191,12 +1206,12 @@ class AGIAnalytics {
         $date = $_GET['date'] ?? date('Y-m-d');
 
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
         $sql = "SELECT
-                    HOUR(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) as hour,
+                    HOUR(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) as hour,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                     COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
@@ -1206,7 +1221,7 @@ class AGIAnalytics {
                     SUM(google_stt_calls) as stt_usage
                 FROM {$this->table}
                 WHERE {$whereClause}
-                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL 3 HOUR))
+                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR))
                 ORDER BY hour";
 
         $params = array_merge([$date], $extParams);
@@ -1246,7 +1261,7 @@ class AGIAnalytics {
         $dateTo = $_GET['date_to'] ?? date('Y-m-d');
         
         $sql = "SELECT 
-                    DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) as date,
+                    DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) as date,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                     COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
@@ -1255,8 +1270,8 @@ class AGIAnalytics {
                     SUM(google_stt_calls) as stt_usage,
                     COUNT(DISTINCT phone_number) as unique_callers
                 FROM {$this->table} 
-                WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?
-                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR))
+                WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?
+                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR))
                 ORDER BY date";
         
         $stmt = $this->db->prepare($sql);
@@ -1747,7 +1762,7 @@ class AGIAnalytics {
     
     private function getAnalyticsSummary($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1782,9 +1797,9 @@ class AGIAnalytics {
         $sql = "SELECT 
                     call_outcome, 
                     COUNT(*) as count,
-                    ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM {$this->table} WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?)), 2) as percentage
+                    ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM {$this->table} WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?)), 2) as percentage
                 FROM {$this->table} 
-                WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?
+                WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?
                 GROUP BY call_outcome 
                 ORDER BY count DESC";
         
@@ -1795,11 +1810,11 @@ class AGIAnalytics {
     
     private function getHourlyDistribution($dateFrom, $dateTo) {
         $sql = "SELECT 
-                    HOUR(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) as hour,
+                    HOUR(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) as hour,
                     COUNT(*) as count
                 FROM {$this->table} 
-                WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?
-                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL 3 HOUR))
+                WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?
+                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR))
                 ORDER BY hour";
         
         $stmt = $this->db->prepare($sql);
@@ -1809,17 +1824,17 @@ class AGIAnalytics {
     
     private function getDailyTrend($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
         $sql = "SELECT
-                    DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) as date,
+                    DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) as date,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls
                 FROM {$this->table}
                 WHERE {$whereClause}
-                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR))
+                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR))
                 ORDER BY date";
 
         $params = array_merge([$dateFrom, $dateTo], $extParams);
@@ -1830,7 +1845,7 @@ class AGIAnalytics {
     
     private function getExtensionPerformance($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?", "extension IS NOT NULL"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?", "extension IS NOT NULL"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1853,7 +1868,7 @@ class AGIAnalytics {
     
     private function getAPIUsageAnalytics($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1908,7 +1923,7 @@ class AGIAnalytics {
         $dateFrom = date('Y-m-d H:i:s', strtotime("-{$minutes} minutes"));
 
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE_ADD(call_start_time, INTERVAL 3 HOUR) >= ?", "(pickup_lat IS NOT NULL OR destination_lat IS NOT NULL)"];
+        $whereConditions = ["DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?", "(pickup_lat IS NOT NULL OR destination_lat IS NOT NULL)"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1920,7 +1935,7 @@ class AGIAnalytics {
                     destination_lat,
                     destination_lng,
                     call_outcome,
-                    DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time
+                    DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time
                 FROM {$this->table}
                 WHERE {$whereClause}
                 ORDER BY call_start_time DESC";
@@ -1963,7 +1978,7 @@ class AGIAnalytics {
     
     private function getGeographicAnalytics($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?", "pickup_lat IS NOT NULL", "pickup_lng IS NOT NULL"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?", "pickup_lat IS NOT NULL", "pickup_lng IS NOT NULL"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1989,7 +2004,7 @@ class AGIAnalytics {
     
     private function getCallDurationStats($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -2012,7 +2027,7 @@ class AGIAnalytics {
     
     private function getLanguageStats($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -2057,9 +2072,9 @@ class AGIAnalytics {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
             $whereClause = $extWhere ? "WHERE {$extWhere}" : "";
             $sql = "SELECT *,
-                           DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                           DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
                            CASE WHEN call_end_time IS NOT NULL
-                                THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                                THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
                                 ELSE NULL END as call_end_time
                     FROM {$this->table} {$whereClause} ORDER BY call_start_time DESC LIMIT ?";
             $params = array_merge($extParams, [$limit]);
@@ -2085,7 +2100,7 @@ class AGIAnalytics {
     private function getTodaySummary() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
 
@@ -2159,7 +2174,7 @@ class AGIAnalytics {
     private function getTodayCallCount() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$whereClause}";
@@ -2185,7 +2200,7 @@ class AGIAnalytics {
     private function getCurrentHourCallCount() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE_ADD(call_start_time, INTERVAL 3 HOUR) >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"];
+            $whereConditions = ["DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$whereClause}";
@@ -2215,7 +2230,7 @@ class AGIAnalytics {
     private function getTodaySuccessRate() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
 
@@ -2250,7 +2265,7 @@ class AGIAnalytics {
     private function getTodayAvgDuration() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT AVG(call_duration) FROM {$this->table} WHERE {$whereClause}";
@@ -2277,7 +2292,7 @@ class AGIAnalytics {
     private function getAverageResponseTime() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()", "api_response_time > 0"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()", "api_response_time > 0"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT AVG(api_response_time) FROM {$this->table} WHERE {$whereClause}";
@@ -2312,7 +2327,7 @@ class AGIAnalytics {
     
     private function getLastCallTime() {
         try {
-            $sql = "SELECT MAX(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) FROM {$this->table}";
+            $sql = "SELECT MAX(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) FROM {$this->table}";
             $result = $this->db->query($sql);
             if ($result === false) {
                 error_log("getLastCallTime query failed: " . implode(" ", $this->db->errorInfo()));
@@ -2330,7 +2345,7 @@ class AGIAnalytics {
             $sql = "SELECT 
                         COUNT(CASE WHEN call_outcome = 'error' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) as error_rate
                     FROM {$this->table} 
-                    WHERE DATE(DATE_ADD(call_start_time, INTERVAL 3 HOUR)) = CURDATE()";
+                    WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()";
             $result = $this->db->query($sql);
             if ($result === false) {
                 error_log("getTodayErrorRate query failed: " . implode(" ", $this->db->errorInfo()));
@@ -2451,9 +2466,9 @@ class AGIAnalytics {
     
     private function getRelatedCalls($phoneNumber, $excludeId) {
         $sql = "SELECT *,
-                       DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                       DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
                        CASE WHEN call_end_time IS NOT NULL
-                            THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                            THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
                             ELSE NULL END as call_end_time
                 FROM {$this->table} WHERE phone_number = ? AND id != ? ORDER BY call_start_time DESC LIMIT 10";
         $stmt = $this->db->prepare($sql);
@@ -3217,11 +3232,11 @@ class AGIAnalytics {
         }
 
         if (!empty($_GET['date_from'])) {
-            $where[] = 'DATE_ADD(call_start_time, INTERVAL 3 HOUR) >= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?';
             $params[] = $_GET['date_from'];
         }
         if (!empty($_GET['date_to'])) {
-            $where[] = 'DATE_ADD(call_start_time, INTERVAL 3 HOUR) <= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) <= ?';
             $params[] = $_GET['date_to'];
         }
         if (!empty($_GET['phone'])) {
@@ -3240,9 +3255,9 @@ class AGIAnalytics {
 
         $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
         $sql = "SELECT *,
-                       DATE_ADD(call_start_time, INTERVAL 3 HOUR) as call_start_time,
+                       DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
                        CASE WHEN call_end_time IS NOT NULL
-                            THEN DATE_ADD(call_end_time, INTERVAL 3 HOUR)
+                            THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
                             ELSE NULL END as call_end_time
                 FROM {$this->table} WHERE {$whereClause} ORDER BY call_start_time DESC";
         
