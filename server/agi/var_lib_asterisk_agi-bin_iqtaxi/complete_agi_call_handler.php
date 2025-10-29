@@ -758,6 +758,11 @@ class AGICallHandler
     private function getLocalizedText($key)
     {
         $texts = [
+            'automated_call_comment' => [
+                'el' => '[ΨΗΦΙΑΚΗ ΚΛΗΣΗ]',
+                'en' => '[AUTOMATED CALL]',
+                'bg' => '[АВТОМАТИЗИРАНО ОБАЖДАНЕ]'
+            ],
             'anonymous_message' => [
                 'el' => 'Παρακαλούμε καλέστε από έναν αριθμό που δεν είναι ανώνυμος',
                 'en' => 'Please call from a number that is not anonymous',
@@ -2245,8 +2250,16 @@ class AGICallHandler
 
     private function getCallComment()
     {
-        // Return only user comments if they exist
-        return !empty($this->user_comments) ? $this->user_comments : '';
+        // Get the automated call prefix
+        $prefix = $this->getLocalizedText('automated_call_comment');
+
+        // If there are user comments, add them after the prefix with a space
+        if (!empty($this->user_comments)) {
+            return $prefix . ' ' . $this->user_comments;
+        }
+
+        // Otherwise just return the prefix
+        return $prefix;
     }
 
     private function processRegistrationResponse($response, $http_code, $curl_error)
