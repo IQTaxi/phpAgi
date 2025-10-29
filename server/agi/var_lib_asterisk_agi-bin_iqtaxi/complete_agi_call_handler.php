@@ -132,6 +132,7 @@ class AGICallHandler
         // List of allowed country code prefixes to accept and remove
         $allowed_prefixes = [
             '+30',   // Greece
+			'30',
             '0030'   // Greece alternative
         ];
 
@@ -766,6 +767,11 @@ class AGICallHandler
                 'el' => 'Γεια σας {name}. Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {address}? Πατήστε 1 για ναι, ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.',
                 'en' => 'Hello {name}. Would you like to use the pickup address {address}? Press 1 for yes or 2 to enter a new pickup address.',
                 'bg' => 'Здравейте {name}. Искате ли да използвате адреса за вземане {address}? Натиснете 1 за да или 2, за да въведете нов адрес за вземане.'
+            ],
+            'greeting_without_name' => [
+                'el' => 'Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {address}? Πατήστε 1 για ναι, ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.',
+                'en' => 'Would you like to use the pickup address {address}? Press 1 for yes or 2 to enter a new pickup address.',
+                'bg' => 'Искате ли да използвате адреса за вземане {address}? Натиснете 1 за да или 2, за да въведете нов адрес за вземане.'
             ],
             'confirmation_text' => [
                 'el' => 'Παρακαλώ επιβεβαιώστε. Όνομα: {name}. Παραλαβή: {pickup}. Προορισμός: {destination}',
@@ -2948,7 +2954,10 @@ class AGICallHandler
 
     private function generateAndPlayConfirmation()
     {
-        if ($this->shouldAskForName() && !empty($this->name_result)) {
+        // Check if we should announce the name
+        $announceName = $this->config[$this->extension]['announceName'] ?? true;
+
+        if ($announceName && !empty($this->name_result)) {
             // Use confirmation text with name
             $confirm_text = str_replace(
                 ['{name}', '{pickup}', '{destination}'],
@@ -3199,7 +3208,24 @@ class AGICallHandler
 
     private function confirmExistingPickupAddress($user_data)
     {
-        $confirmation_text = str_replace(['{name}', '{address}'], [$user_data['name'], $user_data['pickup']], $this->getLocalizedText('greeting_with_name'));
+        // Check if we should announce the name
+        $announceName = $this->config[$this->extension]['announceName'] ?? true;
+
+        if ($announceName && !empty($user_data['name'])) {
+            // Use greeting with name
+            $confirmation_text = str_replace(
+                ['{name}', '{address}'],
+                [$user_data['name'], $user_data['pickup']],
+                $this->getLocalizedText('greeting_with_name')
+            );
+        } else {
+            // Use greeting without name
+            $confirmation_text = str_replace(
+                ['{address}'],
+                [$user_data['pickup']],
+                $this->getLocalizedText('greeting_without_name')
+            );
+        }
 
         $confirm_file = "{$this->filebase}/pickup_confirm";
         $this->logMessage("Generating TTS for pickup address confirmation");
@@ -3346,7 +3372,10 @@ class AGICallHandler
 
     private function generateAndPlayReservationConfirmation()
     {
-        if ($this->shouldAskForName() && !empty($this->name_result)) {
+        // Check if we should announce the name
+        $announceName = $this->config[$this->extension]['announceName'] ?? true;
+
+        if ($announceName && !empty($this->name_result)) {
             // Use reservation confirmation text with name
             $confirm_text = str_replace(
                 ['{name}', '{pickup}', '{destination}', '{time}'],

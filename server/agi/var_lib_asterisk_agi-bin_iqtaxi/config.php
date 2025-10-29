@@ -35,6 +35,11 @@
 // true = Ask customer for their name during call (default behavior)
 // false = Skip name collection, don't include name in registration API call
 
+// announceName configuration:
+// true = Announce customer name in greetings and confirmations (default behavior)
+// false = Skip name announcement in TTS, even if name is available from API or user input
+// Note: This works independently from askForName and getUser_enabled
+
 // foreignRedirect configuration:
 // true = Check if incoming number is from foreign country (not in allowed prefixes list) and redirect to operator
 // false = Accept all international numbers and process normally (default behavior)
@@ -66,6 +71,7 @@ class AGICallHandlerConfig
         "centerBias" => null,
         "boundsRestrictionMode" => null,
         "askForName" => true,
+        "announceName" => true,
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
         "foreignRedirect" => false
@@ -93,6 +99,7 @@ class AGICallHandlerConfig
         "centerBias" => null,
         "boundsRestrictionMode" => null,
         "askForName" => true,
+        "announceName" => true,
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
         "foreignRedirect" => false
@@ -120,6 +127,7 @@ class AGICallHandlerConfig
         "centerBias" => null,
         "boundsRestrictionMode" => null,
         "askForName" => true,
+        "announceName" => true,
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
         "foreignRedirect" => false
@@ -147,6 +155,7 @@ class AGICallHandlerConfig
         "centerBias" => null,
         "boundsRestrictionMode" => null,
         "askForName" => true,
+        "announceName" => true,
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
         "foreignRedirect" => false
@@ -174,6 +183,7 @@ class AGICallHandlerConfig
 		"centerBias" => null,
 		"boundsRestrictionMode" => null,
 		"askForName" => true,
+		"announceName" => true,
 		"requireLocality" => false,
 		"foreignRedirect" => false
     ]

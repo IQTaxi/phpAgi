@@ -71,6 +71,10 @@ class ConfigManager {
         $configContent .= "// askForName configuration:\n";
         $configContent .= "// true = Ask customer for their name during call (default behavior)\n";
         $configContent .= "// false = Skip name collection, don't include name in registration API call\n\n";
+        $configContent .= "// announceName configuration:\n";
+        $configContent .= "// true = Announce customer name in greetings and confirmations (default behavior)\n";
+        $configContent .= "// false = Skip name announcement in TTS, even if name is available from API or user input\n";
+        $configContent .= "// Note: This works independently from askForName and getUser_enabled\n\n";
         $configContent .= "// foreignRedirect configuration:\n";
         $configContent .= "// true = Check if incoming number is from foreign country (not in allowed prefixes list) and redirect to operator\n";
         $configContent .= "// false = Accept all international numbers and process normally (default behavior)\n";
@@ -129,6 +133,10 @@ class ConfigManager {
         $configContent .= "// askForName configuration:\n";
         $configContent .= "// true = Ask customer for their name during call (default behavior)\n";
         $configContent .= "// false = Skip name collection, don't include name in registration API call\n\n";
+        $configContent .= "// announceName configuration:\n";
+        $configContent .= "// true = Announce customer name in greetings and confirmations (default behavior)\n";
+        $configContent .= "// false = Skip name announcement in TTS, even if name is available from API or user input\n";
+        $configContent .= "// Note: This works independently from askForName and getUser_enabled\n\n";
         $configContent .= "// foreignRedirect configuration:\n";
         $configContent .= "// true = Check if incoming number is from foreign country (not in allowed prefixes list) and redirect to operator\n";
         $configContent .= "// false = Accept all international numbers and process normally (default behavior)\n";
@@ -1807,6 +1815,7 @@ $currentConfig = $configManager->getConfig();
             confirmation_mode: 1,
             getUser_enabled: true,
             askForName: true,
+            announceName: true,
             customFallCallTo: false,
             customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
             foreignRedirect: false
@@ -1839,6 +1848,7 @@ $currentConfig = $configManager->getConfig();
                 'confirmation_mode': 'Confirmation Mode',
                 'getUser_enabled': 'Get User Enabled',
                 'askForName': 'Ask For Name',
+                'announceName': 'Announce Name',
                 'customFallCallTo': 'Custom Fall Call To',
                 'customFallCallToURL': 'Custom Fall Call To URL',
                 'foreignRedirect': 'Foreign Number Redirect',
@@ -1867,6 +1877,7 @@ $currentConfig = $configManager->getConfig();
                 'confirmation_mode_tooltip': 'Mode 1: Reads name, pickup, dropoff via TTS and waits for confirmation. Mode 2: Only plays confirmation prompt without TTS details',
                 'getUser_enabled_tooltip': 'Enable to check server for existing user data (name and address). Disable to always ask for new user information',
                 'askForName_tooltip': 'Enable to ask customer for their name during call. Disable to skip name collection.',
+                'announceName_tooltip': 'Enable to announce customer name in greetings and confirmations. Disable to skip name announcement even if available from API or user input. Works independently from askForName.',
                 'customFallCallTo_tooltip': 'Enable custom API-based fallback number retrieval when redirecting to operator',
                 'customFallCallToURL_tooltip': 'Base URL for custom fallback API. Caller number will be appended to this URL',
                 'foreignRedirect_tooltip': 'Enable to redirect foreign numbers (not in allowed prefixes list) to operator. When enabled, numbers > 10 digits without allowed prefixes (+30, +359, 0030) are redirected',
@@ -1972,6 +1983,7 @@ $currentConfig = $configManager->getConfig();
                 'confirmation_mode': 'Λειτουργία Επιβεβαίωσης',
                 'getUser_enabled': 'Ενεργοποίηση Λήψης Χρήστη',
                 'askForName': 'Ερώτηση για Όνομα',
+                'announceName': 'Ανακοίνωση Ονόματος',
                 'customFallCallTo': 'Προσαρμοσμένη Εφεδρική Κλήση',
                 'customFallCallToURL': 'URL Προσαρμοσμένης Εφεδρικής Κλήσης',
                 'foreignRedirect': 'Ανακατεύθυνση Αλλοδαπών Αριθμών',
@@ -2000,6 +2012,7 @@ $currentConfig = $configManager->getConfig();
                 'confirmation_mode_tooltip': 'Λειτουργία 1: Διαβάζει όνομα, παραλαβή, προορισμό μέσω TTS και περιμένει επιβεβαίωση. Λειτουργία 2: Μόνο αναπαράγει μήνυμα επιβεβαίωσης χωρίς TTS λεπτομέρειες',
                 'getUser_enabled_tooltip': 'Ενεργοποιήστε για έλεγχο στον διακομιστή για υπάρχοντα δεδομένα χρήστη (όνομα και διεύθυνση). Απενεργοποιήστε για να ζητάτε πάντα νέα στοιχεία χρήστη',
                 'askForName_tooltip': 'Ενεργοποιήστε για να ζητάτε όνομα πελάτη κατά τη διάρκεια της κλήσης. Απενεργοποιήστε για να παραλείπετε τη συλλογή ονόματος.',
+                'announceName_tooltip': 'Ενεργοποιήστε για ανακοίνωση ονόματος πελάτη σε χαιρετισμούς και επιβεβαιώσεις. Απενεργοποιήστε για παράλειψη ανακοίνωσης ονόματος ακόμα κι αν είναι διαθέσιμο από API ή εισαγωγή χρήστη. Λειτουργεί ανεξάρτητα από το askForName.',
                 'customFallCallTo_tooltip': 'Ενεργοποιήστε την ανάκτηση προσαρμοσμένου αριθμού εφεδρείας μέσω API κατά την ανακατεύθυνση σε χειριστή',
                 'customFallCallToURL_tooltip': 'Βασικό URL για προσαρμοσμένο API εφεδρείας. Ο αριθμός καλούντος θα προστεθεί στο τέλος αυτού του URL',
                 'foreignRedirect_tooltip': 'Ενεργοποιήστε για ανακατεύθυνση αλλοδαπών αριθμών (που δεν είναι στη λίστα επιτρεπόμενων προθεμάτων) στον χειριστή. Όταν ενεργοποιηθεί, αριθμοί > 10 ψηφία χωρίς επιτρεπόμενα προθέματα (+30, +359, 0030) ανακατευθύνονται',
@@ -3016,8 +3029,13 @@ $currentConfig = $configManager->getConfig();
                 bounds: null,
             centerBias: null,
             boundsRestrictionMode: null,
+            confirmation_mode: 1,
+            getUser_enabled: true,
+            askForName: true,
+            announceName: true,
             customFallCallTo: false,
-            customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/"
+            customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
+            foreignRedirect: false
             };
             
             fetch('config_manager.php', {
