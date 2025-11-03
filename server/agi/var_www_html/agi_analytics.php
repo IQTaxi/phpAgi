@@ -30,7 +30,7 @@ class AGIAnalytics {
         'host' => '127.0.0.1',
         'dbname' => 'asterisk',
         'primary_user' => 'freepbxuser',
-        'primary_pass' => '18r4QZANKtuQ',
+        'primary_pass' => 'WXS/NCr0WnbY',
         'fallback_user' => 'root',
         'fallback_pass' => '',
         'port' => '3306',

@@ -55,6 +55,7 @@ class AGICallHandler
     private $default_language = 'el';
     private $initial_message_sound = '';
     private $redirect_to_operator = false;
+    private $bypass_welcome = false;
     private $auto_call_centers_mode = 3;
     
     // Call data properties
@@ -216,6 +217,7 @@ class AGICallHandler
             $this->current_language = $this->default_language;
             $this->initial_message_sound = $config['initialMessageSound'] ?? '';
             $this->redirect_to_operator = $config['redirectToOperator'] ?? false;
+            $this->bypass_welcome = $config['bypassWelcome'] ?? false;
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
             $this->max_retries = intval($config['maxRetries'] ?? 3);
             $this->custom_fall_call_to = $config['customFallCallTo'] ?? false;
@@ -3813,17 +3815,27 @@ class AGICallHandler
 
     private function getInitialUserChoice()
     {
-        // Play initial message if configured
-        if (!empty($this->initial_message_sound)) {
-            $this->playInitialMessage();
-        }
-
-        // Check if we should redirect to operator (after initial message or immediately if no initial message)
+        // Check if we should redirect to operator first (takes precedence over bypass_welcome)
         if ($this->redirect_to_operator) {
+            // Play initial message if configured before redirecting
+            if (!empty($this->initial_message_sound)) {
+                $this->playInitialMessage();
+            }
             $this->logMessage("Redirecting to operator as configured");
             $this->redirectToOperator();
             // Safety exit in case redirectToOperator somehow doesn't hang up
             exit(0);
+        }
+
+        // Check if bypass_welcome is enabled - skip initial message and welcome message entirely
+        if ($this->bypass_welcome) {
+            $this->logMessage("Bypass welcome enabled - skipping initial message and welcome message, proceeding as if user pressed 1 (ASAP mode)");
+            return '1';
+        }
+
+        // Play initial message if configured
+        if (!empty($this->initial_message_sound)) {
+            $this->playInitialMessage();
         }
 
         // Try up to max_retries times to get user input

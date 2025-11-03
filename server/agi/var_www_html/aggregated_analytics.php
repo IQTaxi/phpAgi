@@ -53,7 +53,7 @@ $SERVER_CONFIGS = [
     ],
     [
         'name' => 'Taxiway',
-        'url' => 'http://91.99.135.112/agi_analytics.php',
+        'url' => 'https://www.iqtaxi.com/AsteriskConsoles/AsteriskTaxiway/api/proxy/agi_analytics.php',
         'extensions' => [
             ['id' => '5040', 'label' => 'Taxiway']
         ]
