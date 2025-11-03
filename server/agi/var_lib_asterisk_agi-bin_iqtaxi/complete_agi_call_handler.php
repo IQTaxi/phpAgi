@@ -2951,7 +2951,10 @@ class AGICallHandler
 
     private function generateAndPlayConfirmation()
     {
-        if ($this->shouldAskForName() && !empty($this->name_result)) {
+        // Check if we should announce the name
+        $announceName = $this->config[$this->extension]['announceName'] ?? true;
+
+        if ($announceName && !empty($this->name_result)) {
             // Use confirmation text with name
             $confirm_text = str_replace(
                 ['{name}', '{pickup}', '{destination}'],
@@ -3202,7 +3205,24 @@ class AGICallHandler
 
     private function confirmExistingPickupAddress($user_data)
     {
-        $confirmation_text = str_replace(['{name}', '{address}'], [$user_data['name'], $user_data['pickup']], $this->getLocalizedText('greeting_with_name'));
+        // Check if we should announce the name
+        $announceName = $this->config[$this->extension]['announceName'] ?? true;
+
+        if ($announceName && !empty($user_data['name'])) {
+            // Use greeting with name
+            $confirmation_text = str_replace(
+                ['{name}', '{address}'],
+                [$user_data['name'], $user_data['pickup']],
+                $this->getLocalizedText('greeting_with_name')
+            );
+        } else {
+            // Use greeting without name
+            $confirmation_text = str_replace(
+                ['{address}'],
+                [$user_data['pickup']],
+                $this->getLocalizedText('greeting_without_name')
+            );
+        }
 
         $confirm_file = "{$this->filebase}/pickup_confirm";
         $this->logMessage("Generating TTS for pickup address confirmation");
@@ -3349,7 +3369,10 @@ class AGICallHandler
 
     private function generateAndPlayReservationConfirmation()
     {
-        if ($this->shouldAskForName() && !empty($this->name_result)) {
+        // Check if we should announce the name
+        $announceName = $this->config[$this->extension]['announceName'] ?? true;
+
+        if ($announceName && !empty($this->name_result)) {
             // Use reservation confirmation text with name
             $confirm_text = str_replace(
                 ['{name}', '{pickup}', '{destination}', '{time}'],
