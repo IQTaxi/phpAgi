@@ -770,6 +770,11 @@ class AGICallHandler
                 'en' => 'Hello {name}. Would you like to use the pickup address {address}? Press 1 for yes or 2 to enter a new pickup address.',
                 'bg' => 'Здравейте {name}. Искате ли да използвате адреса за вземане {address}? Натиснете 1 за да или 2, за да въведете нов адрес за вземане.'
             ],
+            'greeting_without_name' => [
+                'el' => 'Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {address}? Πατήστε 1 για ναι, ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.',
+                'en' => 'Would you like to use the pickup address {address}? Press 1 for yes or 2 to enter a new pickup address.',
+                'bg' => 'Искате ли да използвате адреса за вземане {address}? Натиснете 1 за да или 2, за да въведете нов адрес за вземане.'
+            ],
             'confirmation_text' => [
                 'el' => 'Παρακαλώ επιβεβαιώστε. Όνομα: {name}. Παραλαβή: {pickup}. Προορισμός: {destination}',
                 'en' => 'Please confirm. Name: {name}. Pickup: {pickup}. Destination: {destination}',
