@@ -4560,6 +4560,13 @@ class AGIAnalytics {
             margin: 0;
         }
 
+        /* Desktop styles for period stats grid */
+        .period-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem 1rem;
+        }
+
         .toggle-period-stats {
             display: inline-flex;
             align-items: center;
@@ -5641,10 +5648,64 @@ class AGIAnalytics {
                 grid-column: span 1;
             }
 
+            /* Period stats container becomes horizontal scroll container on mobile */
             .period-stats-container {
-                grid-template-columns: 1fr;
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
+                overflow-y: hidden !important;
+                -webkit-overflow-scrolling: touch !important;
+                gap: 1rem !important;
+                grid-template-columns: unset !important;
+                scroll-snap-type: x mandatory !important;
+                scroll-behavior: smooth !important;
+                padding-bottom: 0.5rem !important;
             }
-            
+
+            /* Each card (weekly/monthly) has fixed width and scrolls */
+            .period-stats-container > .stat-card {
+                flex: 0 0 auto !important;
+                min-width: 85vw !important; /* 85% of viewport width */
+                max-width: 85vw !important;
+                scroll-snap-align: start !important;
+            }
+
+            /* Grid inside each card stays as grid, responsive */
+            .period-stats-grid {
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr) !important; /* 2 columns on mobile */
+                gap: 1rem 0.75rem !important;
+            }
+
+            /* Adjust font sizes inside period stats for mobile readability */
+            .period-stats-container .stat-card .period-stats-grid > div > div[style*="font-size: 0.7rem"] {
+                font-size: 0.65rem !important;
+            }
+
+            .period-stats-container .stat-card .period-stats-grid > div > div[style*="font-size: 1.75rem"] {
+                font-size: 1.5rem !important;
+            }
+
+            /* Custom scrollbar for period stats container */
+            .period-stats-container::-webkit-scrollbar {
+                height: 6px;
+            }
+
+            .period-stats-container::-webkit-scrollbar-track {
+                background: #e2e8f0;
+                border-radius: 3px;
+            }
+
+            .period-stats-container::-webkit-scrollbar-thumb {
+                background: #94a3b8;
+                border-radius: 3px;
+            }
+
+            .period-stats-container::-webkit-scrollbar-thumb:hover {
+                background: #64748b;
+            }
+
             .chart-container {
                 height: 350px;
             }
@@ -7173,7 +7234,7 @@ class AGIAnalytics {
                             LANG.translations.weekly_stats +
                         '</span>' +
                     '</div>' +
-                    '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem 1rem;">' +
+                    '<div class="period-stats-grid">' +
                         '<div style="text-align: center;">' +
                             '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
                                 '<i class="fas fa-phone" style="color: #3b82f6;"></i> ' + LANG.translations.total_calls +
@@ -7222,8 +7283,8 @@ class AGIAnalytics {
                             '</div>' +
                             '<div style="font-size: 1.75rem; font-weight: 800; color: #ec4899;">' + (weeklyStats.unique_callers || 0) + '</div>' +
                         '</div>' +
-                    '</div>' +
-                '</div>' +
+                    '</div>' + // Close period-stats-grid
+                '</div>' + // Close stat-card
 
                 '<div class="stat-card">' +
                     '<div class="stat-card-header" style="margin-bottom: 1.5rem;">' +
@@ -7232,7 +7293,7 @@ class AGIAnalytics {
                             LANG.translations.monthly_stats +
                         '</span>' +
                     '</div>' +
-                    '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem 1rem;">' +
+                    '<div class="period-stats-grid">' +
                         '<div style="text-align: center;">' +
                             '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
                                 '<i class="fas fa-phone" style="color: #3b82f6;"></i> ' + LANG.translations.total_calls +
@@ -7281,8 +7342,8 @@ class AGIAnalytics {
                             '</div>' +
                             '<div style="font-size: 1.75rem; font-weight: 800; color: #ec4899;">' + (monthlyStats.unique_callers || 0) + '</div>' +
                         '</div>' +
-                    '</div>' +
-                '</div>' +
+                    '</div>' + // Close period-stats-grid
+                '</div>' + // Close stat-card
             '</div>'; // Close period-stats-container
 
             // Set the complete HTML
@@ -7307,7 +7368,7 @@ class AGIAnalytics {
                 showPlusAnimation('successfulCallsStat', successfulCallsIncrease);
                 showPlusAnimation('uniqueCallersStat', uniqueCallersIncrease);
             }, 100);
-            
+
             // Store current stats for next comparison
             previousStats = {
                 total_calls: totalCalls,
@@ -7339,6 +7400,43 @@ class AGIAnalytics {
                 toggleText.textContent = LANG.current === 'el' ? 'Εμφάνιση Εβδομαδιαίων/Μηνιαίων' : 'Show Weekly/Monthly';
                 localStorage.setItem('periodStatsCollapsed', 'true');
             }
+        }
+
+        // Initialize scroll indicators for period stats
+        function initPeriodStatsScroll() {
+            const wrappers = document.querySelectorAll('.period-stats-scroll-wrapper');
+
+            wrappers.forEach(wrapper => {
+                const updateScrollIndicators = () => {
+                    const scrollLeft = wrapper.scrollLeft;
+                    const scrollWidth = wrapper.scrollWidth;
+                    const clientWidth = wrapper.clientWidth;
+                    const scrollRight = scrollWidth - clientWidth - scrollLeft;
+
+                    // Show/hide left shadow
+                    if (scrollLeft > 10) {
+                        wrapper.style.setProperty('--show-left-shadow', '1');
+                    } else {
+                        wrapper.style.setProperty('--show-left-shadow', '0');
+                    }
+
+                    // Show/hide right shadow
+                    if (scrollRight > 10) {
+                        wrapper.style.setProperty('--show-right-shadow', '1');
+                    } else {
+                        wrapper.style.setProperty('--show-right-shadow', '0');
+                    }
+                };
+
+                // Initial check
+                setTimeout(updateScrollIndicators, 100);
+
+                // Update on scroll
+                wrapper.addEventListener('scroll', updateScrollIndicators);
+
+                // Update on resize
+                window.addEventListener('resize', updateScrollIndicators);
+            });
         }
 
         // Load calls table
