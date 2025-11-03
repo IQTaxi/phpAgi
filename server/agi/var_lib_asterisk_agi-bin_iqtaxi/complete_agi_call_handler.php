@@ -1317,8 +1317,12 @@ class AGICallHandler
         }
         $this->agiCommand('EXEC Playback "' . $operator_sound . '"');
 
-        // Ensure call outcome is set if not already
-        if ($this->analytics_data['call_outcome'] === 'in_progress') {
+        // Set operator_transfer outcome ONLY if not already successful
+        // If registerCall() succeeded (outcome='success'), preserve it - operator transfer is for post-registration issues
+        // If outcome is 'in_progress' or 'error', then we're transferring due to registration failure
+        if ($this->analytics_data['call_outcome'] !== 'hangup' &&
+            $this->analytics_data['call_outcome'] !== 'success') {
+            // Only change to operator_transfer if not already hangup or success
             $this->setCallOutcome('operator_transfer', 'Call transferred to operator');
         }
 
@@ -2993,6 +2997,14 @@ class AGICallHandler
     {
         $this->trackStep('registering_call');
         $this->logMessage("User confirmed, registering call");
+
+        // CRITICAL FIX: Set success outcome BEFORE API call to protect against abnormal hangups
+        // User has already confirmed all details (name, pickup, destination, time)
+        // If user hangs up during registerCall() API request, we still want to record it as success
+        // The hangup detection (line ~1195) will preserve this 'success' outcome
+        $this->setCallOutcome('success');
+        $this->logMessage("SUCCESS outcome set BEFORE registration API call to protect against hangups during API request", 'INFO', 'REGISTRATION');
+
         $this->startMusicOnHold();
         $result = $this->registerCall();
         $this->stopMusicOnHold();
@@ -3010,6 +3022,8 @@ class AGICallHandler
 
         if ($result['callOperator']) {
             $this->logMessage("Transferring to operator due to registration issue");
+            // Reset outcome to 'error' since API failed - this allows redirectToOperator to change it to 'operator_transfer'
+            $this->setCallOutcome('error', 'Registration API call failed');
             $this->redirectToOperator();
         } else {
             $this->logMessage("Registration successful - ending call normally");
@@ -3058,6 +3072,10 @@ class AGICallHandler
 
                 if ($i == $repeat_times - 1) {
                     $this->logMessage("register_info.json not found after {$repeat_times} attempts");
+                    // CRITICAL FIX: Finalize analytics BEFORE returning to prevent data loss
+                    // Even if webhook file didn't arrive, the registration was successful
+                    $this->logMessage("Finalizing call analytics despite missing webhook file", 'INFO', 'REGISTRATION');
+                    $this->finalizeCall();
                     return;
                 } else {
                     // Play waiting message again before next attempt
@@ -3077,7 +3095,11 @@ class AGICallHandler
             $this->agiCommand('HANGUP');
         } else {
             $this->logMessage("Callback monitoring timed out (max retries reached) - transferring to operator");
-            $this->setCallOutcome('operator_transfer', 'Status monitoring timeout - max retries reached');
+            // CRITICAL FIX: Registration API succeeded (that's why we're in handleCallbackMode)
+            // Monitoring timeout is a post-registration issue - preserve 'success' outcome
+            // The registration was successful, so you get paid regardless of monitoring timeout
+            // Note: outcome is already 'success' from line 3005/3044, just preserve it
+            $this->logMessage("Preserving 'success' outcome despite monitoring timeout (registration succeeded)", 'INFO', 'REGISTRATION');
             $this->redirectToOperator();
         }
     }
@@ -3509,7 +3531,14 @@ class AGICallHandler
             $this->playStatusMessage('no_taxi_found', '', $status_file);
             // Play transfer message and redirect to operator
             $this->playStatusMessage('transfer_to_operator', '', $status_file . '_transfer');
-            $this->setCallOutcome('operator_transfer', 'No taxi found - transferring to operator');
+            // CRITICAL FIX: Preserve 'success' outcome if registration was successful
+            // Status 20 occurs AFTER successful registration - no taxi found is a post-registration issue
+            // If registerCall() succeeded, outcome MUST stay 'success' (that's when you get paid)
+            if ($this->analytics_data['call_outcome'] !== 'success') {
+                $this->setCallOutcome('operator_transfer', 'No taxi found - transferring to operator');
+            } else {
+                $this->logMessage("Preserving 'success' outcome despite no taxi found (post-registration issue)", 'INFO', 'REGISTRATION');
+            }
             $this->redirectToOperator();
             return true;
         }
