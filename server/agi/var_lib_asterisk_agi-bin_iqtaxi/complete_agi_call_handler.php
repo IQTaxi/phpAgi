@@ -3830,6 +3830,9 @@ class AGICallHandler
         // Check if bypass_welcome is enabled - skip initial message and welcome message entirely
         if ($this->bypass_welcome) {
             $this->logMessage("Bypass welcome enabled - skipping initial message and welcome message, proceeding as if user pressed 1 (ASAP mode)");
+            // Answer the channel explicitly since we're skipping all audio playback
+            $this->agiCommand('ANSWER');
+            $this->logMessage("Channel answered for bypass mode");
             return '1';
         }
 
