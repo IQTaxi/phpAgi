@@ -133,7 +133,8 @@ class AGICallHandler
         // List of allowed country code prefixes to accept and remove
         $allowed_prefixes = [
             '+30',   // Greece
-            '0030'   // Greece alternative
+            '0030',   // Greece alternative
+			'30'	// Greece with out +
         ];
 
         // Clean the phone number first (remove any spaces, dashes, etc.)
