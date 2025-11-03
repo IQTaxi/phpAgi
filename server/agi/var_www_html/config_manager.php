@@ -79,6 +79,9 @@ class ConfigManager {
         $configContent .= "// true = Check if incoming number is from foreign country (not in allowed prefixes list) and redirect to operator\n";
         $configContent .= "// false = Accept all international numbers and process normally (default behavior)\n";
         $configContent .= "// When enabled, numbers > 10 digits that don't start with allowed prefixes (+30, +359, 0030) are redirected\n\n";
+        $configContent .= "// bypassWelcome configuration:\n";
+        $configContent .= "// true = Skip initial message and welcome message, immediately proceed as if user pressed 1 (ASAP mode)\n";
+        $configContent .= "// false = Play initial message and welcome message normally, wait for user input (default behavior)\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         $configContent .= "];\n}\n";
@@ -141,6 +144,9 @@ class ConfigManager {
         $configContent .= "// true = Check if incoming number is from foreign country (not in allowed prefixes list) and redirect to operator\n";
         $configContent .= "// false = Accept all international numbers and process normally (default behavior)\n";
         $configContent .= "// When enabled, numbers > 10 digits that don't start with allowed prefixes (+30, +359, 0030) are redirected\n\n";
+        $configContent .= "// bypassWelcome configuration:\n";
+        $configContent .= "// true = Skip initial message and welcome message, immediately proceed as if user pressed 1 (ASAP mode)\n";
+        $configContent .= "// false = Play initial message and welcome message normally, wait for user input (default behavior)\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
 

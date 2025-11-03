@@ -45,6 +45,10 @@
 // false = Accept all international numbers and process normally (default behavior)
 // When enabled, numbers > 10 digits that don't start with allowed prefixes (+30, +359, 0030) are redirected
 
+// bypassWelcome configuration:
+// true = Skip initial message and welcome message, immediately proceed as if user pressed 1 (ASAP mode)
+// false = Play initial message and welcome message normally, wait for user input (default behavior)
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -74,7 +78,8 @@ class AGICallHandlerConfig
         "announceName" => true,
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
-        "foreignRedirect" => false
+        "foreignRedirect" => false,
+        "bypassWelcome" => false
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -102,7 +107,8 @@ class AGICallHandlerConfig
         "announceName" => true,
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
-        "foreignRedirect" => false
+        "foreignRedirect" => false,
+        "bypassWelcome" => false
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -130,7 +136,8 @@ class AGICallHandlerConfig
         "announceName" => true,
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
-        "foreignRedirect" => false
+        "foreignRedirect" => false,
+        "bypassWelcome" => false
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -158,7 +165,8 @@ class AGICallHandlerConfig
         "announceName" => true,
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
-        "foreignRedirect" => false
+        "foreignRedirect" => false,
+        "bypassWelcome" => false
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -185,7 +193,8 @@ class AGICallHandlerConfig
 		"askForName" => true,
 		"announceName" => true,
 		"requireLocality" => false,
-		"foreignRedirect" => false
+		"foreignRedirect" => false,
+	"bypassWelcome" => false
     ]
 ];
 }
