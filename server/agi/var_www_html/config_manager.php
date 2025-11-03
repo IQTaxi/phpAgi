@@ -1824,7 +1824,8 @@ $currentConfig = $configManager->getConfig();
             announceName: true,
             customFallCallTo: false,
             customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
-            foreignRedirect: false
+            foreignRedirect: false,
+            bypassWelcome: false
         };
         
         const translations = {
@@ -1858,6 +1859,7 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallTo': 'Custom Fall Call To',
                 'customFallCallToURL': 'Custom Fall Call To URL',
                 'foreignRedirect': 'Foreign Number Redirect',
+                'bypassWelcome': 'Bypass Welcome',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -1887,6 +1889,7 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallTo_tooltip': 'Enable custom API-based fallback number retrieval when redirecting to operator',
                 'customFallCallToURL_tooltip': 'Base URL for custom fallback API. Caller number will be appended to this URL',
                 'foreignRedirect_tooltip': 'Enable to redirect foreign numbers (not in allowed prefixes list) to operator. When enabled, numbers > 10 digits without allowed prefixes (+30, +359, 0030) are redirected',
+                'bypassWelcome_tooltip': 'Enable to skip initial message and welcome message. Call will immediately proceed as if user pressed 1 (ASAP mode). Disable for normal behavior with playback prompts.',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -1993,6 +1996,7 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallTo': 'Προσαρμοσμένη Εφεδρική Κλήση',
                 'customFallCallToURL': 'URL Προσαρμοσμένης Εφεδρικής Κλήσης',
                 'foreignRedirect': 'Ανακατεύθυνση Αλλοδαπών Αριθμών',
+                'bypassWelcome': 'Παράκαμψη Καλωσορίσματος',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -2022,6 +2026,7 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallTo_tooltip': 'Ενεργοποιήστε την ανάκτηση προσαρμοσμένου αριθμού εφεδρείας μέσω API κατά την ανακατεύθυνση σε χειριστή',
                 'customFallCallToURL_tooltip': 'Βασικό URL για προσαρμοσμένο API εφεδρείας. Ο αριθμός καλούντος θα προστεθεί στο τέλος αυτού του URL',
                 'foreignRedirect_tooltip': 'Ενεργοποιήστε για ανακατεύθυνση αλλοδαπών αριθμών (που δεν είναι στη λίστα επιτρεπόμενων προθεμάτων) στον χειριστή. Όταν ενεργοποιηθεί, αριθμοί > 10 ψηφία χωρίς επιτρεπόμενα προθέματα (+30, +359, 0030) ανακατευθύνονται',
+                'bypassWelcome_tooltip': 'Ενεργοποιήστε για παράκαμψη αρχικού μηνύματος και μηνύματος καλωσορίσματος. Η κλήση θα προχωρήσει αμέσως σαν ο χρήστης να πάτησε 1 (λειτουργία ASAP). Απενεργοποιήστε για κανονική συμπεριφορά με αναπαραγωγή μηνυμάτων.',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',
@@ -3041,7 +3046,8 @@ $currentConfig = $configManager->getConfig();
             announceName: true,
             customFallCallTo: false,
             customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
-            foreignRedirect: false
+            foreignRedirect: false,
+            bypassWelcome: false
             };
             
             fetch('config_manager.php', {

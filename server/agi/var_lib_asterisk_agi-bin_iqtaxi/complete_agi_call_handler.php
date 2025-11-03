@@ -55,9 +55,8 @@ class AGICallHandler
     private $default_language = 'el';
     private $initial_message_sound = '';
     private $redirect_to_operator = false;
-    private $bypass_welcome = false;
     private $auto_call_centers_mode = 3;
-
+    
     // Call data properties
     private $max_retries = 3;
     private $custom_fall_call_to = false;
@@ -133,7 +132,6 @@ class AGICallHandler
         // List of allowed country code prefixes to accept and remove
         $allowed_prefixes = [
             '+30',   // Greece
-			'30',
             '0030'   // Greece alternative
         ];
 
@@ -218,7 +216,6 @@ class AGICallHandler
             $this->current_language = $this->default_language;
             $this->initial_message_sound = $config['initialMessageSound'] ?? '';
             $this->redirect_to_operator = $config['redirectToOperator'] ?? false;
-            $this->bypass_welcome = $config['bypassWelcome'] ?? false;
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
             $this->max_retries = intval($config['maxRetries'] ?? 3);
             $this->custom_fall_call_to = $config['customFallCallTo'] ?? false;
@@ -760,11 +757,6 @@ class AGICallHandler
     private function getLocalizedText($key)
     {
         $texts = [
-            'automated_call_comment' => [
-                'el' => '[ΨΗΦΙΑΚΗ ΚΛΗΣΗ]',
-                'en' => '[AUTOMATED CALL]',
-                'bg' => '[АВТОМАТИЗИРАНО ОБАЖДАНЕ]'
-            ],
             'anonymous_message' => [
                 'el' => 'Παρακαλούμε καλέστε από έναν αριθμό που δεν είναι ανώνυμος',
                 'en' => 'Please call from a number that is not anonymous',
@@ -774,11 +766,6 @@ class AGICallHandler
                 'el' => 'Γεια σας {name}. Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {address}? Πατήστε 1 για ναι, ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.',
                 'en' => 'Hello {name}. Would you like to use the pickup address {address}? Press 1 for yes or 2 to enter a new pickup address.',
                 'bg' => 'Здравейте {name}. Искате ли да използвате адреса за вземане {address}? Натиснете 1 за да или 2, за да въведете нов адрес за вземане.'
-            ],
-            'greeting_without_name' => [
-                'el' => 'Θέλετε να χρησιμοποιήσετε τη διεύθυνση παραλαβής {address}? Πατήστε 1 για ναι, ή 2 για να εισάγετε νέα διεύθυνση παραλαβής.',
-                'en' => 'Would you like to use the pickup address {address}? Press 1 for yes or 2 to enter a new pickup address.',
-                'bg' => 'Искате ли да използвате адреса за вземане {address}? Натиснете 1 за да или 2, за да въведете нов адрес за вземане.'
             ],
             'confirmation_text' => [
                 'el' => 'Παρακαλώ επιβεβαιώστε. Όνομα: {name}. Παραλαβή: {pickup}. Προορισμός: {destination}',
@@ -2252,16 +2239,8 @@ class AGICallHandler
 
     private function getCallComment()
     {
-        // Get the automated call prefix
-        $prefix = $this->getLocalizedText('automated_call_comment');
-
-        // If there are user comments, add them after the prefix with a space
-        if (!empty($this->user_comments)) {
-            return $prefix . ' ' . $this->user_comments;
-        }
-
-        // Otherwise just return the prefix
-        return $prefix;
+        // Return only user comments if they exist
+        return !empty($this->user_comments) ? $this->user_comments : '';
     }
 
     private function processRegistrationResponse($response, $http_code, $curl_error)
@@ -2969,10 +2948,7 @@ class AGICallHandler
 
     private function generateAndPlayConfirmation()
     {
-        // Check if we should announce the name
-        $announceName = $this->config[$this->extension]['announceName'] ?? true;
-
-        if ($announceName && !empty($this->name_result)) {
+        if ($this->shouldAskForName() && !empty($this->name_result)) {
             // Use confirmation text with name
             $confirm_text = str_replace(
                 ['{name}', '{pickup}', '{destination}'],
@@ -3223,24 +3199,7 @@ class AGICallHandler
 
     private function confirmExistingPickupAddress($user_data)
     {
-        // Check if we should announce the name
-        $announceName = $this->config[$this->extension]['announceName'] ?? true;
-
-        if ($announceName && !empty($user_data['name'])) {
-            // Use greeting with name
-            $confirmation_text = str_replace(
-                ['{name}', '{address}'],
-                [$user_data['name'], $user_data['pickup']],
-                $this->getLocalizedText('greeting_with_name')
-            );
-        } else {
-            // Use greeting without name
-            $confirmation_text = str_replace(
-                ['{address}'],
-                [$user_data['pickup']],
-                $this->getLocalizedText('greeting_without_name')
-            );
-        }
+        $confirmation_text = str_replace(['{name}', '{address}'], [$user_data['name'], $user_data['pickup']], $this->getLocalizedText('greeting_with_name'));
 
         $confirm_file = "{$this->filebase}/pickup_confirm";
         $this->logMessage("Generating TTS for pickup address confirmation");
@@ -3387,10 +3346,7 @@ class AGICallHandler
 
     private function generateAndPlayReservationConfirmation()
     {
-        // Check if we should announce the name
-        $announceName = $this->config[$this->extension]['announceName'] ?? true;
-
-        if ($announceName && !empty($this->name_result)) {
+        if ($this->shouldAskForName() && !empty($this->name_result)) {
             // Use reservation confirmation text with name
             $confirm_text = str_replace(
                 ['{name}', '{pickup}', '{destination}', '{time}'],
@@ -3857,27 +3813,17 @@ class AGICallHandler
 
     private function getInitialUserChoice()
     {
-        // Check if we should redirect to operator first (takes precedence over bypass_welcome)
+        // Play initial message if configured
+        if (!empty($this->initial_message_sound)) {
+            $this->playInitialMessage();
+        }
+
+        // Check if we should redirect to operator (after initial message or immediately if no initial message)
         if ($this->redirect_to_operator) {
-            // Play initial message if configured before redirecting
-            if (!empty($this->initial_message_sound)) {
-                $this->playInitialMessage();
-            }
             $this->logMessage("Redirecting to operator as configured");
             $this->redirectToOperator();
             // Safety exit in case redirectToOperator somehow doesn't hang up
             exit(0);
-        }
-
-        // Check if bypass_welcome is enabled - skip initial message and welcome message entirely
-        if ($this->bypass_welcome) {
-            $this->logMessage("Bypass welcome enabled - skipping initial message and welcome message, proceeding as if user pressed 1 (ASAP mode)");
-            return '1';
-        }
-
-        // Play initial message if configured
-        if (!empty($this->initial_message_sound)) {
-            $this->playInitialMessage();
         }
 
         // Try up to max_retries times to get user input
