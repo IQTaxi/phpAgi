@@ -294,6 +294,8 @@ class AGIAnalytics {
                 'per_call_average' => 'Μέσος όρος ανά κλήση',
                 'unique_callers' => 'Μοναδικοί Καλούντες',
                 'different_numbers' => 'Διαφορετικοί αριθμοί',
+                'weekly_stats' => 'Εβδομαδιαίες Στατιστικές (από Κυριακή)',
+                'monthly_stats' => 'Μηνιαίες Στατιστικές',
                 'yes' => 'Ναι',
                 'no' => 'Όχι',
                 
@@ -528,6 +530,8 @@ class AGIAnalytics {
                 'per_call_average' => 'Per call average',
                 'unique_callers' => 'Unique Callers',
                 'different_numbers' => 'Different numbers',
+                'weekly_stats' => 'Weekly Stats (since Sunday)',
+                'monthly_stats' => 'Monthly Stats',
                 'yes' => 'Yes',
                 'no' => 'No',
                 
@@ -1187,10 +1191,12 @@ class AGIAnalytics {
                 'realtime_stats' => $this->getRealtimeStats(),
                 'recent_calls' => $this->getRecentCalls(),
                 'today_summary' => $this->getTodaySummary(),
+                'weekly_summary' => $this->getWeeklySummary(),
+                'monthly_summary' => $this->getMonthlySummary(),
                 'active_calls' => $this->getActiveCalls(),
                 'system_health' => $this->getSystemHealth()
             ];
-            
+
             $this->sendResponse($dashboard);
         } catch (Exception $e) {
             error_log("Dashboard API Error: " . $e->getMessage());
@@ -2144,7 +2150,116 @@ class AGIAnalytics {
             ];
         }
     }
-    
+
+    private function getWeeklySummary() {
+        try {
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            // Calculate start of week (Sunday)
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) + IF(DAYOFWEEK(CURDATE()) = 1, 0, 1) DAY)"];
+            if ($extWhere) $whereConditions[] = $extWhere;
+            $whereClause = implode(' AND ', $whereConditions);
+
+            $sql = "SELECT
+                        COUNT(*) as total_calls,
+                        COUNT(CASE WHEN call_outcome = 'successful_registration' THEN 1 END) as successful_calls,
+                        COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
+                        COUNT(CASE WHEN call_outcome = 'operator_transfer' THEN 1 END) as operator_calls,
+                        COUNT(CASE WHEN call_type = 'reservation' THEN 1 END) as reservation_calls,
+                        AVG(call_duration) as avg_duration,
+                        COUNT(DISTINCT phone_number) as unique_callers
+                    FROM {$this->table}
+                    WHERE {$whereClause}";
+
+            $stmt = $this->db->prepare($sql);
+            if ($extParams) {
+                $stmt->execute($extParams);
+            } else {
+                $stmt->execute();
+            }
+            $result = $stmt->fetch();
+
+            // Return default values if no data
+            if (!$result) {
+                return [
+                    'total_calls' => 0,
+                    'successful_calls' => 0,
+                    'hangup_calls' => 0,
+                    'operator_calls' => 0,
+                    'reservation_calls' => 0,
+                    'avg_duration' => 0,
+                    'unique_callers' => 0
+                ];
+            }
+
+            return $result;
+        } catch (Exception $e) {
+            error_log("getWeeklySummary Error: " . $e->getMessage());
+            return [
+                'total_calls' => 0,
+                'successful_calls' => 0,
+                'hangup_calls' => 0,
+                'operator_calls' => 0,
+                'reservation_calls' => 0,
+                'avg_duration' => 0,
+                'unique_callers' => 0
+            ];
+        }
+    }
+
+    private function getMonthlySummary() {
+        try {
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= DATE_FORMAT(CURDATE(), '%Y-%m-01')"];
+            if ($extWhere) $whereConditions[] = $extWhere;
+            $whereClause = implode(' AND ', $whereConditions);
+
+            $sql = "SELECT
+                        COUNT(*) as total_calls,
+                        COUNT(CASE WHEN call_outcome = 'successful_registration' THEN 1 END) as successful_calls,
+                        COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
+                        COUNT(CASE WHEN call_outcome = 'operator_transfer' THEN 1 END) as operator_calls,
+                        COUNT(CASE WHEN call_type = 'reservation' THEN 1 END) as reservation_calls,
+                        AVG(call_duration) as avg_duration,
+                        COUNT(DISTINCT phone_number) as unique_callers
+                    FROM {$this->table}
+                    WHERE {$whereClause}";
+
+            $stmt = $this->db->prepare($sql);
+            if ($extParams) {
+                $stmt->execute($extParams);
+            } else {
+                $stmt->execute();
+            }
+            $result = $stmt->fetch();
+
+            // Return default values if no data
+            if (!$result) {
+                return [
+                    'total_calls' => 0,
+                    'successful_calls' => 0,
+                    'hangup_calls' => 0,
+                    'operator_calls' => 0,
+                    'reservation_calls' => 0,
+                    'avg_duration' => 0,
+                    'unique_callers' => 0
+                ];
+            }
+
+            return $result;
+        } catch (Exception $e) {
+            error_log("getMonthlySummary Error: " . $e->getMessage());
+            return [
+                'total_calls' => 0,
+                'successful_calls' => 0,
+                'hangup_calls' => 0,
+                'operator_calls' => 0,
+                'reservation_calls' => 0,
+                'avg_duration' => 0,
+                'unique_callers' => 0
+            ];
+        }
+    }
+
     private function getActiveCalls() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
@@ -3984,6 +4099,21 @@ class AGIAnalytics {
             }
         }
 
+        /* Tablet screens */
+        @media (max-width: 1024px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .stat-card-wide {
+                grid-column: span 2;
+            }
+
+            .period-stats-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
         /* Mobile phones only */
         @media (max-width: 768px) {
             .header-content {
@@ -4393,11 +4523,11 @@ class AGIAnalytics {
         
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
-        
+
         .stat-card {
             background: white;
             padding: 2rem;
@@ -4408,7 +4538,55 @@ class AGIAnalytics {
             position: relative;
             overflow: hidden;
         }
-        
+
+        .stat-card-wide {
+            grid-column: span 2;
+        }
+
+        .period-stats-container {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+            overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+            max-height: 500px;
+            opacity: 1;
+        }
+
+        .period-stats-container.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin: 0;
+        }
+
+        .toggle-period-stats {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--gray-100);
+            color: var(--gray-800);
+        }
+
+        .toggle-period-stats:hover {
+            background: var(--gray-200);
+        }
+
+        .toggle-period-stats i {
+            transition: transform 0.3s ease;
+        }
+
+        .toggle-period-stats.collapsed i {
+            transform: rotate(180deg);
+        }
+
         .stat-card::before {
             content: '';
             position: absolute;
@@ -5456,7 +5634,15 @@ class AGIAnalytics {
             }
             
             .stats-grid {
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                grid-template-columns: 1fr;
+            }
+
+            .stat-card-wide {
+                grid-column: span 1;
+            }
+
+            .period-stats-container {
+                grid-template-columns: 1fr;
             }
             
             .chart-container {
@@ -6233,6 +6419,8 @@ class AGIAnalytics {
                 reservation: '<?php echo $this->t('reservation'); ?>',
                 operator: '<?php echo $this->t('operator'); ?>',
                 different_numbers: '<?php echo $this->t('different_numbers'); ?>',
+                weekly_stats: '<?php echo $this->t('weekly_stats'); ?>',
+                monthly_stats: '<?php echo $this->t('monthly_stats'); ?>',
                 phone_number_label: '<?php echo $this->t('phone_number_label'); ?>',
                 extension_label: '<?php echo $this->t('extension_label'); ?>',
                 duration_label: '<?php echo $this->t('duration_label'); ?>',
@@ -6807,16 +6995,34 @@ class AGIAnalytics {
                     }
                     return response.json();
                 })
-                .then(function(data) { 
+                .then(function(data) {
                     var stats = data.today_summary || data.realtime_stats || {};
-                    renderStats(stats);
+                    var weeklyStats = data.weekly_summary || {};
+                    var monthlyStats = data.monthly_summary || {};
+                    renderStats(stats, weeklyStats, monthlyStats);
                 })
-                .catch(function(error) { 
+                .catch(function(error) {
                     console.error('Error loading stats:', error);
                     // Render with default/empty stats on error
                     renderStats({
                         total_calls: 0,
                         successful_calls: 0,
+                        avg_duration: 0,
+                        unique_callers: 0
+                    }, {
+                        total_calls: 0,
+                        successful_calls: 0,
+                        hangup_calls: 0,
+                        operator_calls: 0,
+                        reservation_calls: 0,
+                        avg_duration: 0,
+                        unique_callers: 0
+                    }, {
+                        total_calls: 0,
+                        successful_calls: 0,
+                        hangup_calls: 0,
+                        operator_calls: 0,
+                        reservation_calls: 0,
                         avg_duration: 0,
                         unique_callers: 0
                     });
@@ -6853,18 +7059,30 @@ class AGIAnalytics {
             }
         }
         
-        function renderStats(stats) {
+        function renderStats(stats, weeklyStats, monthlyStats) {
+            stats = stats || {};
+            weeklyStats = weeklyStats || {};
+            monthlyStats = monthlyStats || {};
+
             var statsGrid = document.getElementById('statsGrid');
-            
+
             var totalCalls = stats.total_calls || 0;
             var successfulCalls = stats.successful_calls || 0;
             var successRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
-            
+
+            var weeklyTotalCalls = weeklyStats.total_calls || 0;
+            var weeklySuccessfulCalls = weeklyStats.successful_calls || 0;
+            var weeklySuccessRate = weeklyTotalCalls > 0 ? Math.round((weeklySuccessfulCalls / weeklyTotalCalls) * 100) : 0;
+
+            var monthlyTotalCalls = monthlyStats.total_calls || 0;
+            var monthlySuccessfulCalls = monthlyStats.successful_calls || 0;
+            var monthlySuccessRate = monthlyTotalCalls > 0 ? Math.round((monthlySuccessfulCalls / monthlyTotalCalls) * 100) : 0;
+
             // Calculate changes
             const totalCallsIncrease = previousStats.total_calls ? (totalCalls - previousStats.total_calls) : 0;
             const successfulCallsIncrease = previousStats.successful_calls ? (successfulCalls - previousStats.successful_calls) : 0;
             const uniqueCallersIncrease = previousStats.unique_callers ? ((stats.unique_callers || 0) - previousStats.unique_callers) : 0;
-            
+
             // Show animation for increases
             function showPlusAnimation(elementId, increase) {
                 if (increase > 0) {
@@ -6875,7 +7093,7 @@ class AGIAnalytics {
                         plusElement.className = 'plus-one-animation';
                         element.style.position = 'relative';
                         element.appendChild(plusElement);
-                        
+
                         setTimeout(() => {
                             if (plusElement.parentNode) {
                                 plusElement.parentNode.removeChild(plusElement);
@@ -6884,8 +7102,8 @@ class AGIAnalytics {
                     }
                 }
             }
-            
-            statsGrid.innerHTML = 
+
+            var htmlContent =
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
                         '<span class="stat-card-title">' + LANG.translations.total_calls_today + '</span>' +
@@ -6898,7 +7116,7 @@ class AGIAnalytics {
                         '<i class="fas fa-arrow-up"></i> ' + LANG.translations.active +
                     '</div>' +
                 '</div>' +
-                
+
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
                         '<span class="stat-card-title">' + LANG.translations.successful_calls + '</span>' +
@@ -6911,7 +7129,7 @@ class AGIAnalytics {
                         successRate + '% ' + LANG.translations.success_rate +
                     '</div>' +
                 '</div>' +
-                
+
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
                         '<span class="stat-card-title">' + LANG.translations.avg_duration + '</span>' +
@@ -6924,7 +7142,7 @@ class AGIAnalytics {
                         LANG.translations.per_call_average +
                     '</div>' +
                 '</div>' +
-                
+
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
                         '<span class="stat-card-title">' + LANG.translations.unique_callers + '</span>' +
@@ -6936,8 +7154,153 @@ class AGIAnalytics {
                     '<div class="stat-change">' +
                         LANG.translations.different_numbers +
                     '</div>' +
-                '</div>';
-            
+                '</div>' +
+
+                // Toggle button for period stats
+                '<div style="grid-column: 1 / -1; display: flex; justify-content: center; margin: 0.75rem 0 0.5rem 0;">' +
+                    '<button class="toggle-period-stats" id="togglePeriodStats" onclick="togglePeriodStats()">' +
+                        '<i class="fas fa-chevron-up"></i>' +
+                        '<span id="togglePeriodStatsText">' + (LANG.current === 'el' ? 'Απόκρυψη Εβδομαδιαίων/Μηνιαίων' : 'Hide Weekly/Monthly') + '</span>' +
+                    '</button>' +
+                '</div>' +
+
+                // Period stats container with weekly and monthly cards
+                '<div class="period-stats-container" id="periodStatsContainer">' +
+                '<div class="stat-card">' +
+                    '<div class="stat-card-header" style="margin-bottom: 1.5rem;">' +
+                        '<span class="stat-card-title" style="font-size: 1rem; font-weight: 700;">' +
+                            '<i class="fas fa-calendar-week" style="color: #8b5cf6; margin-right: 0.5rem;"></i>' +
+                            LANG.translations.weekly_stats +
+                        '</span>' +
+                    '</div>' +
+                    '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem 1rem;">' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-phone" style="color: #3b82f6;"></i> ' + LANG.translations.total_calls +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #3b82f6;">' + weeklyTotalCalls.toLocaleString() + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-check-circle" style="color: #10b981;"></i> ' + LANG.translations.successful_calls +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #10b981;">' + weeklySuccessfulCalls.toLocaleString() + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-percentage" style="color: #10b981;"></i> ' + LANG.translations.success_rate +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #10b981;">' + weeklySuccessRate + '%</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-phone-slash" style="color: #ef4444;"></i> ' + LANG.translations.hangup +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #ef4444;">' + (weeklyStats.hangup_calls || 0) + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-headset" style="color: #f59e0b;"></i> ' + LANG.translations.operator +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #f59e0b;">' + (weeklyStats.operator_calls || 0) + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-calendar-check" style="color: #8b5cf6;"></i> ' + LANG.translations.reservation +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #8b5cf6;">' + (weeklyStats.reservation_calls || 0) + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-clock" style="color: #06b6d4;"></i> ' + LANG.translations.avg_duration +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #06b6d4;">' + formatDuration(Math.round(weeklyStats.avg_duration || 0)) + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-users" style="color: #ec4899;"></i> ' + LANG.translations.unique_callers +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #ec4899;">' + (weeklyStats.unique_callers || 0) + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="stat-card">' +
+                    '<div class="stat-card-header" style="margin-bottom: 1.5rem;">' +
+                        '<span class="stat-card-title" style="font-size: 1rem; font-weight: 700;">' +
+                            '<i class="fas fa-calendar-alt" style="color: #ec4899; margin-right: 0.5rem;"></i>' +
+                            LANG.translations.monthly_stats +
+                        '</span>' +
+                    '</div>' +
+                    '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem 1rem;">' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-phone" style="color: #3b82f6;"></i> ' + LANG.translations.total_calls +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #3b82f6;">' + monthlyTotalCalls.toLocaleString() + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-check-circle" style="color: #10b981;"></i> ' + LANG.translations.successful_calls +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #10b981;">' + monthlySuccessfulCalls.toLocaleString() + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-percentage" style="color: #10b981;"></i> ' + LANG.translations.success_rate +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #10b981;">' + monthlySuccessRate + '%</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-phone-slash" style="color: #ef4444;"></i> ' + LANG.translations.hangup +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #ef4444;">' + (monthlyStats.hangup_calls || 0) + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-headset" style="color: #f59e0b;"></i> ' + LANG.translations.operator +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #f59e0b;">' + (monthlyStats.operator_calls || 0) + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-calendar-check" style="color: #8b5cf6;"></i> ' + LANG.translations.reservation +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #8b5cf6;">' + (monthlyStats.reservation_calls || 0) + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-clock" style="color: #06b6d4;"></i> ' + LANG.translations.avg_duration +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #06b6d4;">' + formatDuration(Math.round(monthlyStats.avg_duration || 0)) + '</div>' +
+                        '</div>' +
+                        '<div style="text-align: center;">' +
+                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
+                                '<i class="fas fa-users" style="color: #ec4899;"></i> ' + LANG.translations.unique_callers +
+                            '</div>' +
+                            '<div style="font-size: 1.75rem; font-weight: 800; color: #ec4899;">' + (monthlyStats.unique_callers || 0) + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>'; // Close period-stats-container
+
+            // Set the complete HTML
+            statsGrid.innerHTML = htmlContent;
+
+            // Restore toggle state from localStorage
+            const isPeriodStatsCollapsed = localStorage.getItem('periodStatsCollapsed') === 'true';
+            if (isPeriodStatsCollapsed) {
+                const container = document.getElementById('periodStatsContainer');
+                const toggleBtn = document.getElementById('togglePeriodStats');
+                const toggleText = document.getElementById('togglePeriodStatsText');
+                if (container && toggleBtn && toggleText) {
+                    container.classList.add('collapsed');
+                    toggleBtn.classList.add('collapsed');
+                    toggleText.textContent = LANG.current === 'el' ? 'Εμφάνιση Εβδομαδιαίων/Μηνιαίων' : 'Show Weekly/Monthly';
+                }
+            }
+
             // Show animations for increases (after a brief delay to let DOM update)
             setTimeout(() => {
                 showPlusAnimation('totalCallsStat', totalCallsIncrease);
@@ -6952,7 +7315,32 @@ class AGIAnalytics {
                 unique_callers: stats.unique_callers || 0
             };
         }
-        
+
+        // Toggle period stats (weekly/monthly) visibility
+        function togglePeriodStats() {
+            const container = document.getElementById('periodStatsContainer');
+            const toggleBtn = document.getElementById('togglePeriodStats');
+            const toggleText = document.getElementById('togglePeriodStatsText');
+
+            if (!container || !toggleBtn || !toggleText) return;
+
+            const isCollapsed = container.classList.contains('collapsed');
+
+            if (isCollapsed) {
+                // Expand
+                container.classList.remove('collapsed');
+                toggleBtn.classList.remove('collapsed');
+                toggleText.textContent = LANG.current === 'el' ? 'Απόκρυψη Εβδομαδιαίων/Μηνιαίων' : 'Hide Weekly/Monthly';
+                localStorage.setItem('periodStatsCollapsed', 'false');
+            } else {
+                // Collapse
+                container.classList.add('collapsed');
+                toggleBtn.classList.add('collapsed');
+                toggleText.textContent = LANG.current === 'el' ? 'Εμφάνιση Εβδομαδιαίων/Μηνιαίων' : 'Show Weekly/Monthly';
+                localStorage.setItem('periodStatsCollapsed', 'true');
+            }
+        }
+
         // Load calls table
         function loadCalls() {
             var params = new URLSearchParams();
