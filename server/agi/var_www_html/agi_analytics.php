@@ -30,7 +30,7 @@ class AGIAnalytics {
         'host' => '127.0.0.1',
         'dbname' => 'asterisk',
         'primary_user' => 'freepbxuser',
-        'primary_pass' => 'WXS/NCr0WnbY',
+        'primary_pass' => 'mTysomSng4qB',
         'fallback_user' => 'root',
         'fallback_pass' => '',
         'port' => '3306',
@@ -289,7 +289,9 @@ class AGIAnalytics {
                 'total_calls_today' => 'Συνολικές Κλήσεις Σήμερα',
                 'active' => 'Ενεργές',
                 'successful_calls' => 'Επιτυχημένες Κλήσεις',
+                'failed_calls' => 'Αποτυχημένες Κλήσεις',
                 'success_rate' => 'ποσοστό επιτυχίας',
+                'failed_count' => 'Αποτυχίες',
                 'avg_duration' => 'Μέση Διάρκεια',
                 'per_call_average' => 'Μέσος όρος ανά κλήση',
                 'unique_callers' => 'Μοναδικοί Καλούντες',
@@ -525,7 +527,9 @@ class AGIAnalytics {
                 'total_calls_today' => 'Total Calls Today',
                 'active' => 'Active',
                 'successful_calls' => 'Successful Calls',
+                'failed_calls' => 'Failed Calls',
                 'success_rate' => 'success rate',
+                'failed_count' => 'Failures',
                 'avg_duration' => 'Avg Duration',
                 'per_call_average' => 'Per call average',
                 'unique_callers' => 'Unique Callers',
@@ -2154,14 +2158,15 @@ class AGIAnalytics {
     private function getWeeklySummary() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            // Calculate start of week (Sunday)
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) + IF(DAYOFWEEK(CURDATE()) = 1, 0, 1) DAY)"];
+            // Calculate start of week (Sunday) - DAYOFWEEK returns 1=Sunday, 2=Monday, ..., 7=Saturday
+            // So DAYOFWEEK(CURDATE()) - 1 gives us: Sunday=0 days back, Monday=1 day back, ..., Saturday=6 days back
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= DATE_SUB(CURDATE(), INTERVAL DAYOFWEEK(CURDATE()) - 1 DAY)"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
 
             $sql = "SELECT
                         COUNT(*) as total_calls,
-                        COUNT(CASE WHEN call_outcome = 'successful_registration' THEN 1 END) as successful_calls,
+                        COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                         COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
                         COUNT(CASE WHEN call_outcome = 'operator_transfer' THEN 1 END) as operator_calls,
                         COUNT(CASE WHEN call_type = 'reservation' THEN 1 END) as reservation_calls,
@@ -2215,7 +2220,7 @@ class AGIAnalytics {
 
             $sql = "SELECT
                         COUNT(*) as total_calls,
-                        COUNT(CASE WHEN call_outcome = 'successful_registration' THEN 1 END) as successful_calls,
+                        COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                         COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
                         COUNT(CASE WHEN call_outcome = 'operator_transfer' THEN 1 END) as operator_calls,
                         COUNT(CASE WHEN call_type = 'reservation' THEN 1 END) as reservation_calls,
@@ -4102,7 +4107,7 @@ class AGIAnalytics {
         /* Tablet screens */
         @media (max-width: 1024px) {
             .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             }
 
             .stat-card-wide {
@@ -4523,7 +4528,7 @@ class AGIAnalytics {
         
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
@@ -6467,9 +6472,11 @@ class AGIAnalytics {
                 today: '<?php echo $this->t('today'); ?>',
                 total_calls: '<?php echo $this->t('total_calls'); ?>',
                 successful_calls: '<?php echo $this->t('successful_calls'); ?>',
+                failed_calls: '<?php echo $this->t('failed_calls'); ?>',
                 total_calls_today: '<?php echo $this->t('total_calls_today'); ?>',
                 active: '<?php echo $this->t('active'); ?>',
                 success_rate: '<?php echo $this->t('success_rate'); ?>',
+                failed_count: '<?php echo $this->t('failed_count'); ?>',
                 avg_duration: '<?php echo $this->t('avg_duration'); ?>',
                 per_call_average: '<?php echo $this->t('per_call_average'); ?>',
                 unique_callers: '<?php echo $this->t('unique_callers'); ?>',
@@ -7032,10 +7039,14 @@ class AGIAnalytics {
             showLoading();
             loadStats();
             loadCalls();
-            loadHourlyChart();
+            // Only refresh hourly chart if "Today" is selected
+            // Otherwise, keep showing the user's selected date
+            if (isChartShowingToday()) {
+                loadHourlyChart();
+            }
             loadLocationHeatmap();
             hideLoading();
-            
+
             // Auto-start real-time updates (as requested by user)
             setTimeout(() => {
                 startRealtime();
@@ -7188,6 +7199,19 @@ class AGIAnalytics {
                     '<div class="stat-value" id="successfulCallsStat">' + successfulCalls.toLocaleString() + '</div>' +
                     '<div class="stat-change change-positive">' +
                         successRate + '% ' + LANG.translations.success_rate +
+                    '</div>' +
+                '</div>' +
+
+                '<div class="stat-card">' +
+                    '<div class="stat-card-header">' +
+                        '<span class="stat-card-title">' + LANG.translations.failed_calls + '</span>' +
+                        '<div class="stat-card-icon icon-danger">' +
+                            '<i class="fas fa-times-circle"></i>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="stat-value" id="failedCallsStat">' + (totalCalls - successfulCalls).toLocaleString() + '</div>' +
+                    '<div class="stat-change">' +
+                        LANG.translations.failed_count +
                     '</div>' +
                 '</div>' +
 
@@ -7600,21 +7624,38 @@ class AGIAnalytics {
             const url = '?' + urlParams.toString();
 
             fetch(url)
-                .then(function(response) { 
+                .then(function(response) {
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
                     }
-                    return response.json(); 
+                    return response.json();
                 })
-                .then(function(data) { 
+                .then(function(data) {
                     var hourlyData = data.hourly_data || [];
                     renderHourlyChart(hourlyData);
                 })
-                .catch(function(error) { 
+                .catch(function(error) {
                     console.error('Error loading hourly chart:', error);
                     // Render empty chart on error
                     renderHourlyChart([]);
                 });
+        }
+
+        // Helper function to check if "Today" is selected in the chart
+        function isChartShowingToday() {
+            const select = document.getElementById('hourlyDateSelect');
+            if (!select) return true; // Default to true if select doesn't exist
+
+            // The first option in the dropdown is always "Today"
+            // Compare selected value with the first option's value
+            // This is more reliable than computing today's date independently
+            // because it handles midnight transitions correctly
+            if (select.options.length === 0) return true; // No options yet
+
+            const firstOptionValue = select.options[0].value; // Always "Today"'s date value
+
+            // Check if selected value matches the first option (today) or is empty
+            return select.value === firstOptionValue || select.value === '';
         }
         
         // Render hourly chart
@@ -7739,7 +7780,10 @@ class AGIAnalytics {
                     if (currentPage === 1) {
                         loadCalls();
                     }
-                    loadHourlyChart(); // Also refresh the hourly chart
+                    // Only refresh hourly chart if "Today" is selected
+                    if (isChartShowingToday()) {
+                        loadHourlyChart(); // Refresh the hourly chart with today's data
+                    }
                     loadLocationHeatmap();
                 }, 10000); // Update every 10 seconds
 
