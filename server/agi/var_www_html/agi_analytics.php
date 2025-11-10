@@ -319,8 +319,9 @@ class AGIAnalytics {
                 'apply_current_search_filters' => 'Εφαρμογή ενεργών φίλτρων αναζήτησης στην εξαγωγή',
                 'records_limit' => 'Όριο Εγγραφών',
                 'last_100_records' => 'Τελευταίες 100 εγγραφές',
-                'last_500_records' => 'Τελευταίες 500 εγγραφές', 
+                'last_500_records' => 'Τελευταίες 500 εγγραφές',
                 'last_1000_records' => 'Τελευταίες 1000 εγγραφές',
+                'last_5000_records' => 'Τελευταίες 5000 εγγραφές',
                 'all_records' => 'Όλες οι εγγραφές',
                 'edit_call' => 'Επεξεργασία Κλήσης',
                 
@@ -559,6 +560,7 @@ class AGIAnalytics {
                 'last_100_records' => 'Last 100 records',
                 'last_500_records' => 'Last 500 records',
                 'last_1000_records' => 'Last 1000 records',
+                'last_5000_records' => 'Last 5000 records',
                 'all_records' => 'All records',
                 'edit_call' => 'Edit Call',
                 
@@ -2706,64 +2708,75 @@ class AGIAnalytics {
     // ===== CSV EXPORT =====
     
     private function exportCSV() {
-        // Clean output buffer to prevent any interference
-        if (ob_get_level()) {
-            ob_end_clean();
+        try {
+            // Clean output buffer to prevent any interference
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="taxi_calls_report_' . date('Y-m-d_H-i-s') . '.csv"');
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Expires: 0');
+
+            // Create clean CSV content
+            $csvContent = '';
+
+            // Add UTF-8 BOM for proper Excel encoding
+            $csvContent .= "\xEF\xBB\xBF";
+
+            // Title row
+            $title = $this->language === 'el' ? 'ΑΝΑΦΟΡΑ ΚΛΗΣΕΩΝ ΤΑΞΙ' : 'TAXI CALLS REPORT';
+            $csvContent .= '"' . $title . '"' . "\r\n";
+
+            // Generation date
+            $generated = $this->language === 'el' ? 'Δημιουργήθηκε στις' : 'Generated on';
+            $csvContent .= '"' . $generated . ': ' . date('d/m/Y H:i:s') . '"' . "\r\n";
+
+            // Empty row
+            $csvContent .= "\r\n";
+
+            // Headers row
+            $headers = [
+                $this->language === 'el' ? 'Ημερομηνία' : 'Date',
+                $this->language === 'el' ? 'Ώρα' : 'Time',
+                $this->language === 'el' ? 'Τηλέφωνο' : 'Phone',
+                $this->language === 'el' ? 'Εσωτερικό' : 'Extension',
+                $this->language === 'el' ? 'Διάρκεια' : 'Duration',
+                $this->language === 'el' ? 'Αποτέλεσμα' : 'Result',
+                $this->language === 'el' ? 'Τύπος' : 'Type',
+                $this->language === 'el' ? 'Κράτηση' : 'Reservation',
+                $this->language === 'el' ? 'Παραλαβή' : 'Pickup',
+                $this->language === 'el' ? 'Προορισμός' : 'Destination',
+                $this->language === 'el' ? 'Πελάτης' : 'Customer',
+                $this->language === 'el' ? 'Γλώσσα' : 'Language'
+            ];
+
+            // Add header row to CSV
+            $csvContent .= '"' . implode('","', $headers) . '"' . "\r\n";
+
+            // Output headers and title immediately
+            echo $csvContent;
+            flush();
+
+            // Initialize counters for summary
+            $totalCalls = 0;
+            $successfulCalls = 0;
+            $failedCalls = 0;
+            $reservationCalls = 0;
+
+            // Use streaming approach for memory efficiency
+            $stmt = $this->getExportDataStream();
+
+        } catch (Exception $e) {
+            error_log("CSV Export Error: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            http_response_code(500);
+            die("Error generating CSV export: " . $e->getMessage());
         }
 
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="taxi_calls_report_' . date('Y-m-d_H-i-s') . '.csv"');
-        header('Cache-Control: no-cache, must-revalidate');
-        header('Expires: 0');
-
-        // Create clean CSV content
-        $csvContent = '';
-
-        // Add UTF-8 BOM for proper Excel encoding
-        $csvContent .= "\xEF\xBB\xBF";
-
-        // Title row
-        $title = $this->language === 'el' ? 'ΑΝΑΦΟΡΑ ΚΛΗΣΕΩΝ ΤΑΞΙ' : 'TAXI CALLS REPORT';
-        $csvContent .= '"' . $title . '"' . "\r\n";
-
-        // Generation date
-        $generated = $this->language === 'el' ? 'Δημιουργήθηκε στις' : 'Generated on';
-        $csvContent .= '"' . $generated . ': ' . date('d/m/Y H:i:s') . '"' . "\r\n";
-
-        // Empty row
-        $csvContent .= "\r\n";
-
-        // Headers row
-        $headers = [
-            $this->language === 'el' ? 'Ημερομηνία' : 'Date',
-            $this->language === 'el' ? 'Ώρα' : 'Time',
-            $this->language === 'el' ? 'Τηλέφωνο' : 'Phone',
-            $this->language === 'el' ? 'Εσωτερικό' : 'Extension',
-            $this->language === 'el' ? 'Διάρκεια' : 'Duration',
-            $this->language === 'el' ? 'Αποτέλεσμα' : 'Result',
-            $this->language === 'el' ? 'Τύπος' : 'Type',
-            $this->language === 'el' ? 'Κράτηση' : 'Reservation',
-            $this->language === 'el' ? 'Παραλαβή' : 'Pickup',
-            $this->language === 'el' ? 'Προορισμός' : 'Destination',
-            $this->language === 'el' ? 'Πελάτης' : 'Customer',
-            $this->language === 'el' ? 'Γλώσσα' : 'Language'
-        ];
-
-        // Add header row to CSV
-        $csvContent .= '"' . implode('","', $headers) . '"' . "\r\n";
-        
-        // Get clean call data
-        $exportResult = $this->getExportData();
-        $calls = $exportResult['data'];
-
-        // Initialize counters for summary
-        $totalCalls = 0;
-        $successfulCalls = 0;
-        $failedCalls = 0;
-        $reservationCalls = 0;
-
-        // Process each call and add to CSV
-        foreach ($calls as $row) {
+        // Process each call and stream to CSV
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             try {
                 // Format date and time
                 $datetime = new DateTime($row['call_start_time']);
@@ -2817,8 +2830,8 @@ class AGIAnalytics {
                     $language       // Language
                 ];
 
-                // Add data row to CSV content
-                $csvContent .= '"' . implode('","', $dataRow) . '"' . "\r\n";
+                // Output data row immediately
+                echo '"' . implode('","', $dataRow) . '"' . "\r\n";
 
                 // Count statistics
                 $totalCalls++;
@@ -2843,11 +2856,11 @@ class AGIAnalytics {
         $successRate = $totalCalls > 0 ? round(($successfulCalls / $totalCalls) * 100, 1) : 0;
 
         // Empty rows before summary
-        $csvContent .= "\r\n\r\n";
+        echo "\r\n\r\n";
 
         // Summary title
         $summaryTitle = $this->language === 'el' ? '=== ΣΥΝΟΨΗ ΑΝΑΦΟΡΑΣ ===' : '=== REPORT SUMMARY ===';
-        $csvContent .= '"' . $summaryTitle . '"' . "\r\n\r\n";
+        echo '"' . $summaryTitle . '"' . "\r\n\r\n";
 
         // Summary statistics
         $summaryLabels = [
@@ -2859,34 +2872,39 @@ class AGIAnalytics {
             'success_rate' => $this->language === 'el' ? 'Ποσοστό Επιτυχίας' : 'Success Rate'
         ];
 
-        $csvContent .= '"' . $summaryLabels['total'] . '","' . $totalCalls . '"' . "\r\n";
-        $csvContent .= '"' . $summaryLabels['successful'] . '","' . $successfulCalls . '"' . "\r\n";
-        $csvContent .= '"' . $summaryLabels['failed'] . '","' . $failedCalls . '"' . "\r\n";
-        $csvContent .= '"' . $summaryLabels['transferred'] . '","' . $transferredCalls . '"' . "\r\n";
-        $csvContent .= '"' . $summaryLabels['reservations'] . '","' . $reservationCalls . '"' . "\r\n";
-        $csvContent .= '"' . $summaryLabels['success_rate'] . '","' . $successRate . '%"' . "\r\n";
+        echo '"' . $summaryLabels['total'] . '","' . $totalCalls . '"' . "\r\n";
+        echo '"' . $summaryLabels['successful'] . '","' . $successfulCalls . '"' . "\r\n";
+        echo '"' . $summaryLabels['failed'] . '","' . $failedCalls . '"' . "\r\n";
+        echo '"' . $summaryLabels['transferred'] . '","' . $transferredCalls . '"' . "\r\n";
+        echo '"' . $summaryLabels['reservations'] . '","' . $reservationCalls . '"' . "\r\n";
+        echo '"' . $summaryLabels['success_rate'] . '","' . $successRate . '%"' . "\r\n";
 
         // Generation info
-        $csvContent .= "\r\n";
+        echo "\r\n";
         $genBy = $this->language === 'el' ? 'Δημιουργήθηκε από' : 'Generated by';
-        $csvContent .= '"' . $genBy . '","IQ Taxi Analytics System"' . "\r\n";
+        echo '"' . $genBy . '","IQ Taxi Analytics System"' . "\r\n";
         $exportDate = $this->language === 'el' ? 'Ημερομηνία Εξαγωγής' : 'Export Date';
-        $csvContent .= '"' . $exportDate . '","' . date('d/m/Y H:i:s') . '"' . "\r\n";
+        echo '"' . $exportDate . '","' . date('d/m/Y H:i:s') . '"' . "\r\n";
 
-        // Output the clean CSV content
-        echo $csvContent;
         exit;
     }
     
     // ===== PDF EXPORT =====
     
     private function exportPDF() {
-        // Get data using same filters as CSV
-        $exportResult = $this->getExportData();
-        $data = $exportResult['data'];
-        $totals = $exportResult['totals'];
-        
-        header('Content-Type: text/html; charset=utf-8');
+        try {
+            // Get data using same filters as CSV
+            $exportResult = $this->getExportData();
+            $data = $exportResult['data'];
+            $totals = $exportResult['totals'];
+
+            header('Content-Type: text/html; charset=utf-8');
+        } catch (Exception $e) {
+            error_log("PDF Export Error: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            http_response_code(500);
+            die("Error generating PDF export: " . $e->getMessage());
+        }
         
         ?>
         <!DOCTYPE html>
@@ -3181,12 +3199,19 @@ class AGIAnalytics {
     // ===== PRINT EXPORT =====
     
     private function exportPrint() {
-        // Same as PDF but without auto-print
-        $exportResult = $this->getExportData();
-        $data = $exportResult['data'];
-        $totals = $exportResult['totals'];
-        
-        header('Content-Type: text/html; charset=utf-8');
+        try {
+            // Same as PDF but without auto-print
+            $exportResult = $this->getExportData();
+            $data = $exportResult['data'];
+            $totals = $exportResult['totals'];
+
+            header('Content-Type: text/html; charset=utf-8');
+        } catch (Exception $e) {
+            error_log("Print Export Error: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            http_response_code(500);
+            die("Error generating print export: " . $e->getMessage());
+        }
         
         ?>
         <!DOCTYPE html>
@@ -3341,55 +3366,76 @@ class AGIAnalytics {
     
     // Helper method to get export data (reused by both PDF and print)
     private function getExportData() {
-        $where = [];
-        $params = [];
+        try {
+            $where = [];
+            $params = [];
 
-        // Apply global extension filter first
-        list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        if ($extWhere) {
-            $where[] = $extWhere;
-            $params = array_merge($params, $extParams);
-        }
+            // Apply global extension filter first
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            if ($extWhere) {
+                $where[] = $extWhere;
+                $params = array_merge($params, $extParams);
+            }
 
-        if (!empty($_GET['date_from'])) {
-            $where[] = 'DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?';
-            $params[] = $_GET['date_from'];
-        }
-        if (!empty($_GET['date_to'])) {
-            $where[] = 'DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) <= ?';
-            $params[] = $_GET['date_to'];
-        }
-        if (!empty($_GET['phone'])) {
-            $where[] = 'phone_number LIKE ?';
-            $params[] = '%' . $_GET['phone'] . '%';
-        }
-        if (!empty($_GET['extension']) && !$this->globalExtensionFilter) {
-            // Only apply manual extension filter if global filter is not active
-            $where[] = 'extension = ?';
-            $params[] = $_GET['extension'];
-        }
-        if (!empty($_GET['outcome'])) {
-            $where[] = 'call_outcome = ?';
-            $params[] = $_GET['outcome'];
-        }
+            if (!empty($_GET['date_from'])) {
+                $where[] = "DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?";
+                $params[] = $_GET['date_from'];
+            }
+            if (!empty($_GET['date_to'])) {
+                $where[] = "DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) <= ?";
+                $params[] = $_GET['date_to'];
+            }
+            if (!empty($_GET['phone'])) {
+                $where[] = 'phone_number LIKE ?';
+                $params[] = '%' . $_GET['phone'] . '%';
+            }
+            if (!empty($_GET['extension']) && !$this->globalExtensionFilter) {
+                // Only apply manual extension filter if global filter is not active
+                $where[] = 'extension = ?';
+                $params[] = $_GET['extension'];
+            }
+            if (!empty($_GET['outcome'])) {
+                $where[] = 'call_outcome = ?';
+                $params[] = $_GET['outcome'];
+            }
 
-        $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
-        $sql = "SELECT *,
-                       DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
-                       CASE WHEN call_end_time IS NOT NULL
-                            THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
-                            ELSE NULL END as call_end_time
-                FROM {$this->table} WHERE {$whereClause} ORDER BY call_start_time DESC";
-        
-        // Add limit if specified
-        if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
-            $sql .= " LIMIT " . intval($_GET['limit']);
+            $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
+            $sql = "SELECT *,
+                           DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
+                           CASE WHEN call_end_time IS NOT NULL
+                                THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
+                                ELSE NULL END as call_end_time
+                    FROM {$this->table} WHERE {$whereClause} ORDER BY id DESC";
+
+            // Debug: Log the limit parameter
+            error_log("Export limit parameter received: " . ($_GET['limit'] ?? 'NOT SET'));
+
+            // Add limit if specified, or enforce max for PDF/Print
+            if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
+                $sql .= " LIMIT " . intval($_GET['limit']);
+            } elseif (isset($_GET['limit']) && $_GET['limit'] === 'all') {
+                // For PDF/Print, enforce reasonable limit to prevent memory issues
+                $sql .= " LIMIT 5000";
+            } else {
+                // Default limit when no limit parameter is provided (safety fallback)
+                $sql .= " LIMIT 5000";  // Increase default from 1000 to 5000
+            }
+
+            // Debug logging
+            error_log("Export SQL: " . $sql);
+            error_log("Export Params: " . json_encode($params));
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        } catch (Exception $e) {
+            error_log("Export Data Error: " . $e->getMessage());
+            error_log("Export SQL: " . ($sql ?? 'SQL not set'));
+            error_log("Export Params: " . json_encode($params ?? []));
+            throw $e;
         }
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-        
-        $data = $stmt->fetchAll();
         
         // Calculate totals
         $totals = [
@@ -3414,12 +3460,78 @@ class AGIAnalytics {
         }
         
         $totals['total_tts_all'] = $totals['total_google_tts'] + $totals['total_edge_tts'];
-        $totals['total_api_calls_all'] = $totals['total_google_tts'] + $totals['total_google_stt'] + 
-                                        $totals['total_edge_tts'] + $totals['total_geocoding'] + 
-                                        $totals['total_user_api'] + $totals['total_registration_api'] + 
+        $totals['total_api_calls_all'] = $totals['total_google_tts'] + $totals['total_google_stt'] +
+                                        $totals['total_edge_tts'] + $totals['total_geocoding'] +
+                                        $totals['total_user_api'] + $totals['total_registration_api'] +
                                         $totals['total_date_parsing_api'];
-        
+
         return ['data' => $data, 'totals' => $totals];
+    }
+
+    // Helper method to get export data stream (for CSV memory-efficient export)
+    private function getExportDataStream() {
+        try {
+            $where = [];
+            $params = [];
+
+            // Apply global extension filter first
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            if ($extWhere) {
+                $where[] = $extWhere;
+                $params = array_merge($params, $extParams);
+            }
+
+            if (!empty($_GET['date_from'])) {
+                $where[] = "DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?";
+                $params[] = $_GET['date_from'];
+            }
+            if (!empty($_GET['date_to'])) {
+                $where[] = "DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) <= ?";
+                $params[] = $_GET['date_to'];
+            }
+            if (!empty($_GET['phone'])) {
+                $where[] = 'phone_number LIKE ?';
+                $params[] = '%' . $_GET['phone'] . '%';
+            }
+            if (!empty($_GET['extension']) && !$this->globalExtensionFilter) {
+                // Only apply manual extension filter if global filter is not active
+                $where[] = 'extension = ?';
+                $params[] = $_GET['extension'];
+            }
+            if (!empty($_GET['outcome'])) {
+                $where[] = 'call_outcome = ?';
+                $params[] = $_GET['outcome'];
+            }
+
+            $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
+            $sql = "SELECT *,
+                           DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
+                           CASE WHEN call_end_time IS NOT NULL
+                                THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
+                                ELSE NULL END as call_end_time
+                    FROM {$this->table} WHERE {$whereClause} ORDER BY id DESC";
+
+            // Add limit if specified (but allow 'all' for streaming)
+            if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
+                $sql .= " LIMIT " . intval($_GET['limit']);
+            }
+
+            // Debug logging
+            error_log("Export Stream SQL: " . $sql);
+            error_log("Export Stream Params: " . json_encode($params));
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+
+            // Return the statement for streaming
+            return $stmt;
+
+        } catch (Exception $e) {
+            error_log("Export Stream Error: " . $e->getMessage());
+            error_log("Export Stream SQL: " . ($sql ?? 'SQL not set'));
+            error_log("Export Stream Params: " . json_encode($params ?? []));
+            throw $e;
+        }
     }
     
     // Helper method to get CSS class for outcome
@@ -6276,6 +6388,7 @@ class AGIAnalytics {
                                 <option value="100"><?php echo $this->t('last_100_records'); ?></option>
                                 <option value="500"><?php echo $this->t('last_500_records'); ?></option>
                                 <option value="1000"><?php echo $this->t('last_1000_records'); ?></option>
+                                <option value="5000"><?php echo $this->t('last_5000_records'); ?></option>
                                 <option value="all" selected><?php echo $this->t('all_records'); ?></option>
                             </select>
                         </div>
@@ -8911,7 +9024,10 @@ class AGIAnalytics {
             const dateFrom = document.getElementById('exportDateFrom').value;
             const dateTo = document.getElementById('exportDateTo').value;
             const includeFilters = document.getElementById('includeCurrentFilters').checked;
-            const limit = document.getElementById('exportLimit').value;
+            const limitElement = document.getElementById('exportLimit');
+            const limit = limitElement ? limitElement.value : '1000';
+
+            console.log('Export limit value:', limit); // Debug logging
 
             // Build parameters
             const params = new URLSearchParams();
@@ -8931,9 +9047,8 @@ class AGIAnalytics {
                     params.set('date_to', convertedTo);
                 }
             }
-            if (limit !== 'all') {
-                params.set('limit', limit);
-            }
+            // Always send limit parameter
+            params.set('limit', limit || '1000');
 
             // Include current filters if checked
             if (includeFilters) {

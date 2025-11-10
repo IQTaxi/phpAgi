@@ -1848,10 +1848,17 @@ class AGICallHandler
             return $this->handleSpecialAddresses($address, $is_pickup);
         }
 
+        // Validate API key is present
+        if (empty($this->api_key)) {
+            $this->logMessage("❌ GEOCODING API: API key is missing or empty! Cannot make geocoding request.", 'ERROR', 'GEOCODING');
+            $this->logMessage("   Please check that 'googleApiKey' is set in config.php for extension {$this->extension}", 'ERROR', 'GEOCODING');
+            return null;
+        }
+
         $startTime = microtime(true);
 
         $url = "https://maps.googleapis.com/maps/api/geocode/json";
-        
+
         // Map current language to Google API language code
         $lang_config = $this->getLanguageConfig();
         $google_language = $lang_config[$this->current_language]['tts_code'] ?? 'el-GR';
@@ -1861,7 +1868,7 @@ class AGICallHandler
             "key" => $this->api_key,
             "language" => $google_language
         ];
-        
+
         // Add center bias if provided
         if (!empty($centerBias) && isset($centerBias['lat']) && isset($centerBias['lng']) && isset($centerBias['radius'])) {
             // Use location bias to prefer results near center point
@@ -1869,9 +1876,10 @@ class AGICallHandler
             $params_array["radius"] = $centerBias['radius'];
             $this->logMessage("🎯 GEOCODING API: Adding center bias - Lat: {$centerBias['lat']}, Lng: {$centerBias['lng']}, Radius: {$centerBias['radius']}m", 'DEBUG', 'GEOCODING');
         }
-        
+
         $params = http_build_query($params_array);
-        $this->logMessage("🌐 GEOCODING DEBUG: Full API URL: " . $url . '?' . $params, 'DEBUG', 'GEOCODING');
+        $this->logMessage("🌐 GEOCODING API: Requesting address: {$address}", 'DEBUG', 'GEOCODING');
+        $this->logMessage("🔑 GEOCODING API: Using API key: " . substr($this->api_key, 0, 10) . "..." . substr($this->api_key, -5), 'DEBUG', 'GEOCODING');
 
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -1882,15 +1890,56 @@ class AGICallHandler
 
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
         curl_close($ch);
-        
+
         $processingTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
         $this->trackGeocodingCall($processingTime);
 
-        if ($http_code !== 200 || !$response) return null;
+        // Enhanced error logging
+        if ($http_code !== 200 || !$response) {
+            $this->logMessage("❌ GEOCODING API: Request failed - HTTP: {$http_code}", 'ERROR', 'GEOCODING');
+            if ($curl_error) {
+                $this->logMessage("   CURL Error: {$curl_error}", 'ERROR', 'GEOCODING');
+            }
+            if ($response) {
+                $this->logMessage("   Response: " . substr($response, 0, 500), 'ERROR', 'GEOCODING');
+            } else {
+                $this->logMessage("   Response: (empty/no response)", 'ERROR', 'GEOCODING');
+            }
+            return null;
+        }
 
         $data = json_decode($response, true);
-        if (!$data || $data['status'] !== 'OK' || empty($data['results'])) return null;
+
+        // Enhanced status checking with detailed error logging
+        if (!$data || $data['status'] !== 'OK') {
+            $status = $data['status'] ?? 'UNKNOWN';
+            $error_message = $data['error_message'] ?? 'No error message provided';
+
+            $this->logMessage("❌ GEOCODING API: Request unsuccessful - Status: {$status}", 'ERROR', 'GEOCODING');
+            $this->logMessage("   Error message: {$error_message}", 'ERROR', 'GEOCODING');
+            $this->logMessage("   Full response: " . json_encode($data, JSON_UNESCAPED_UNICODE), 'DEBUG', 'GEOCODING');
+
+            // Specific handling for common error statuses
+            if ($status === 'REQUEST_DENIED') {
+                $this->logMessage("   ⚠️ REQUEST_DENIED typically means:", 'ERROR', 'GEOCODING');
+                $this->logMessage("      - API key is invalid or missing", 'ERROR', 'GEOCODING');
+                $this->logMessage("      - Geocoding API is not enabled for this API key", 'ERROR', 'GEOCODING');
+                $this->logMessage("      - API key restrictions are blocking this request", 'ERROR', 'GEOCODING');
+            } elseif ($status === 'OVER_QUERY_LIMIT') {
+                $this->logMessage("   ⚠️ OVER_QUERY_LIMIT: Quota exceeded for this API key", 'ERROR', 'GEOCODING');
+            } elseif ($status === 'ZERO_RESULTS') {
+                $this->logMessage("   ℹ️ ZERO_RESULTS: No geocoding results found for address: {$address}", 'INFO', 'GEOCODING');
+            }
+
+            return null;
+        }
+
+        if (empty($data['results'])) {
+            $this->logMessage("❌ GEOCODING API: Response has OK status but empty results array", 'ERROR', 'GEOCODING');
+            return null;
+        }
 
         $result = $data['results'][0];
         $this->logMessage("📍 GEOCODING API: Found place: " . $result['formatted_address'] . " at Lat: " . $result['geometry']['location']['lat'] . ", Lng: " . $result['geometry']['location']['lng'], 'DEBUG', 'GEOCODING');
@@ -1985,8 +2034,67 @@ class AGICallHandler
             return null;
         }
 
+        // Handle non-200 responses with intelligent fallback
         if ($http_code !== 200 || !$response) {
-            $this->logMessage("❌ Places API request failed - HTTP: {$http_code}, Response: " . substr($response, 0, 500), 'ERROR', 'GEOCODING');
+            $response_preview = $response ? substr($response, 0, 500) : '(empty response)';
+            $this->logMessage("❌ Places API request failed - HTTP: {$http_code}, Response: " . $response_preview, 'ERROR', 'GEOCODING');
+
+            // Check if this is a 4xx error that should trigger fallback to Geocoding API v1
+            if ($http_code >= 400 && $http_code < 500 && $response) {
+                // Try to parse error response
+                $error_data = json_decode($response, true);
+
+                if (json_last_error() === JSON_ERROR_NONE && isset($error_data['error'])) {
+                    $error_code = $error_data['error']['code'] ?? null;
+                    $error_status = $error_data['error']['status'] ?? null;
+                    $error_message = $error_data['error']['message'] ?? '';
+
+                    // Check for API permission/quota errors
+                    $should_fallback = false;
+                    $fallback_reason = '';
+
+                    if ($error_status === 'PERMISSION_DENIED' || $error_code === 403) {
+                        $should_fallback = true;
+                        $fallback_reason = "PERMISSION_DENIED (HTTP {$error_code})";
+
+                        // Check for specific API blocking reason
+                        if (!empty($error_data['error']['details'])) {
+                            foreach ($error_data['error']['details'] as $detail) {
+                                if (isset($detail['reason']) && $detail['reason'] === 'API_KEY_SERVICE_BLOCKED') {
+                                    $fallback_reason .= " - API_KEY_SERVICE_BLOCKED";
+                                    break;
+                                }
+                            }
+                        }
+                    } elseif ($error_code === 429 || $error_status === 'RESOURCE_EXHAUSTED') {
+                        $should_fallback = true;
+                        $fallback_reason = "QUOTA_EXCEEDED (HTTP {$error_code})";
+                    } elseif ($error_code >= 400 && $error_code < 500) {
+                        // Generic 4xx errors should also fallback
+                        $should_fallback = true;
+                        $fallback_reason = "CLIENT_ERROR (HTTP {$error_code}): {$error_message}";
+                    }
+
+                    if ($should_fallback) {
+                        $this->logMessage("🔄 PLACES API FALLBACK: {$fallback_reason}", 'WARNING', 'GEOCODING');
+                        $this->logMessage("🔄 Falling back to Geocoding API v1 for address: {$address}", 'INFO', 'GEOCODING');
+                        $this->logMessage("🔄 Error details: " . json_encode($error_data['error'], JSON_UNESCAPED_UNICODE), 'DEBUG', 'GEOCODING');
+
+                        // Fallback to legacy Geocoding API
+                        $fallback_result = $this->getLatLngFromGoogleGeocoding($address, $is_pickup, $bounds, $centerBias);
+
+                        if ($fallback_result !== null) {
+                            $this->logMessage("✅ FALLBACK SUCCESS: Geocoding API v1 returned result for: {$address}", 'INFO', 'GEOCODING');
+                            return $fallback_result;
+                        } else {
+                            $this->logMessage("❌ FALLBACK FAILED: Geocoding API v1 also returned null for: {$address}", 'ERROR', 'GEOCODING');
+                            return null;
+                        }
+                    }
+                }
+            }
+
+            // For non-4xx errors or errors that don't warrant fallback, just return null
             return null;
         }
 
@@ -1996,7 +2104,7 @@ class AGICallHandler
             $this->logMessage("Raw response: " . substr($response, 0, 1000), 'DEBUG', 'GEOCODING');
             return null;
         }
-        
+
         if (!$result || empty($result['places'])) {
             $this->logMessage("⚠️ Places API returned no results. Full response: " . json_encode($result), 'INFO', 'GEOCODING');
             return null;

@@ -16,7 +16,8 @@
       "Bash(md5sum:*)",
       "Bash(curl:*)",
       "Bash(paste:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "WebFetch(domain:192.168.1.5)"
     ],
     "additionalDirectories": [
       "C:\\Users\\billy\\Documents\\phpAgi\\server",
