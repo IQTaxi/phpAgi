@@ -2714,59 +2714,46 @@ class AGIAnalytics {
                 ob_end_clean();
             }
 
+            // Get summary data with filters applied
+            $data = $this->getExportSummaryData();
+
             header('Content-Type: text/csv; charset=utf-8');
-            header('Content-Disposition: attachment; filename="taxi_calls_report_' . date('Y-m-d_H-i-s') . '.csv"');
+            header('Content-Disposition: attachment; filename="analytics_summary_' . date('Y-m-d_H-i-s') . '.csv"');
             header('Cache-Control: no-cache, must-revalidate');
             header('Expires: 0');
 
-            // Create clean CSV content
-            $csvContent = '';
-
             // Add UTF-8 BOM for proper Excel encoding
-            $csvContent .= "\xEF\xBB\xBF";
+            echo "\xEF\xBB\xBF";
 
-            // Title row
-            $title = $this->language === 'el' ? 'ΑΝΑΦΟΡΑ ΚΛΗΣΕΩΝ ΤΑΞΙ' : 'TAXI CALLS REPORT';
-            $csvContent .= '"' . $title . '"' . "\r\n";
+            // Title
+            echo '"Call Analytics Summary Report"' . "\r\n";
+            echo '"Generated: ' . date('F d, Y H:i:s') . '"' . "\r\n\r\n";
 
-            // Generation date
-            $generated = $this->language === 'el' ? 'Δημιουργήθηκε στις' : 'Generated on';
-            $csvContent .= '"' . $generated . ': ' . date('d/m/Y H:i:s') . '"' . "\r\n";
+            // Call Statistics
+            echo '"Call Statistics"' . "\r\n";
+            echo '"Total Calls","' . number_format($data['total_calls']) . '"' . "\r\n";
+            echo '"Successful Calls","' . number_format($data['successful_calls']) . '"' . "\r\n";
+            echo '"Success Rate","' . number_format($data['success_rate'], 2) . '%"' . "\r\n";
+            echo '"Hangup Calls","' . number_format($data['hangup_calls']) . '"' . "\r\n";
+            echo '"Operator Transfers","' . number_format($data['operator_transfers']) . '"' . "\r\n";
+            echo '"Reservation Calls","' . number_format($data['reservation_calls']) . '"' . "\r\n";
+            echo '"Average Duration","' . number_format($data['avg_duration'] ?? 0, 2) . ' seconds"' . "\r\n";
+            echo '"Max Duration","' . number_format($data['max_duration'] ?? 0, 2) . ' seconds"' . "\r\n";
+            echo '"Min Duration","' . number_format($data['min_duration'] ?? 0, 2) . ' seconds"' . "\r\n";
+            echo '"Unique Callers","' . number_format($data['unique_callers']) . '"' . "\r\n";
+            echo '"Extensions Used","' . number_format($data['extensions_used']) . '"' . "\r\n\r\n";
 
-            // Empty row
-            $csvContent .= "\r\n";
+            // API Usage Statistics
+            echo '"API Usage Statistics"' . "\r\n";
+            echo '"Google TTS Calls","' . number_format($data['google_tts_total'] ?? 0) . '"' . "\r\n";
+            echo '"Edge TTS Calls","' . number_format($data['edge_tts_total'] ?? 0) . '"' . "\r\n";
+            echo '"Google STT Calls","' . number_format($data['google_stt_total'] ?? 0) . '"' . "\r\n";
+            echo '"Geocoding API Calls","' . number_format($data['geocoding_total'] ?? 0) . '"' . "\r\n";
+            echo '"User API Calls","' . number_format($data['user_api_total'] ?? 0) . '"' . "\r\n";
+            echo '"Registration API Calls","' . number_format($data['registration_total'] ?? 0) . '"' . "\r\n";
+            echo '"TOTAL API CALLS","' . number_format($data['total_api_calls']) . '"' . "\r\n";
 
-            // Headers row
-            $headers = [
-                $this->language === 'el' ? 'Ημερομηνία' : 'Date',
-                $this->language === 'el' ? 'Ώρα' : 'Time',
-                $this->language === 'el' ? 'Τηλέφωνο' : 'Phone',
-                $this->language === 'el' ? 'Εσωτερικό' : 'Extension',
-                $this->language === 'el' ? 'Διάρκεια' : 'Duration',
-                $this->language === 'el' ? 'Αποτέλεσμα' : 'Result',
-                $this->language === 'el' ? 'Τύπος' : 'Type',
-                $this->language === 'el' ? 'Κράτηση' : 'Reservation',
-                $this->language === 'el' ? 'Παραλαβή' : 'Pickup',
-                $this->language === 'el' ? 'Προορισμός' : 'Destination',
-                $this->language === 'el' ? 'Πελάτης' : 'Customer',
-                $this->language === 'el' ? 'Γλώσσα' : 'Language'
-            ];
-
-            // Add header row to CSV
-            $csvContent .= '"' . implode('","', $headers) . '"' . "\r\n";
-
-            // Output headers and title immediately
-            echo $csvContent;
-            flush();
-
-            // Initialize counters for summary
-            $totalCalls = 0;
-            $successfulCalls = 0;
-            $failedCalls = 0;
-            $reservationCalls = 0;
-
-            // Use streaming approach for memory efficiency
-            $stmt = $this->getExportDataStream();
+            exit;
 
         } catch (Exception $e) {
             error_log("CSV Export Error: " . $e->getMessage());
@@ -2774,129 +2761,14 @@ class AGIAnalytics {
             http_response_code(500);
             die("Error generating CSV export: " . $e->getMessage());
         }
-
-        // Process each call and stream to CSV
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            try {
-                // Format date and time
-                $datetime = new DateTime($row['call_start_time']);
-                $callDate = $datetime->format('d/m/Y');
-                $callTime = $datetime->format('H:i');
-
-                // Format duration as MM:SS
-                $duration = '';
-                if (!empty($row['call_duration']) && is_numeric($row['call_duration'])) {
-                    $seconds = (int)$row['call_duration'];
-                    $minutes = floor($seconds / 60);
-                    $seconds = $seconds % 60;
-                    $duration = sprintf('%02d:%02d', $minutes, $seconds);
-                }
-
-                // Clean call result
-                $callResult = $this->translateStatus($row['call_outcome']);
-                $callType = $this->translateCallType($row['call_type']);
-
-                // Reservation status
-                $isReservation = $row['is_reservation'] ?
-                    ($this->language === 'el' ? 'Ναι' : 'Yes') :
-                    ($this->language === 'el' ? 'Όχι' : 'No');
-
-                // Clean addresses
-                $pickup = !empty($row['pickup_address']) ?
-                    str_replace(['"', '\n', '\r'], ['', ' ', ' '], $row['pickup_address']) : '';
-                $destination = !empty($row['destination_address']) ?
-                    str_replace(['"', '\n', '\r'], ['', ' ', ' '], $row['destination_address']) : '';
-
-                // Customer name
-                $customer = !empty($row['user_name']) ?
-                    str_replace(['"', '\n', '\r'], ['', ' ', ' '], $row['user_name']) : '';
-
-                // Language
-                $language = !empty($row['language_used']) ? $row['language_used'] : '';
-
-                // Create CSV data row
-                $dataRow = [
-                    $callDate,      // Date
-                    $callTime,      // Time
-                    $row['phone_number'] ?: '',  // Phone
-                    $row['extension'] ?: '',     // Extension
-                    $duration,      // Duration
-                    $callResult,    // Result
-                    $callType,      // Type
-                    $isReservation, // Reservation
-                    $pickup,        // Pickup
-                    $destination,   // Destination
-                    $customer,      // Customer
-                    $language       // Language
-                ];
-
-                // Output data row immediately
-                echo '"' . implode('","', $dataRow) . '"' . "\r\n";
-
-                // Count statistics
-                $totalCalls++;
-                if ($row['call_outcome'] === 'successful_registration') {
-                    $successfulCalls++;
-                } elseif (in_array($row['call_outcome'], ['hangup', 'error'])) {
-                    $failedCalls++;
-                }
-                if ($row['is_reservation']) {
-                    $reservationCalls++;
-                }
-
-            } catch (Exception $e) {
-                // Skip problematic rows but continue processing
-                error_log("CSV Export Error for row ID " . $row['id'] . ": " . $e->getMessage());
-                continue;
-            }
-        }
-
-        // Add summary section
-        $transferredCalls = $totalCalls - $successfulCalls - $failedCalls;
-        $successRate = $totalCalls > 0 ? round(($successfulCalls / $totalCalls) * 100, 1) : 0;
-
-        // Empty rows before summary
-        echo "\r\n\r\n";
-
-        // Summary title
-        $summaryTitle = $this->language === 'el' ? '=== ΣΥΝΟΨΗ ΑΝΑΦΟΡΑΣ ===' : '=== REPORT SUMMARY ===';
-        echo '"' . $summaryTitle . '"' . "\r\n\r\n";
-
-        // Summary statistics
-        $summaryLabels = [
-            'total' => $this->language === 'el' ? 'Συνολικές Κλήσεις' : 'Total Calls',
-            'successful' => $this->language === 'el' ? 'Επιτυχημένες Κλήσεις' : 'Successful Calls',
-            'failed' => $this->language === 'el' ? 'Αποτυχημένες Κλήσεις' : 'Failed Calls',
-            'transferred' => $this->language === 'el' ? 'Μεταφορές σε Τηλεφωνητή' : 'Transferred to Operator',
-            'reservations' => $this->language === 'el' ? 'Κρατήσεις' : 'Reservations',
-            'success_rate' => $this->language === 'el' ? 'Ποσοστό Επιτυχίας' : 'Success Rate'
-        ];
-
-        echo '"' . $summaryLabels['total'] . '","' . $totalCalls . '"' . "\r\n";
-        echo '"' . $summaryLabels['successful'] . '","' . $successfulCalls . '"' . "\r\n";
-        echo '"' . $summaryLabels['failed'] . '","' . $failedCalls . '"' . "\r\n";
-        echo '"' . $summaryLabels['transferred'] . '","' . $transferredCalls . '"' . "\r\n";
-        echo '"' . $summaryLabels['reservations'] . '","' . $reservationCalls . '"' . "\r\n";
-        echo '"' . $summaryLabels['success_rate'] . '","' . $successRate . '%"' . "\r\n";
-
-        // Generation info
-        echo "\r\n";
-        $genBy = $this->language === 'el' ? 'Δημιουργήθηκε από' : 'Generated by';
-        echo '"' . $genBy . '","IQ Taxi Analytics System"' . "\r\n";
-        $exportDate = $this->language === 'el' ? 'Ημερομηνία Εξαγωγής' : 'Export Date';
-        echo '"' . $exportDate . '","' . date('d/m/Y H:i:s') . '"' . "\r\n";
-
-        exit;
     }
     
     // ===== PDF EXPORT =====
     
     private function exportPDF() {
         try {
-            // Get data using same filters as CSV
-            $exportResult = $this->getExportData();
-            $data = $exportResult['data'];
-            $totals = $exportResult['totals'];
+            // Get summary data with filters applied
+            $data = $this->getExportSummaryData();
 
             header('Content-Type: text/html; charset=utf-8');
         } catch (Exception $e) {
@@ -3070,125 +2942,93 @@ class AGIAnalytics {
             </div>
             
             <div class="header">
-                <h1>📊 Call Analytics Report</h1>
+                <h1>📊 Call Analytics Summary Report</h1>
                 <p>Generated on <?= date('F j, Y \a\t g:i A') ?></p>
                 <?php if (!empty($_GET['date_from']) || !empty($_GET['date_to'])): ?>
-                <p>Period: 
+                <p>Period:
                     <?= !empty($_GET['date_from']) ? date('M j, Y', strtotime($_GET['date_from'])) : 'Beginning' ?>
-                    - 
+                    -
                     <?= !empty($_GET['date_to']) ? date('M j, Y', strtotime($_GET['date_to'])) : 'Present' ?>
                 </p>
                 <?php endif; ?>
-                <?php if (!empty($_GET['limit']) && $_GET['limit'] !== 'all'): ?>
-                <p><small>Limited to <?= intval($_GET['limit']) ?> most recent records</small></p>
-                <?php endif; ?>
             </div>
-            
+
+            <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #2563eb; padding-bottom: 0.5rem;">📞 Call Statistics</h3>
             <div class="stats">
                 <div class="stat-card">
-                    <div class="stat-number"><?= count($data) ?></div>
+                    <div class="stat-number"><?= number_format($data['total_calls']) ?></div>
                     <div class="stat-label">Total Calls</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number success"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'successful_registration'; })) ?></div>
+                    <div class="stat-number success"><?= number_format($data['successful_calls']) ?></div>
                     <div class="stat-label">Successful</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number failed"><?= count(array_filter($data, function($r) { return in_array($r['call_outcome'], ['hangup', 'error']); })) ?></div>
-                    <div class="stat-label">Failed</div>
+                    <div class="stat-number" style="color: #ef4444;"><?= number_format($data['hangup_calls']) ?></div>
+                    <div class="stat-label">Hangups</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number warning"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'operator_transfer'; })) ?></div>
+                    <div class="stat-number warning"><?= number_format($data['operator_transfers']) ?></div>
                     <div class="stat-label">Transferred</div>
                 </div>
             </div>
-            
-            <!-- API Usage Statistics -->
-            <div class="api-stats">
-                <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;">📊 API Usage Summary</h3>
-                <div class="stats">
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #e74c3c;"><?= number_format($totals['total_google_stt']) ?></div>
-                        <div class="stat-label">Total STT Calls</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #3498db;"><?= number_format($totals['total_tts_all']) ?></div>
-                        <div class="stat-label">Total TTS Calls</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #f39c12;"><?= number_format($totals['total_geocoding']) ?></div>
-                        <div class="stat-label">Total Geocoding</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #9b59b6;"><?= number_format($totals['total_api_calls_all']) ?></div>
-                        <div class="stat-label">Total API Calls</div>
-                    </div>
+
+            <div class="stats" style="margin-top: 1rem;">
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #8b5cf6;"><?= number_format($data['reservation_calls']) ?></div>
+                    <div class="stat-label">Reservations</div>
                 </div>
-                <div class="stats" style="margin-top: 1rem;">
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #27ae60;"><?= number_format($totals['total_google_tts']) ?></div>
-                        <div class="stat-label">Google TTS</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #2ecc71;"><?= number_format($totals['total_edge_tts']) ?></div>
-                        <div class="stat-label">Edge TTS</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #1abc9c;"><?= number_format($totals['total_user_api']) ?></div>
-                        <div class="stat-label">User API</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #34495e;"><?= number_format($totals['total_registration_api']) ?></div>
-                        <div class="stat-label">Registration API</div>
-                    </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #06b6d4;"><?= number_format($data['avg_duration'] ?? 0, 1) ?>s</div>
+                    <div class="stat-label">Avg Duration</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #f59e0b;"><?= number_format($data['unique_callers']) ?></div>
+                    <div class="stat-label">Unique Callers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #10b981;"><?= number_format($data['success_rate'], 2) ?>%</div>
+                    <div class="stat-label">Success Rate</div>
                 </div>
             </div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date/Time</th>
-                        <th>Phone</th>
-                        <th>Duration</th>
-                        <th>Status</th>
-                        <th>Pickup Location</th>
-                        <th>Destination</th>
-                        <th>Lang</th>
-                        <th>API Calls</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($data)): ?>
-                    <tr>
-                        <td colspan="8" style="text-align: center; padding: 20px; color: #666; font-style: italic;">
-                            No data found for the selected criteria
-                        </td>
-                    </tr>
-                    <?php else: ?>
-                    <?php foreach($data as $row): ?>
-                    <tr>
-                        <td><?= date('M j, g:i A', strtotime($row['call_start_time'])) ?></td>
-                        <td><?= htmlspecialchars($row['phone_number']) ?></td>
-                        <td><?= $this->formatDuration($row['call_duration']) ?></td>
-                        <td class="<?= $this->getOutcomeClass($row['call_outcome']) ?>">
-                            <?= ucwords(str_replace('_', ' ', $row['call_outcome'])) ?>
-                        </td>
-                        <td><?= htmlspecialchars(mb_substr($row['pickup_address'] ?? 'N/A', 0, 25) . (mb_strlen($row['pickup_address'] ?? '') > 25 ? '...' : '')) ?></td>
-                        <td><?= htmlspecialchars(mb_substr($row['destination_address'] ?? 'N/A', 0, 25) . (mb_strlen($row['destination_address'] ?? '') > 25 ? '...' : '')) ?></td>
-                        <td><?= strtoupper($row['language_used'] ?? 'EN') ?></td>
-                        <td style="font-size: 9px;">
-                            TTS: <?= ($row['google_tts_calls'] ?? 0) + ($row['edge_tts_calls'] ?? 0) ?><br>
-                            STT: <?= $row['google_stt_calls'] ?? 0 ?><br>
-                            GEO: <?= $row['geocoding_api_calls'] ?? 0 ?>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-            
+
+            <!-- API Usage Statistics -->
+            <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #2563eb; padding-bottom: 0.5rem;">🔌 API Usage Statistics</h3>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #e74c3c;"><?= number_format($data['google_tts_total'] ?? 0) ?></div>
+                    <div class="stat-label">Google TTS</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #3498db;"><?= number_format($data['edge_tts_total'] ?? 0) ?></div>
+                    <div class="stat-label">Edge TTS</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #9b59b6;"><?= number_format($data['google_stt_total'] ?? 0) ?></div>
+                    <div class="stat-label">Google STT</div>
+                </div>
+            </div>
+            <div class="stats" style="margin-top: 1rem;">
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #f39c12;"><?= number_format($data['geocoding_total'] ?? 0) ?></div>
+                    <div class="stat-label">Geocoding</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #1abc9c;"><?= number_format($data['user_api_total'] ?? 0) ?></div>
+                    <div class="stat-label">User API</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #27ae60;"><?= number_format($data['registration_total'] ?? 0) ?></div>
+                    <div class="stat-label">Registration API</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #2563eb; font-size: 28px;"><?= number_format($data['total_api_calls']) ?></div>
+                    <div class="stat-label">TOTAL API CALLS</div>
+                </div>
+            </div>
+
             <div class="footer">
-                <p>📞 Call Analytics System Report | Generated: <?= date('Y-m-d H:i:s') ?> | Total Records: <?= $totals['total_calls'] ?> | Total API Calls: <?= number_format($totals['total_api_calls_all']) ?></p>
+                <p>📞 Call Analytics System | Generated: <?= date('Y-m-d H:i:s') ?></p>
             </div>
         </body>
         </html>
@@ -3200,10 +3040,8 @@ class AGIAnalytics {
     
     private function exportPrint() {
         try {
-            // Same as PDF but without auto-print
-            $exportResult = $this->getExportData();
-            $data = $exportResult['data'];
-            $totals = $exportResult['totals'];
+            // Get summary data with filters applied
+            $data = $this->getExportSummaryData();
 
             header('Content-Type: text/html; charset=utf-8');
         } catch (Exception $e) {
@@ -3253,111 +3091,92 @@ class AGIAnalytics {
             </div>
             
             <div class="header">
-                <h1>📊 Call Analytics Report</h1>
+                <h1>📊 Call Analytics Summary Report</h1>
                 <p>Generated on <?= date('F j, Y \a\t g:i A') ?></p>
                 <?php if (!empty($_GET['date_from']) || !empty($_GET['date_to'])): ?>
-                <p>Period: 
+                <p>Period:
                     <?= !empty($_GET['date_from']) ? date('M j, Y', strtotime($_GET['date_from'])) : 'Beginning' ?>
-                    - 
+                    -
                     <?= !empty($_GET['date_to']) ? date('M j, Y', strtotime($_GET['date_to'])) : 'Present' ?>
                 </p>
                 <?php endif; ?>
             </div>
-            
+
+            <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #2563eb; padding-bottom: 0.5rem;">📞 Call Statistics</h3>
             <div class="stats">
                 <div class="stat-card">
-                    <div class="stat-number"><?= count($data) ?></div>
+                    <div class="stat-number"><?= number_format($data['total_calls']) ?></div>
                     <div class="stat-label">Total Calls</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number success"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'successful_registration'; })) ?></div>
+                    <div class="stat-number success"><?= number_format($data['successful_calls']) ?></div>
                     <div class="stat-label">Successful</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number failed"><?= count(array_filter($data, function($r) { return in_array($r['call_outcome'], ['hangup', 'error']); })) ?></div>
-                    <div class="stat-label">Failed</div>
+                    <div class="stat-number failed"><?= number_format($data['hangup_calls']) ?></div>
+                    <div class="stat-label">Hangups</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number warning"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'operator_transfer'; })) ?></div>
+                    <div class="stat-number warning"><?= number_format($data['operator_transfers']) ?></div>
                     <div class="stat-label">Transferred</div>
                 </div>
             </div>
-            
+
+            <div class="stats" style="margin-top: 1rem;">
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #8b5cf6;"><?= number_format($data['reservation_calls']) ?></div>
+                    <div class="stat-label">Reservations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #06b6d4;"><?= number_format($data['avg_duration'] ?? 0, 1) ?>s</div>
+                    <div class="stat-label">Avg Duration</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #f59e0b;"><?= number_format($data['unique_callers']) ?></div>
+                    <div class="stat-label">Unique Callers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" style="color: #10b981;"><?= number_format($data['success_rate'], 2) ?>%</div>
+                    <div class="stat-label">Success Rate</div>
+                </div>
+            </div>
+
             <!-- API Usage Statistics -->
             <div class="api-stats">
-                <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;">📊 API Usage Summary</h3>
+                <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #2563eb; padding-bottom: 0.5rem;">🔌 API Usage Statistics</h3>
                 <div class="stats">
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #e74c3c;"><?= number_format($totals['total_google_stt']) ?></div>
-                        <div class="stat-label">Total STT Calls</div>
+                        <div class="stat-number" style="color: #e74c3c;"><?= number_format($data['google_tts_total'] ?? 0) ?></div>
+                        <div class="stat-label">Google TTS</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #3498db;"><?= number_format($totals['total_tts_all']) ?></div>
-                        <div class="stat-label">Total TTS Calls</div>
+                        <div class="stat-number" style="color: #3498db;"><?= number_format($data['edge_tts_total'] ?? 0) ?></div>
+                        <div class="stat-label">Edge TTS</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #f39c12;"><?= number_format($totals['total_geocoding']) ?></div>
-                        <div class="stat-label">Total Geocoding</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #9b59b6;"><?= number_format($totals['total_api_calls_all']) ?></div>
-                        <div class="stat-label">Total API Calls</div>
+                        <div class="stat-number" style="color: #9b59b6;"><?= number_format($data['google_stt_total'] ?? 0) ?></div>
+                        <div class="stat-label">Google STT</div>
                     </div>
                 </div>
                 <div class="stats" style="margin-top: 1rem;">
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #27ae60;"><?= number_format($totals['total_google_tts']) ?></div>
-                        <div class="stat-label">Google TTS</div>
+                        <div class="stat-number" style="color: #f39c12;"><?= number_format($data['geocoding_total'] ?? 0) ?></div>
+                        <div class="stat-label">Geocoding</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #2ecc71;"><?= number_format($totals['total_edge_tts']) ?></div>
-                        <div class="stat-label">Edge TTS</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #1abc9c;"><?= number_format($totals['total_user_api']) ?></div>
+                        <div class="stat-number" style="color: #1abc9c;"><?= number_format($data['user_api_total'] ?? 0) ?></div>
                         <div class="stat-label">User API</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #34495e;"><?= number_format($totals['total_registration_api']) ?></div>
+                        <div class="stat-number" style="color: #27ae60;"><?= number_format($data['registration_total'] ?? 0) ?></div>
                         <div class="stat-label">Registration API</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #2563eb; font-size: 28px;"><?= number_format($data['total_api_calls']) ?></div>
+                        <div class="stat-label">TOTAL API CALLS</div>
                     </div>
                 </div>
             </div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date/Time</th>
-                        <th>Phone Number</th>
-                        <th>Duration</th>
-                        <th>Outcome</th>
-                        <th>Pickup Address</th>
-                        <th>Destination Address</th>
-                        <th>Language</th>
-                        <th>API Calls</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach($data as $row): ?>
-                    <tr>
-                        <td><?= date('M j, g:i A', strtotime($row['call_start_time'])) ?></td>
-                        <td><?= htmlspecialchars($row['phone_number']) ?></td>
-                        <td><?= $this->formatDuration($row['call_duration']) ?></td>
-                        <td class="<?= $this->getOutcomeClass($row['call_outcome']) ?>">
-                            <?= ucwords(str_replace('_', ' ', $row['call_outcome'])) ?>
-                        </td>
-                        <td><?= htmlspecialchars($row['pickup_address'] ?? 'N/A') ?></td>
-                        <td><?= htmlspecialchars($row['destination_address'] ?? 'N/A') ?></td>
-                        <td><?= strtoupper($row['language_used'] ?? 'EN') ?></td>
-                        <td style="font-size: 11px;">
-                            TTS: <?= ($row['google_tts_calls'] ?? 0) + ($row['edge_tts_calls'] ?? 0) ?><br>
-                            STT: <?= $row['google_stt_calls'] ?? 0 ?><br>
-                            GEO: <?= $row['geocoding_api_calls'] ?? 0 ?>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
         </body>
         </html>
         <?php
@@ -3466,6 +3285,90 @@ class AGIAnalytics {
                                         $totals['total_date_parsing_api'];
 
         return ['data' => $data, 'totals' => $totals];
+    }
+
+    /**
+     * Get summary statistics for export (filtered)
+     */
+    private function getExportSummaryData() {
+        try {
+            $where = [];
+            $params = [];
+
+            // Apply global extension filter first
+            list($extWhere, $extParams) = $this->getExtensionFilterClause();
+            if ($extWhere) {
+                $where[] = $extWhere;
+                $params = array_merge($params, $extParams);
+            }
+
+            if (!empty($_GET['date_from'])) {
+                $where[] = "DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= ?";
+                $params[] = $_GET['date_from'];
+            }
+            if (!empty($_GET['date_to'])) {
+                $where[] = "DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) <= ?";
+                $params[] = $_GET['date_to'];
+            }
+            if (!empty($_GET['phone'])) {
+                $where[] = 'phone_number LIKE ?';
+                $params[] = '%' . $_GET['phone'] . '%';
+            }
+            if (!empty($_GET['extension']) && !$this->globalExtensionFilter) {
+                $where[] = 'extension = ?';
+                $params[] = $_GET['extension'];
+            }
+            if (!empty($_GET['outcome'])) {
+                $where[] = 'call_outcome = ?';
+                $params[] = $_GET['outcome'];
+            }
+
+            $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
+
+            // Get summary statistics
+            $sql = "SELECT
+                        COUNT(*) as total_calls,
+                        COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
+                        COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
+                        COUNT(CASE WHEN call_outcome = 'operator_transfer' THEN 1 END) as operator_transfers,
+                        COUNT(CASE WHEN is_reservation = 1 THEN 1 END) as reservation_calls,
+                        AVG(call_duration) as avg_duration,
+                        MAX(call_duration) as max_duration,
+                        MIN(call_duration) as min_duration,
+                        COUNT(DISTINCT phone_number) as unique_callers,
+                        COUNT(DISTINCT extension) as extensions_used,
+                        SUM(google_tts_calls) as google_tts_total,
+                        SUM(edge_tts_calls) as edge_tts_total,
+                        SUM(google_stt_calls) as google_stt_total,
+                        SUM(geocoding_api_calls) as geocoding_total,
+                        SUM(user_api_calls) as user_api_total,
+                        SUM(registration_api_calls) as registration_total
+                    FROM {$this->table}
+                    WHERE {$whereClause}";
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $summary = $stmt->fetch();
+
+            // Calculate success rate
+            $summary['success_rate'] = $summary['total_calls'] > 0
+                ? round(($summary['successful_calls'] / $summary['total_calls']) * 100, 2)
+                : 0;
+
+            // Calculate total API calls
+            $summary['total_api_calls'] = ($summary['google_tts_total'] ?? 0) +
+                                         ($summary['edge_tts_total'] ?? 0) +
+                                         ($summary['google_stt_total'] ?? 0) +
+                                         ($summary['geocoding_total'] ?? 0) +
+                                         ($summary['user_api_total'] ?? 0) +
+                                         ($summary['registration_total'] ?? 0);
+
+            return $summary;
+
+        } catch (Exception $e) {
+            error_log("Export Summary Data Error: " . $e->getMessage());
+            throw $e;
+        }
     }
 
     // Helper method to get export data stream (for CSV memory-efficient export)
