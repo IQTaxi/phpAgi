@@ -1825,7 +1825,8 @@ $currentConfig = $configManager->getConfig();
             customFallCallTo: false,
             customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
             foreignRedirect: false,
-            bypassWelcome: false
+            bypassWelcome: false,
+            dtmfTimeout: 10
         };
         
         const translations = {
@@ -1860,6 +1861,7 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallToURL': 'Custom Fall Call To URL',
                 'foreignRedirect': 'Foreign Number Redirect',
                 'bypassWelcome': 'Bypass Welcome',
+                'dtmfTimeout': 'DTMF Timeout (seconds)',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -1890,6 +1892,7 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallToURL_tooltip': 'Base URL for custom fallback API. Caller number will be appended to this URL',
                 'foreignRedirect_tooltip': 'Enable to redirect foreign numbers (not in allowed prefixes list) to operator. When enabled, numbers > 10 digits without allowed prefixes (+30, +359, 0030) are redirected',
                 'bypassWelcome_tooltip': 'Enable to skip initial message and welcome message. Call will immediately proceed as if user pressed 1 (ASAP mode). Disable for normal behavior with playback prompts.',
+                'dtmfTimeout_tooltip': 'Time in seconds to wait for DTMF input from user during all prompts (welcome, options, confirmations). Default is 10 seconds. Lower values make the system respond faster but give users less time to press keys.',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -1997,6 +2000,7 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallToURL': 'URL Προσαρμοσμένης Εφεδρικής Κλήσης',
                 'foreignRedirect': 'Ανακατεύθυνση Αλλοδαπών Αριθμών',
                 'bypassWelcome': 'Παράκαμψη Καλωσορίσματος',
+                'dtmfTimeout': 'Χρονικό Όριο DTMF (δευτερόλεπτα)',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -2027,6 +2031,7 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallToURL_tooltip': 'Βασικό URL για προσαρμοσμένο API εφεδρείας. Ο αριθμός καλούντος θα προστεθεί στο τέλος αυτού του URL',
                 'foreignRedirect_tooltip': 'Ενεργοποιήστε για ανακατεύθυνση αλλοδαπών αριθμών (που δεν είναι στη λίστα επιτρεπόμενων προθεμάτων) στον χειριστή. Όταν ενεργοποιηθεί, αριθμοί > 10 ψηφία χωρίς επιτρεπόμενα προθέματα (+30, +359, 0030) ανακατευθύνονται',
                 'bypassWelcome_tooltip': 'Ενεργοποιήστε για παράκαμψη αρχικού μηνύματος και μηνύματος καλωσορίσματος. Η κλήση θα προχωρήσει αμέσως σαν ο χρήστης να πάτησε 1 (λειτουργία ASAP). Απενεργοποιήστε για κανονική συμπεριφορά με αναπαραγωγή μηνυμάτων.',
+                'dtmfTimeout_tooltip': 'Χρόνος σε δευτερόλεπτα αναμονής για είσοδο DTMF από τον χρήστη κατά τη διάρκεια όλων των προτροπών (καλωσόρισμα, επιλογές, επιβεβαιώσεις). Προεπιλογή είναι 10 δευτερόλεπτα. Χαμηλότερες τιμές κάνουν το σύστημα να ανταποκρίνεται πιο γρήγορα, αλλά δίνουν λιγότερο χρόνο στους χρήστες να πατήσουν πλήκτρα.',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',

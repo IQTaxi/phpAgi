@@ -57,9 +57,10 @@ class AGICallHandler
     private $redirect_to_operator = false;
     private $bypass_welcome = false;
     private $auto_call_centers_mode = 3;
-    
+
     // Call data properties
     private $max_retries = 3;
+    private $dtmf_timeout = 10;
     private $custom_fall_call_to = false;
     private $custom_fall_call_to_url = '';
     private $name_result = '';
@@ -221,6 +222,7 @@ class AGICallHandler
             $this->bypass_welcome = $config['bypassWelcome'] ?? false;
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
             $this->max_retries = intval($config['maxRetries'] ?? 3);
+            $this->dtmf_timeout = intval($config['dtmfTimeout'] ?? 10);
             $this->custom_fall_call_to = $config['customFallCallTo'] ?? false;
             $this->custom_fall_call_to_url = $config['customFallCallToURL'] ?? '';
         }
@@ -1334,8 +1336,11 @@ class AGICallHandler
     /**
      * Play audio file and wait for DTMF input
      */
-    private function readDTMF($prompt_file, $digits = 1, $timeout = 10)
+    private function readDTMF($prompt_file, $digits = 1, $timeout = null)
     {
+        if ($timeout === null) {
+            $timeout = $this->dtmf_timeout;
+        }
         $response = $this->agiCommand("EXEC \"Read\" \"USER_CHOICE,{$prompt_file},{$digits},,1,{$timeout}\"");
         
         // Check if the EXEC command failed due to hangup
@@ -1372,8 +1377,11 @@ class AGICallHandler
      * Read DTMF input without exiting on timeout (for retry scenarios)
      * Returns: string (input), empty string (timeout), or null (hangup)
      */
-    private function readDTMFWithoutExit($prompt_file, $digits = 1, $timeout = 10)
+    private function readDTMFWithoutExit($prompt_file, $digits = 1, $timeout = null)
     {
+        if ($timeout === null) {
+            $timeout = $this->dtmf_timeout;
+        }
         $response = $this->agiCommand("EXEC \"Read\" \"USER_CHOICE,{$prompt_file},{$digits},,1,{$timeout}\"");
 
         // Check if the EXEC command failed due to hangup
@@ -2855,7 +2863,7 @@ class AGICallHandler
         $this->stopMusicOnHold();
 
         if ($tts_success) {
-            $choice = $this->readDTMFWithoutExit($confirm_file, 1, 10);
+            $choice = $this->readDTMFWithoutExit($confirm_file, 1);
             $this->logMessage("User reservation time choice: {$choice}");
 
             // Check for hangup
@@ -2906,7 +2914,7 @@ class AGICallHandler
         $this->stopMusicOnHold();
 
         if ($tts_success) {
-            $choice = $this->readDTMFWithoutExit($selection_file, 1, 10);
+            $choice = $this->readDTMFWithoutExit($selection_file, 1);
             $this->logMessage("User date selection choice: {$choice}");
 
             // Check for hangup
@@ -2973,7 +2981,7 @@ class AGICallHandler
 
                 // Play a simple message asking to press 0 to confirm
                 $this->agiCommand('EXEC Playback "' . $this->getSoundFile('options_short') . '"');
-                $choice = $this->readDTMF('', 1, 10);
+                $choice = $this->readDTMF('', 1);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 if ($choice == "0") {
@@ -3002,7 +3010,7 @@ class AGICallHandler
                 $askForName = $this->shouldAskForName();
                 $optionsSound = $askForName ? $this->getSoundFile('options') : $this->getSoundFile('options_no_name');
 
-                $choice = $this->readDTMFWithoutExit($optionsSound, 1, 10);
+                $choice = $this->readDTMFWithoutExit($optionsSound, 1);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 // Check for hangup
@@ -3378,8 +3386,8 @@ class AGICallHandler
                 $this->logMessage("TTS audio file invalid or missing, assuming user wants new address");
                 return false;
             }
-            
-            $choice = $this->readDTMFWithoutExit($confirm_file, 1, 10);
+
+            $choice = $this->readDTMFWithoutExit($confirm_file, 1);
             $this->logMessage("User pickup address choice: {$choice}");
 
             // Check for hangup
@@ -3417,7 +3425,7 @@ class AGICallHandler
 
                 // Play a simple message asking to press 0 to confirm
                 $this->agiCommand('EXEC Playback "' . $this->getSoundFile('options_short') . '"');
-                $choice = $this->readDTMF('', 1, 10);
+                $choice = $this->readDTMF('', 1);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 if ($choice == "0") {
@@ -3444,7 +3452,7 @@ class AGICallHandler
                 $askForName = $this->shouldAskForName();
                 $optionsSound = $askForName ? $this->getSoundFile('options') : $this->getSoundFile('options_no_name');
 
-                $choice = $this->readDTMFWithoutExit($optionsSound, 1, 10);
+                $choice = $this->readDTMFWithoutExit($optionsSound, 1);
                 $this->logMessage("User choice: {$choice}", 'INFO', 'USER_INPUT');
 
                 // Check for hangup
@@ -4010,7 +4018,7 @@ class AGICallHandler
         // Try up to max_retries times to get user input
         for ($attempt = 1; $attempt <= $this->max_retries; $attempt++) {
             $this->logMessage("Playing welcome message (attempt {$attempt}/{$this->max_retries})");
-            $user_choice = $this->readDTMFWithoutExit($this->getSoundFile('welcome'), 1, 10);
+            $user_choice = $this->readDTMFWithoutExit($this->getSoundFile('welcome'), 1);
             $this->logMessage("User choice: {$user_choice}", 'INFO', 'USER_INPUT');
 
             if ($user_choice === null) {
@@ -4030,7 +4038,7 @@ class AGICallHandler
                     $this->saveJson("language", $this->current_language);
 
                     // Try again with English
-                    $user_choice = $this->readDTMFWithoutExit($this->getSoundFile('welcome'), 1, 10);
+                    $user_choice = $this->readDTMFWithoutExit($this->getSoundFile('welcome'), 1);
                     $this->logMessage("User choice after language change: {$user_choice}", 'INFO', 'USER_INPUT');
 
                     if ($user_choice === null) {
