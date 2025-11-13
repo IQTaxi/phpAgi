@@ -61,6 +61,8 @@ class AGICallHandler
     // Call data properties
     private $max_retries = 3;
     private $dtmf_timeout = 10;
+    private $uppercase_comments = false;
+    private $comments_prefix = '';
     private $custom_fall_call_to = false;
     private $custom_fall_call_to_url = '';
     private $name_result = '';
@@ -223,6 +225,8 @@ class AGICallHandler
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
             $this->max_retries = intval($config['maxRetries'] ?? 3);
             $this->dtmf_timeout = intval($config['dtmfTimeout'] ?? 10);
+            $this->uppercase_comments = $config['uppercaseComments'] ?? false;
+            $this->comments_prefix = $config['commentsPrefix'] ?? '';
             $this->custom_fall_call_to = $config['customFallCallTo'] ?? false;
             $this->custom_fall_call_to_url = $config['customFallCallToURL'] ?? '';
         }
@@ -2335,6 +2339,18 @@ class AGICallHandler
 
     private function buildRegistrationPayload()
 	{
+		$comments = $this->getCallComment();
+
+		// Add prefix if configured
+		if (!empty($this->comments_prefix)) {
+			$comments = $this->comments_prefix . ' ' . $comments;
+		}
+
+		// Apply uppercase if enabled
+		if ($this->uppercase_comments) {
+			$comments = mb_strtoupper($comments, 'UTF-8');
+		}
+
 		$payload = [
 			"callTimeStamp" => $this->is_reservation ? $this->reservation_timestamp : null,
 			"callerPhone" => $this->caller_num,
@@ -2345,10 +2361,10 @@ class AGICallHandler
 			"destLatitude" => $this->dest_location['latLng']['lat'] ?? 0,
 			"destLongitude" => $this->dest_location['latLng']['lng'] ?? 0,
 			"taxisNo" => 1,
-			"comments" => mb_substr($this->getCallComment(), 0, 255),
+			"comments" => mb_substr($comments, 0, 255),
 			"referencePath" => (string)$this->uniqueid,
 			"daysValid" => $this->days_valid,
-			"customerName" => mb_substr(!empty($this->name_result) ? $this->name_result : "anonymous", 0, 50)
+			"customerName" => mb_substr(!empty($this->name_result) ? $this->name_result : "N/A", 0, 50)
 		];
 
 		return $payload;
