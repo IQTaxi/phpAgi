@@ -23,8 +23,7 @@ class AGIAnalytics {
     private $language = 'el'; // Default to Greek
     private $translations = [];
     private $globalExtensionFilter = null; // Global extension filter
-    private $tzOffset; // Greece timezone offset (auto-detected based on DST)
-
+    
     // Database configuration
     private $dbConfig = [
         'host' => '127.0.0.1',
@@ -40,9 +39,6 @@ class AGIAnalytics {
     public function __construct() {
         // Set Greece timezone to match server
         date_default_timezone_set('Europe/Athens');
-
-        // Initialize timezone offset (auto-detects DST)
-        $this->tzOffset = $this->getGreeceTimezoneOffset();
 
         $this->initializeLanguage();
         $this->loadTranslations();
@@ -87,17 +83,6 @@ class AGIAnalytics {
         }
         $field = $prefix ? "{$prefix}.extension" : "extension";
         return ["{$field} = ?", [$this->globalExtensionFilter]];
-    }
-
-    /**
-     * Get Greece timezone offset in hours (automatically handles DST)
-     * Returns 3 for summer time (EEST, UTC+3) or 2 for winter time (EET, UTC+2)
-     * @return int Hours to add to UTC timestamps
-     */
-    private function getGreeceTimezoneOffset() {
-        $dt = new DateTime('now', new DateTimeZone('Europe/Athens'));
-        $offset = $dt->getOffset(); // Offset in seconds from UTC
-        return intval($offset / 3600); // Convert to hours
     }
 
     /**
@@ -289,15 +274,11 @@ class AGIAnalytics {
                 'total_calls_today' => 'Συνολικές Κλήσεις Σήμερα',
                 'active' => 'Ενεργές',
                 'successful_calls' => 'Επιτυχημένες Κλήσεις',
-                'failed_calls' => 'Αποτυχημένες Κλήσεις',
                 'success_rate' => 'ποσοστό επιτυχίας',
-                'failed_count' => 'Αποτυχίες',
                 'avg_duration' => 'Μέση Διάρκεια',
                 'per_call_average' => 'Μέσος όρος ανά κλήση',
                 'unique_callers' => 'Μοναδικοί Καλούντες',
                 'different_numbers' => 'Διαφορετικοί αριθμοί',
-                'weekly_stats' => 'Εβδομαδιαίες Στατιστικές (από Κυριακή)',
-                'monthly_stats' => 'Μηνιαίες Στατιστικές',
                 'yes' => 'Ναι',
                 'no' => 'Όχι',
                 
@@ -319,9 +300,8 @@ class AGIAnalytics {
                 'apply_current_search_filters' => 'Εφαρμογή ενεργών φίλτρων αναζήτησης στην εξαγωγή',
                 'records_limit' => 'Όριο Εγγραφών',
                 'last_100_records' => 'Τελευταίες 100 εγγραφές',
-                'last_500_records' => 'Τελευταίες 500 εγγραφές',
+                'last_500_records' => 'Τελευταίες 500 εγγραφές', 
                 'last_1000_records' => 'Τελευταίες 1000 εγγραφές',
-                'last_5000_records' => 'Τελευταίες 5000 εγγραφές',
                 'all_records' => 'Όλες οι εγγραφές',
                 'edit_call' => 'Επεξεργασία Κλήσης',
                 
@@ -528,15 +508,11 @@ class AGIAnalytics {
                 'total_calls_today' => 'Total Calls Today',
                 'active' => 'Active',
                 'successful_calls' => 'Successful Calls',
-                'failed_calls' => 'Failed Calls',
                 'success_rate' => 'success rate',
-                'failed_count' => 'Failures',
                 'avg_duration' => 'Avg Duration',
                 'per_call_average' => 'Per call average',
                 'unique_callers' => 'Unique Callers',
                 'different_numbers' => 'Different numbers',
-                'weekly_stats' => 'Weekly Stats (since Sunday)',
-                'monthly_stats' => 'Monthly Stats',
                 'yes' => 'Yes',
                 'no' => 'No',
                 
@@ -560,7 +536,6 @@ class AGIAnalytics {
                 'last_100_records' => 'Last 100 records',
                 'last_500_records' => 'Last 500 records',
                 'last_1000_records' => 'Last 1000 records',
-                'last_5000_records' => 'Last 5000 records',
                 'all_records' => 'All records',
                 'edit_call' => 'Edit Call',
                 
@@ -998,21 +973,21 @@ class AGIAnalytics {
         
         // Date range filtering
         if (!empty($_GET['date_from'])) {
-            $where[] = 'DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL 2 HOUR) >= ?';
             $params[] = $_GET['date_from'];
         }
         if (!empty($_GET['date_to'])) {
-            $where[] = 'DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) <= ?';
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL 2 HOUR) <= ?';
             $params[] = $_GET['date_to'];
         }
 
         // Time range filtering
         if (!empty($_GET['time_from'])) {
-            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= ?';
+            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) >= ?';
             $params[] = $_GET['time_from'];
         }
         if (!empty($_GET['time_to'])) {
-            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) <= ?';
+            $where[] = 'TIME(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) <= ?';
             $params[] = $_GET['time_to'];
         }
         
@@ -1044,9 +1019,9 @@ class AGIAnalytics {
         
         // Get data - Convert TIMESTAMP columns to Greek timezone
         $sql = "SELECT *,
-                       DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
+                       DATE_ADD(call_start_time, INTERVAL 2 HOUR) as call_start_time,
                        CASE WHEN call_end_time IS NOT NULL
-                            THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
+                            THEN DATE_ADD(call_end_time, INTERVAL 2 HOUR)
                             ELSE NULL END as call_end_time
                 FROM {$this->table} WHERE {$whereClause} ORDER BY {$sort} {$direction} LIMIT {$limit} OFFSET {$offset}";
         $stmt = $this->db->prepare($sql);
@@ -1083,9 +1058,9 @@ class AGIAnalytics {
         }
         
         $sql = "SELECT *,
-                       DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
+                       DATE_ADD(call_start_time, INTERVAL 2 HOUR) as call_start_time,
                        CASE WHEN call_end_time IS NOT NULL
-                            THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
+                            THEN DATE_ADD(call_end_time, INTERVAL 2 HOUR)
                             ELSE NULL END as call_end_time
                 FROM {$this->table} WHERE " . (!empty($id) ? "id = ?" : "call_id = ?");
         $stmt = $this->db->prepare($sql);
@@ -1151,7 +1126,7 @@ class AGIAnalytics {
                 destination_address LIKE ? OR
                 extension LIKE ? OR
                 registration_id LIKE ?
-                ORDER BY DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) DESC
+                ORDER BY DATE_ADD(call_start_time, INTERVAL 2 HOUR) DESC
                 LIMIT {$limit}";
 
         $searchTerm = "%{$query}%";
@@ -1197,12 +1172,10 @@ class AGIAnalytics {
                 'realtime_stats' => $this->getRealtimeStats(),
                 'recent_calls' => $this->getRecentCalls(),
                 'today_summary' => $this->getTodaySummary(),
-                'weekly_summary' => $this->getWeeklySummary(),
-                'monthly_summary' => $this->getMonthlySummary(),
                 'active_calls' => $this->getActiveCalls(),
                 'system_health' => $this->getSystemHealth()
             ];
-
+            
             $this->sendResponse($dashboard);
         } catch (Exception $e) {
             error_log("Dashboard API Error: " . $e->getMessage());
@@ -1218,12 +1191,12 @@ class AGIAnalytics {
         $date = $_GET['date'] ?? date('Y-m-d');
 
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) = ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
         $sql = "SELECT
-                    HOUR(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) as hour,
+                    HOUR(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) as hour,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                     COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
@@ -1233,7 +1206,7 @@ class AGIAnalytics {
                     SUM(google_stt_calls) as stt_usage
                 FROM {$this->table}
                 WHERE {$whereClause}
-                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR))
+                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL 2 HOUR))
                 ORDER BY hour";
 
         $params = array_merge([$date], $extParams);
@@ -1273,7 +1246,7 @@ class AGIAnalytics {
         $dateTo = $_GET['date_to'] ?? date('Y-m-d');
         
         $sql = "SELECT 
-                    DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) as date,
+                    DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) as date,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
                     COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
@@ -1282,8 +1255,8 @@ class AGIAnalytics {
                     SUM(google_stt_calls) as stt_usage,
                     COUNT(DISTINCT phone_number) as unique_callers
                 FROM {$this->table} 
-                WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?
-                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR))
+                WHERE DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?
+                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR))
                 ORDER BY date";
         
         $stmt = $this->db->prepare($sql);
@@ -1774,7 +1747,7 @@ class AGIAnalytics {
     
     private function getAnalyticsSummary($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1809,9 +1782,9 @@ class AGIAnalytics {
         $sql = "SELECT 
                     call_outcome, 
                     COUNT(*) as count,
-                    ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM {$this->table} WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?)), 2) as percentage
+                    ROUND((COUNT(*) * 100.0 / (SELECT COUNT(*) FROM {$this->table} WHERE DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?)), 2) as percentage
                 FROM {$this->table} 
-                WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?
+                WHERE DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?
                 GROUP BY call_outcome 
                 ORDER BY count DESC";
         
@@ -1822,11 +1795,11 @@ class AGIAnalytics {
     
     private function getHourlyDistribution($dateFrom, $dateTo) {
         $sql = "SELECT 
-                    HOUR(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) as hour,
+                    HOUR(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) as hour,
                     COUNT(*) as count
                 FROM {$this->table} 
-                WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?
-                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR))
+                WHERE DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?
+                GROUP BY HOUR(DATE_ADD(call_start_time, INTERVAL 2 HOUR))
                 ORDER BY hour";
         
         $stmt = $this->db->prepare($sql);
@@ -1836,17 +1809,17 @@ class AGIAnalytics {
     
     private function getDailyTrend($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
         $sql = "SELECT
-                    DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) as date,
+                    DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) as date,
                     COUNT(*) as total_calls,
                     COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls
                 FROM {$this->table}
                 WHERE {$whereClause}
-                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR))
+                GROUP BY DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR))
                 ORDER BY date";
 
         $params = array_merge([$dateFrom, $dateTo], $extParams);
@@ -1857,7 +1830,7 @@ class AGIAnalytics {
     
     private function getExtensionPerformance($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?", "extension IS NOT NULL"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?", "extension IS NOT NULL"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1880,7 +1853,7 @@ class AGIAnalytics {
     
     private function getAPIUsageAnalytics($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1935,7 +1908,7 @@ class AGIAnalytics {
         $dateFrom = date('Y-m-d H:i:s', strtotime("-{$minutes} minutes"));
 
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?", "(pickup_lat IS NOT NULL OR destination_lat IS NOT NULL)"];
+        $whereConditions = ["DATE_ADD(call_start_time, INTERVAL 2 HOUR) >= ?", "(pickup_lat IS NOT NULL OR destination_lat IS NOT NULL)"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -1947,7 +1920,7 @@ class AGIAnalytics {
                     destination_lat,
                     destination_lng,
                     call_outcome,
-                    DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time
+                    DATE_ADD(call_start_time, INTERVAL 2 HOUR) as call_start_time
                 FROM {$this->table}
                 WHERE {$whereClause}
                 ORDER BY call_start_time DESC";
@@ -1990,7 +1963,7 @@ class AGIAnalytics {
     
     private function getGeographicAnalytics($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?", "pickup_lat IS NOT NULL", "pickup_lng IS NOT NULL"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?", "pickup_lat IS NOT NULL", "pickup_lng IS NOT NULL"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -2016,7 +1989,7 @@ class AGIAnalytics {
     
     private function getCallDurationStats($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -2039,7 +2012,7 @@ class AGIAnalytics {
     
     private function getLanguageStats($dateFrom, $dateTo) {
         list($extWhere, $extParams) = $this->getExtensionFilterClause();
-        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) BETWEEN ? AND ?"];
+        $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) BETWEEN ? AND ?"];
         if ($extWhere) $whereConditions[] = $extWhere;
         $whereClause = implode(' AND ', $whereConditions);
 
@@ -2084,9 +2057,9 @@ class AGIAnalytics {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
             $whereClause = $extWhere ? "WHERE {$extWhere}" : "";
             $sql = "SELECT *,
-                           DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
+                           DATE_ADD(call_start_time, INTERVAL 2 HOUR) as call_start_time,
                            CASE WHEN call_end_time IS NOT NULL
-                                THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
+                                THEN DATE_ADD(call_end_time, INTERVAL 2 HOUR)
                                 ELSE NULL END as call_end_time
                     FROM {$this->table} {$whereClause} ORDER BY call_start_time DESC LIMIT ?";
             $params = array_merge($extParams, [$limit]);
@@ -2112,7 +2085,7 @@ class AGIAnalytics {
     private function getTodaySummary() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
 
@@ -2156,117 +2129,7 @@ class AGIAnalytics {
             ];
         }
     }
-
-    private function getWeeklySummary() {
-        try {
-            list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            // Calculate start of week (Sunday) - DAYOFWEEK returns 1=Sunday, 2=Monday, ..., 7=Saturday
-            // So DAYOFWEEK(CURDATE()) - 1 gives us: Sunday=0 days back, Monday=1 day back, ..., Saturday=6 days back
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= DATE_SUB(CURDATE(), INTERVAL DAYOFWEEK(CURDATE()) - 1 DAY)"];
-            if ($extWhere) $whereConditions[] = $extWhere;
-            $whereClause = implode(' AND ', $whereConditions);
-
-            $sql = "SELECT
-                        COUNT(*) as total_calls,
-                        COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
-                        COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
-                        COUNT(CASE WHEN call_outcome = 'operator_transfer' THEN 1 END) as operator_calls,
-                        COUNT(CASE WHEN call_type = 'reservation' THEN 1 END) as reservation_calls,
-                        AVG(call_duration) as avg_duration,
-                        COUNT(DISTINCT phone_number) as unique_callers
-                    FROM {$this->table}
-                    WHERE {$whereClause}";
-
-            $stmt = $this->db->prepare($sql);
-            if ($extParams) {
-                $stmt->execute($extParams);
-            } else {
-                $stmt->execute();
-            }
-            $result = $stmt->fetch();
-
-            // Return default values if no data
-            if (!$result) {
-                return [
-                    'total_calls' => 0,
-                    'successful_calls' => 0,
-                    'hangup_calls' => 0,
-                    'operator_calls' => 0,
-                    'reservation_calls' => 0,
-                    'avg_duration' => 0,
-                    'unique_callers' => 0
-                ];
-            }
-
-            return $result;
-        } catch (Exception $e) {
-            error_log("getWeeklySummary Error: " . $e->getMessage());
-            return [
-                'total_calls' => 0,
-                'successful_calls' => 0,
-                'hangup_calls' => 0,
-                'operator_calls' => 0,
-                'reservation_calls' => 0,
-                'avg_duration' => 0,
-                'unique_callers' => 0
-            ];
-        }
-    }
-
-    private function getMonthlySummary() {
-        try {
-            list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= DATE_FORMAT(CURDATE(), '%Y-%m-01')"];
-            if ($extWhere) $whereConditions[] = $extWhere;
-            $whereClause = implode(' AND ', $whereConditions);
-
-            $sql = "SELECT
-                        COUNT(*) as total_calls,
-                        COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
-                        COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
-                        COUNT(CASE WHEN call_outcome = 'operator_transfer' THEN 1 END) as operator_calls,
-                        COUNT(CASE WHEN call_type = 'reservation' THEN 1 END) as reservation_calls,
-                        AVG(call_duration) as avg_duration,
-                        COUNT(DISTINCT phone_number) as unique_callers
-                    FROM {$this->table}
-                    WHERE {$whereClause}";
-
-            $stmt = $this->db->prepare($sql);
-            if ($extParams) {
-                $stmt->execute($extParams);
-            } else {
-                $stmt->execute();
-            }
-            $result = $stmt->fetch();
-
-            // Return default values if no data
-            if (!$result) {
-                return [
-                    'total_calls' => 0,
-                    'successful_calls' => 0,
-                    'hangup_calls' => 0,
-                    'operator_calls' => 0,
-                    'reservation_calls' => 0,
-                    'avg_duration' => 0,
-                    'unique_callers' => 0
-                ];
-            }
-
-            return $result;
-        } catch (Exception $e) {
-            error_log("getMonthlySummary Error: " . $e->getMessage());
-            return [
-                'total_calls' => 0,
-                'successful_calls' => 0,
-                'hangup_calls' => 0,
-                'operator_calls' => 0,
-                'reservation_calls' => 0,
-                'avg_duration' => 0,
-                'unique_callers' => 0
-            ];
-        }
-    }
-
+    
     private function getActiveCalls() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
@@ -2296,7 +2159,7 @@ class AGIAnalytics {
     private function getTodayCallCount() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$whereClause}";
@@ -2322,7 +2185,7 @@ class AGIAnalytics {
     private function getCurrentHourCallCount() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"];
+            $whereConditions = ["DATE_ADD(call_start_time, INTERVAL 2 HOUR) >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$whereClause}";
@@ -2352,7 +2215,7 @@ class AGIAnalytics {
     private function getTodaySuccessRate() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
 
@@ -2387,7 +2250,7 @@ class AGIAnalytics {
     private function getTodayAvgDuration() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) = CURDATE()"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT AVG(call_duration) FROM {$this->table} WHERE {$whereClause}";
@@ -2414,7 +2277,7 @@ class AGIAnalytics {
     private function getAverageResponseTime() {
         try {
             list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()", "api_response_time > 0"];
+            $whereConditions = ["DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) = CURDATE()", "api_response_time > 0"];
             if ($extWhere) $whereConditions[] = $extWhere;
             $whereClause = implode(' AND ', $whereConditions);
             $sql = "SELECT AVG(api_response_time) FROM {$this->table} WHERE {$whereClause}";
@@ -2449,7 +2312,7 @@ class AGIAnalytics {
     
     private function getLastCallTime() {
         try {
-            $sql = "SELECT MAX(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) FROM {$this->table}";
+            $sql = "SELECT MAX(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) FROM {$this->table}";
             $result = $this->db->query($sql);
             if ($result === false) {
                 error_log("getLastCallTime query failed: " . implode(" ", $this->db->errorInfo()));
@@ -2467,7 +2330,7 @@ class AGIAnalytics {
             $sql = "SELECT 
                         COUNT(CASE WHEN call_outcome = 'error' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) as error_rate
                     FROM {$this->table} 
-                    WHERE DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) = CURDATE()";
+                    WHERE DATE(DATE_ADD(call_start_time, INTERVAL 2 HOUR)) = CURDATE()";
             $result = $this->db->query($sql);
             if ($result === false) {
                 error_log("getTodayErrorRate query failed: " . implode(" ", $this->db->errorInfo()));
@@ -2588,9 +2451,9 @@ class AGIAnalytics {
     
     private function getRelatedCalls($phoneNumber, $excludeId) {
         $sql = "SELECT *,
-                       DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
+                       DATE_ADD(call_start_time, INTERVAL 2 HOUR) as call_start_time,
                        CASE WHEN call_end_time IS NOT NULL
-                            THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
+                            THEN DATE_ADD(call_end_time, INTERVAL 2 HOUR)
                             ELSE NULL END as call_end_time
                 FROM {$this->table} WHERE phone_number = ? AND id != ? ORDER BY call_start_time DESC LIMIT 10";
         $stmt = $this->db->prepare($sql);
@@ -2708,75 +2571,187 @@ class AGIAnalytics {
     // ===== CSV EXPORT =====
     
     private function exportCSV() {
-        try {
-            // Clean output buffer to prevent any interference
-            if (ob_get_level()) {
-                ob_end_clean();
-            }
-
-            // Get summary data with filters applied
-            $data = $this->getExportSummaryData();
-
-            header('Content-Type: text/csv; charset=utf-8');
-            header('Content-Disposition: attachment; filename="analytics_summary_' . date('Y-m-d_H-i-s') . '.csv"');
-            header('Cache-Control: no-cache, must-revalidate');
-            header('Expires: 0');
-
-            // Add UTF-8 BOM for proper Excel encoding
-            echo "\xEF\xBB\xBF";
-
-            // Title
-            echo '"Call Analytics Summary Report"' . "\r\n";
-            echo '"Generated: ' . date('F d, Y H:i:s') . '"' . "\r\n\r\n";
-
-            // Call Statistics
-            echo '"Call Statistics"' . "\r\n";
-            echo '"Total Calls","' . number_format($data['total_calls']) . '"' . "\r\n";
-            echo '"Successful Calls","' . number_format($data['successful_calls']) . '"' . "\r\n";
-            echo '"Success Rate","' . number_format($data['success_rate'], 2) . '%"' . "\r\n";
-            echo '"Hangup Calls","' . number_format($data['hangup_calls']) . '"' . "\r\n";
-            echo '"Operator Transfers","' . number_format($data['operator_transfers']) . '"' . "\r\n";
-            echo '"Reservation Calls","' . number_format($data['reservation_calls']) . '"' . "\r\n";
-            echo '"Average Duration","' . number_format($data['avg_duration'] ?? 0, 2) . ' seconds"' . "\r\n";
-            echo '"Max Duration","' . number_format($data['max_duration'] ?? 0, 2) . ' seconds"' . "\r\n";
-            echo '"Min Duration","' . number_format($data['min_duration'] ?? 0, 2) . ' seconds"' . "\r\n";
-            echo '"Unique Callers","' . number_format($data['unique_callers']) . '"' . "\r\n";
-            echo '"Extensions Used","' . number_format($data['extensions_used']) . '"' . "\r\n\r\n";
-
-            // API Usage Statistics
-            echo '"API Usage Statistics"' . "\r\n";
-            echo '"Google TTS Calls","' . number_format($data['google_tts_total'] ?? 0) . '"' . "\r\n";
-            echo '"Edge TTS Calls","' . number_format($data['edge_tts_total'] ?? 0) . '"' . "\r\n";
-            echo '"Google STT Calls","' . number_format($data['google_stt_total'] ?? 0) . '"' . "\r\n";
-            echo '"Geocoding API Calls","' . number_format($data['geocoding_total'] ?? 0) . '"' . "\r\n";
-            echo '"User API Calls","' . number_format($data['user_api_total'] ?? 0) . '"' . "\r\n";
-            echo '"Registration API Calls","' . number_format($data['registration_total'] ?? 0) . '"' . "\r\n";
-            echo '"TOTAL API CALLS","' . number_format($data['total_api_calls']) . '"' . "\r\n";
-
-            exit;
-
-        } catch (Exception $e) {
-            error_log("CSV Export Error: " . $e->getMessage());
-            error_log("Stack trace: " . $e->getTraceAsString());
-            http_response_code(500);
-            die("Error generating CSV export: " . $e->getMessage());
+        // Clean output buffer to prevent any interference
+        if (ob_get_level()) {
+            ob_end_clean();
         }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="taxi_calls_report_' . date('Y-m-d_H-i-s') . '.csv"');
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Expires: 0');
+
+        // Create clean CSV content
+        $csvContent = '';
+
+        // Add UTF-8 BOM for proper Excel encoding
+        $csvContent .= "\xEF\xBB\xBF";
+
+        // Title row
+        $title = $this->language === 'el' ? 'ΑΝΑΦΟΡΑ ΚΛΗΣΕΩΝ ΤΑΞΙ' : 'TAXI CALLS REPORT';
+        $csvContent .= '"' . $title . '"' . "\r\n";
+
+        // Generation date
+        $generated = $this->language === 'el' ? 'Δημιουργήθηκε στις' : 'Generated on';
+        $csvContent .= '"' . $generated . ': ' . date('d/m/Y H:i:s') . '"' . "\r\n";
+
+        // Empty row
+        $csvContent .= "\r\n";
+
+        // Headers row
+        $headers = [
+            $this->language === 'el' ? 'Ημερομηνία' : 'Date',
+            $this->language === 'el' ? 'Ώρα' : 'Time',
+            $this->language === 'el' ? 'Τηλέφωνο' : 'Phone',
+            $this->language === 'el' ? 'Εσωτερικό' : 'Extension',
+            $this->language === 'el' ? 'Διάρκεια' : 'Duration',
+            $this->language === 'el' ? 'Αποτέλεσμα' : 'Result',
+            $this->language === 'el' ? 'Τύπος' : 'Type',
+            $this->language === 'el' ? 'Κράτηση' : 'Reservation',
+            $this->language === 'el' ? 'Παραλαβή' : 'Pickup',
+            $this->language === 'el' ? 'Προορισμός' : 'Destination',
+            $this->language === 'el' ? 'Πελάτης' : 'Customer',
+            $this->language === 'el' ? 'Γλώσσα' : 'Language'
+        ];
+
+        // Add header row to CSV
+        $csvContent .= '"' . implode('","', $headers) . '"' . "\r\n";
+        
+        // Get clean call data
+        $exportResult = $this->getExportData();
+        $calls = $exportResult['data'];
+
+        // Initialize counters for summary
+        $totalCalls = 0;
+        $successfulCalls = 0;
+        $failedCalls = 0;
+        $reservationCalls = 0;
+
+        // Process each call and add to CSV
+        foreach ($calls as $row) {
+            try {
+                // Format date and time
+                $datetime = new DateTime($row['call_start_time']);
+                $callDate = $datetime->format('d/m/Y');
+                $callTime = $datetime->format('H:i');
+
+                // Format duration as MM:SS
+                $duration = '';
+                if (!empty($row['call_duration']) && is_numeric($row['call_duration'])) {
+                    $seconds = (int)$row['call_duration'];
+                    $minutes = floor($seconds / 60);
+                    $seconds = $seconds % 60;
+                    $duration = sprintf('%02d:%02d', $minutes, $seconds);
+                }
+
+                // Clean call result
+                $callResult = $this->translateStatus($row['call_outcome']);
+                $callType = $this->translateCallType($row['call_type']);
+
+                // Reservation status
+                $isReservation = $row['is_reservation'] ?
+                    ($this->language === 'el' ? 'Ναι' : 'Yes') :
+                    ($this->language === 'el' ? 'Όχι' : 'No');
+
+                // Clean addresses
+                $pickup = !empty($row['pickup_address']) ?
+                    str_replace(['"', '\n', '\r'], ['', ' ', ' '], $row['pickup_address']) : '';
+                $destination = !empty($row['destination_address']) ?
+                    str_replace(['"', '\n', '\r'], ['', ' ', ' '], $row['destination_address']) : '';
+
+                // Customer name
+                $customer = !empty($row['user_name']) ?
+                    str_replace(['"', '\n', '\r'], ['', ' ', ' '], $row['user_name']) : '';
+
+                // Language
+                $language = !empty($row['language_used']) ? $row['language_used'] : '';
+
+                // Create CSV data row
+                $dataRow = [
+                    $callDate,      // Date
+                    $callTime,      // Time
+                    $row['phone_number'] ?: '',  // Phone
+                    $row['extension'] ?: '',     // Extension
+                    $duration,      // Duration
+                    $callResult,    // Result
+                    $callType,      // Type
+                    $isReservation, // Reservation
+                    $pickup,        // Pickup
+                    $destination,   // Destination
+                    $customer,      // Customer
+                    $language       // Language
+                ];
+
+                // Add data row to CSV content
+                $csvContent .= '"' . implode('","', $dataRow) . '"' . "\r\n";
+
+                // Count statistics
+                $totalCalls++;
+                if ($row['call_outcome'] === 'successful_registration') {
+                    $successfulCalls++;
+                } elseif (in_array($row['call_outcome'], ['hangup', 'error'])) {
+                    $failedCalls++;
+                }
+                if ($row['is_reservation']) {
+                    $reservationCalls++;
+                }
+
+            } catch (Exception $e) {
+                // Skip problematic rows but continue processing
+                error_log("CSV Export Error for row ID " . $row['id'] . ": " . $e->getMessage());
+                continue;
+            }
+        }
+
+        // Add summary section
+        $transferredCalls = $totalCalls - $successfulCalls - $failedCalls;
+        $successRate = $totalCalls > 0 ? round(($successfulCalls / $totalCalls) * 100, 1) : 0;
+
+        // Empty rows before summary
+        $csvContent .= "\r\n\r\n";
+
+        // Summary title
+        $summaryTitle = $this->language === 'el' ? '=== ΣΥΝΟΨΗ ΑΝΑΦΟΡΑΣ ===' : '=== REPORT SUMMARY ===';
+        $csvContent .= '"' . $summaryTitle . '"' . "\r\n\r\n";
+
+        // Summary statistics
+        $summaryLabels = [
+            'total' => $this->language === 'el' ? 'Συνολικές Κλήσεις' : 'Total Calls',
+            'successful' => $this->language === 'el' ? 'Επιτυχημένες Κλήσεις' : 'Successful Calls',
+            'failed' => $this->language === 'el' ? 'Αποτυχημένες Κλήσεις' : 'Failed Calls',
+            'transferred' => $this->language === 'el' ? 'Μεταφορές σε Τηλεφωνητή' : 'Transferred to Operator',
+            'reservations' => $this->language === 'el' ? 'Κρατήσεις' : 'Reservations',
+            'success_rate' => $this->language === 'el' ? 'Ποσοστό Επιτυχίας' : 'Success Rate'
+        ];
+
+        $csvContent .= '"' . $summaryLabels['total'] . '","' . $totalCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['successful'] . '","' . $successfulCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['failed'] . '","' . $failedCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['transferred'] . '","' . $transferredCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['reservations'] . '","' . $reservationCalls . '"' . "\r\n";
+        $csvContent .= '"' . $summaryLabels['success_rate'] . '","' . $successRate . '%"' . "\r\n";
+
+        // Generation info
+        $csvContent .= "\r\n";
+        $genBy = $this->language === 'el' ? 'Δημιουργήθηκε από' : 'Generated by';
+        $csvContent .= '"' . $genBy . '","IQ Taxi Analytics System"' . "\r\n";
+        $exportDate = $this->language === 'el' ? 'Ημερομηνία Εξαγωγής' : 'Export Date';
+        $csvContent .= '"' . $exportDate . '","' . date('d/m/Y H:i:s') . '"' . "\r\n";
+
+        // Output the clean CSV content
+        echo $csvContent;
+        exit;
     }
     
     // ===== PDF EXPORT =====
     
     private function exportPDF() {
-        try {
-            // Get summary data with filters applied
-            $data = $this->getExportSummaryData();
-
-            header('Content-Type: text/html; charset=utf-8');
-        } catch (Exception $e) {
-            error_log("PDF Export Error: " . $e->getMessage());
-            error_log("Stack trace: " . $e->getTraceAsString());
-            http_response_code(500);
-            die("Error generating PDF export: " . $e->getMessage());
-        }
+        // Get data using same filters as CSV
+        $exportResult = $this->getExportData();
+        $data = $exportResult['data'];
+        $totals = $exportResult['totals'];
+        
+        header('Content-Type: text/html; charset=utf-8');
         
         ?>
         <!DOCTYPE html>
@@ -2942,93 +2917,125 @@ class AGIAnalytics {
             </div>
             
             <div class="header">
-                <h1>📊 Call Analytics Summary Report</h1>
+                <h1>📊 Call Analytics Report</h1>
                 <p>Generated on <?= date('F j, Y \a\t g:i A') ?></p>
                 <?php if (!empty($_GET['date_from']) || !empty($_GET['date_to'])): ?>
-                <p>Period:
+                <p>Period: 
                     <?= !empty($_GET['date_from']) ? date('M j, Y', strtotime($_GET['date_from'])) : 'Beginning' ?>
-                    -
+                    - 
                     <?= !empty($_GET['date_to']) ? date('M j, Y', strtotime($_GET['date_to'])) : 'Present' ?>
                 </p>
                 <?php endif; ?>
+                <?php if (!empty($_GET['limit']) && $_GET['limit'] !== 'all'): ?>
+                <p><small>Limited to <?= intval($_GET['limit']) ?> most recent records</small></p>
+                <?php endif; ?>
             </div>
-
-            <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #2563eb; padding-bottom: 0.5rem;">📞 Call Statistics</h3>
+            
             <div class="stats">
                 <div class="stat-card">
-                    <div class="stat-number"><?= number_format($data['total_calls']) ?></div>
+                    <div class="stat-number"><?= count($data) ?></div>
                     <div class="stat-label">Total Calls</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number success"><?= number_format($data['successful_calls']) ?></div>
+                    <div class="stat-number success"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'successful_registration'; })) ?></div>
                     <div class="stat-label">Successful</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number" style="color: #ef4444;"><?= number_format($data['hangup_calls']) ?></div>
-                    <div class="stat-label">Hangups</div>
+                    <div class="stat-number failed"><?= count(array_filter($data, function($r) { return in_array($r['call_outcome'], ['hangup', 'error']); })) ?></div>
+                    <div class="stat-label">Failed</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number warning"><?= number_format($data['operator_transfers']) ?></div>
+                    <div class="stat-number warning"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'operator_transfer'; })) ?></div>
                     <div class="stat-label">Transferred</div>
                 </div>
             </div>
-
-            <div class="stats" style="margin-top: 1rem;">
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #8b5cf6;"><?= number_format($data['reservation_calls']) ?></div>
-                    <div class="stat-label">Reservations</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #06b6d4;"><?= number_format($data['avg_duration'] ?? 0, 1) ?>s</div>
-                    <div class="stat-label">Avg Duration</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #f59e0b;"><?= number_format($data['unique_callers']) ?></div>
-                    <div class="stat-label">Unique Callers</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #10b981;"><?= number_format($data['success_rate'], 2) ?>%</div>
-                    <div class="stat-label">Success Rate</div>
-                </div>
-            </div>
-
+            
             <!-- API Usage Statistics -->
-            <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #2563eb; padding-bottom: 0.5rem;">🔌 API Usage Statistics</h3>
-            <div class="stats">
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #e74c3c;"><?= number_format($data['google_tts_total'] ?? 0) ?></div>
-                    <div class="stat-label">Google TTS</div>
+            <div class="api-stats">
+                <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;">📊 API Usage Summary</h3>
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #e74c3c;"><?= number_format($totals['total_google_stt']) ?></div>
+                        <div class="stat-label">Total STT Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #3498db;"><?= number_format($totals['total_tts_all']) ?></div>
+                        <div class="stat-label">Total TTS Calls</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #f39c12;"><?= number_format($totals['total_geocoding']) ?></div>
+                        <div class="stat-label">Total Geocoding</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #9b59b6;"><?= number_format($totals['total_api_calls_all']) ?></div>
+                        <div class="stat-label">Total API Calls</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #3498db;"><?= number_format($data['edge_tts_total'] ?? 0) ?></div>
-                    <div class="stat-label">Edge TTS</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #9b59b6;"><?= number_format($data['google_stt_total'] ?? 0) ?></div>
-                    <div class="stat-label">Google STT</div>
+                <div class="stats" style="margin-top: 1rem;">
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #27ae60;"><?= number_format($totals['total_google_tts']) ?></div>
+                        <div class="stat-label">Google TTS</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #2ecc71;"><?= number_format($totals['total_edge_tts']) ?></div>
+                        <div class="stat-label">Edge TTS</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #1abc9c;"><?= number_format($totals['total_user_api']) ?></div>
+                        <div class="stat-label">User API</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #34495e;"><?= number_format($totals['total_registration_api']) ?></div>
+                        <div class="stat-label">Registration API</div>
+                    </div>
                 </div>
             </div>
-            <div class="stats" style="margin-top: 1rem;">
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #f39c12;"><?= number_format($data['geocoding_total'] ?? 0) ?></div>
-                    <div class="stat-label">Geocoding</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #1abc9c;"><?= number_format($data['user_api_total'] ?? 0) ?></div>
-                    <div class="stat-label">User API</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #27ae60;"><?= number_format($data['registration_total'] ?? 0) ?></div>
-                    <div class="stat-label">Registration API</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #2563eb; font-size: 28px;"><?= number_format($data['total_api_calls']) ?></div>
-                    <div class="stat-label">TOTAL API CALLS</div>
-                </div>
-            </div>
-
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date/Time</th>
+                        <th>Phone</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                        <th>Pickup Location</th>
+                        <th>Destination</th>
+                        <th>Lang</th>
+                        <th>API Calls</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($data)): ?>
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 20px; color: #666; font-style: italic;">
+                            No data found for the selected criteria
+                        </td>
+                    </tr>
+                    <?php else: ?>
+                    <?php foreach($data as $row): ?>
+                    <tr>
+                        <td><?= date('M j, g:i A', strtotime($row['call_start_time'])) ?></td>
+                        <td><?= htmlspecialchars($row['phone_number']) ?></td>
+                        <td><?= $this->formatDuration($row['call_duration']) ?></td>
+                        <td class="<?= $this->getOutcomeClass($row['call_outcome']) ?>">
+                            <?= ucwords(str_replace('_', ' ', $row['call_outcome'])) ?>
+                        </td>
+                        <td><?= htmlspecialchars(mb_substr($row['pickup_address'] ?? 'N/A', 0, 25) . (mb_strlen($row['pickup_address'] ?? '') > 25 ? '...' : '')) ?></td>
+                        <td><?= htmlspecialchars(mb_substr($row['destination_address'] ?? 'N/A', 0, 25) . (mb_strlen($row['destination_address'] ?? '') > 25 ? '...' : '')) ?></td>
+                        <td><?= strtoupper($row['language_used'] ?? 'EN') ?></td>
+                        <td style="font-size: 9px;">
+                            TTS: <?= ($row['google_tts_calls'] ?? 0) + ($row['edge_tts_calls'] ?? 0) ?><br>
+                            STT: <?= $row['google_stt_calls'] ?? 0 ?><br>
+                            GEO: <?= $row['geocoding_api_calls'] ?? 0 ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+            
             <div class="footer">
-                <p>📞 Call Analytics System | Generated: <?= date('Y-m-d H:i:s') ?></p>
+                <p>📞 Call Analytics System Report | Generated: <?= date('Y-m-d H:i:s') ?> | Total Records: <?= $totals['total_calls'] ?> | Total API Calls: <?= number_format($totals['total_api_calls_all']) ?></p>
             </div>
         </body>
         </html>
@@ -3039,17 +3046,12 @@ class AGIAnalytics {
     // ===== PRINT EXPORT =====
     
     private function exportPrint() {
-        try {
-            // Get summary data with filters applied
-            $data = $this->getExportSummaryData();
-
-            header('Content-Type: text/html; charset=utf-8');
-        } catch (Exception $e) {
-            error_log("Print Export Error: " . $e->getMessage());
-            error_log("Stack trace: " . $e->getTraceAsString());
-            http_response_code(500);
-            die("Error generating print export: " . $e->getMessage());
-        }
+        // Same as PDF but without auto-print
+        $exportResult = $this->getExportData();
+        $data = $exportResult['data'];
+        $totals = $exportResult['totals'];
+        
+        header('Content-Type: text/html; charset=utf-8');
         
         ?>
         <!DOCTYPE html>
@@ -3091,92 +3093,111 @@ class AGIAnalytics {
             </div>
             
             <div class="header">
-                <h1>📊 Call Analytics Summary Report</h1>
+                <h1>📊 Call Analytics Report</h1>
                 <p>Generated on <?= date('F j, Y \a\t g:i A') ?></p>
                 <?php if (!empty($_GET['date_from']) || !empty($_GET['date_to'])): ?>
-                <p>Period:
+                <p>Period: 
                     <?= !empty($_GET['date_from']) ? date('M j, Y', strtotime($_GET['date_from'])) : 'Beginning' ?>
-                    -
+                    - 
                     <?= !empty($_GET['date_to']) ? date('M j, Y', strtotime($_GET['date_to'])) : 'Present' ?>
                 </p>
                 <?php endif; ?>
             </div>
-
-            <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #2563eb; padding-bottom: 0.5rem;">📞 Call Statistics</h3>
+            
             <div class="stats">
                 <div class="stat-card">
-                    <div class="stat-number"><?= number_format($data['total_calls']) ?></div>
+                    <div class="stat-number"><?= count($data) ?></div>
                     <div class="stat-label">Total Calls</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number success"><?= number_format($data['successful_calls']) ?></div>
+                    <div class="stat-number success"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'successful_registration'; })) ?></div>
                     <div class="stat-label">Successful</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number failed"><?= number_format($data['hangup_calls']) ?></div>
-                    <div class="stat-label">Hangups</div>
+                    <div class="stat-number failed"><?= count(array_filter($data, function($r) { return in_array($r['call_outcome'], ['hangup', 'error']); })) ?></div>
+                    <div class="stat-label">Failed</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number warning"><?= number_format($data['operator_transfers']) ?></div>
+                    <div class="stat-number warning"><?= count(array_filter($data, function($r) { return $r['call_outcome'] === 'operator_transfer'; })) ?></div>
                     <div class="stat-label">Transferred</div>
                 </div>
             </div>
-
-            <div class="stats" style="margin-top: 1rem;">
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #8b5cf6;"><?= number_format($data['reservation_calls']) ?></div>
-                    <div class="stat-label">Reservations</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #06b6d4;"><?= number_format($data['avg_duration'] ?? 0, 1) ?>s</div>
-                    <div class="stat-label">Avg Duration</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #f59e0b;"><?= number_format($data['unique_callers']) ?></div>
-                    <div class="stat-label">Unique Callers</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" style="color: #10b981;"><?= number_format($data['success_rate'], 2) ?>%</div>
-                    <div class="stat-label">Success Rate</div>
-                </div>
-            </div>
-
+            
             <!-- API Usage Statistics -->
             <div class="api-stats">
-                <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #2563eb; padding-bottom: 0.5rem;">🔌 API Usage Statistics</h3>
+                <h3 style="margin: 2rem 0 1rem; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;">📊 API Usage Summary</h3>
                 <div class="stats">
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #e74c3c;"><?= number_format($data['google_tts_total'] ?? 0) ?></div>
-                        <div class="stat-label">Google TTS</div>
+                        <div class="stat-number" style="color: #e74c3c;"><?= number_format($totals['total_google_stt']) ?></div>
+                        <div class="stat-label">Total STT Calls</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #3498db;"><?= number_format($data['edge_tts_total'] ?? 0) ?></div>
-                        <div class="stat-label">Edge TTS</div>
+                        <div class="stat-number" style="color: #3498db;"><?= number_format($totals['total_tts_all']) ?></div>
+                        <div class="stat-label">Total TTS Calls</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #9b59b6;"><?= number_format($data['google_stt_total'] ?? 0) ?></div>
-                        <div class="stat-label">Google STT</div>
+                        <div class="stat-number" style="color: #f39c12;"><?= number_format($totals['total_geocoding']) ?></div>
+                        <div class="stat-label">Total Geocoding</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #9b59b6;"><?= number_format($totals['total_api_calls_all']) ?></div>
+                        <div class="stat-label">Total API Calls</div>
                     </div>
                 </div>
                 <div class="stats" style="margin-top: 1rem;">
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #f39c12;"><?= number_format($data['geocoding_total'] ?? 0) ?></div>
-                        <div class="stat-label">Geocoding</div>
+                        <div class="stat-number" style="color: #27ae60;"><?= number_format($totals['total_google_tts']) ?></div>
+                        <div class="stat-label">Google TTS</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #1abc9c;"><?= number_format($data['user_api_total'] ?? 0) ?></div>
+                        <div class="stat-number" style="color: #2ecc71;"><?= number_format($totals['total_edge_tts']) ?></div>
+                        <div class="stat-label">Edge TTS</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #1abc9c;"><?= number_format($totals['total_user_api']) ?></div>
                         <div class="stat-label">User API</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number" style="color: #27ae60;"><?= number_format($data['registration_total'] ?? 0) ?></div>
+                        <div class="stat-number" style="color: #34495e;"><?= number_format($totals['total_registration_api']) ?></div>
                         <div class="stat-label">Registration API</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" style="color: #2563eb; font-size: 28px;"><?= number_format($data['total_api_calls']) ?></div>
-                        <div class="stat-label">TOTAL API CALLS</div>
                     </div>
                 </div>
             </div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date/Time</th>
+                        <th>Phone Number</th>
+                        <th>Duration</th>
+                        <th>Outcome</th>
+                        <th>Pickup Address</th>
+                        <th>Destination Address</th>
+                        <th>Language</th>
+                        <th>API Calls</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach($data as $row): ?>
+                    <tr>
+                        <td><?= date('M j, g:i A', strtotime($row['call_start_time'])) ?></td>
+                        <td><?= htmlspecialchars($row['phone_number']) ?></td>
+                        <td><?= $this->formatDuration($row['call_duration']) ?></td>
+                        <td class="<?= $this->getOutcomeClass($row['call_outcome']) ?>">
+                            <?= ucwords(str_replace('_', ' ', $row['call_outcome'])) ?>
+                        </td>
+                        <td><?= htmlspecialchars($row['pickup_address'] ?? 'N/A') ?></td>
+                        <td><?= htmlspecialchars($row['destination_address'] ?? 'N/A') ?></td>
+                        <td><?= strtoupper($row['language_used'] ?? 'EN') ?></td>
+                        <td style="font-size: 11px;">
+                            TTS: <?= ($row['google_tts_calls'] ?? 0) + ($row['edge_tts_calls'] ?? 0) ?><br>
+                            STT: <?= $row['google_stt_calls'] ?? 0 ?><br>
+                            GEO: <?= $row['geocoding_api_calls'] ?? 0 ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </body>
         </html>
         <?php
@@ -3185,76 +3206,55 @@ class AGIAnalytics {
     
     // Helper method to get export data (reused by both PDF and print)
     private function getExportData() {
-        try {
-            $where = [];
-            $params = [];
+        $where = [];
+        $params = [];
 
-            // Apply global extension filter first
-            list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            if ($extWhere) {
-                $where[] = $extWhere;
-                $params = array_merge($params, $extParams);
-            }
-
-            if (!empty($_GET['date_from'])) {
-                $where[] = "DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?";
-                $params[] = $_GET['date_from'];
-            }
-            if (!empty($_GET['date_to'])) {
-                $where[] = "DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) <= ?";
-                $params[] = $_GET['date_to'];
-            }
-            if (!empty($_GET['phone'])) {
-                $where[] = 'phone_number LIKE ?';
-                $params[] = '%' . $_GET['phone'] . '%';
-            }
-            if (!empty($_GET['extension']) && !$this->globalExtensionFilter) {
-                // Only apply manual extension filter if global filter is not active
-                $where[] = 'extension = ?';
-                $params[] = $_GET['extension'];
-            }
-            if (!empty($_GET['outcome'])) {
-                $where[] = 'call_outcome = ?';
-                $params[] = $_GET['outcome'];
-            }
-
-            $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
-            $sql = "SELECT *,
-                           DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
-                           CASE WHEN call_end_time IS NOT NULL
-                                THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
-                                ELSE NULL END as call_end_time
-                    FROM {$this->table} WHERE {$whereClause} ORDER BY id DESC";
-
-            // Debug: Log the limit parameter
-            error_log("Export limit parameter received: " . ($_GET['limit'] ?? 'NOT SET'));
-
-            // Add limit if specified, or enforce max for PDF/Print
-            if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
-                $sql .= " LIMIT " . intval($_GET['limit']);
-            } elseif (isset($_GET['limit']) && $_GET['limit'] === 'all') {
-                // For PDF/Print, enforce reasonable limit to prevent memory issues
-                $sql .= " LIMIT 5000";
-            } else {
-                // Default limit when no limit parameter is provided (safety fallback)
-                $sql .= " LIMIT 5000";  // Increase default from 1000 to 5000
-            }
-
-            // Debug logging
-            error_log("Export SQL: " . $sql);
-            error_log("Export Params: " . json_encode($params));
-
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-
-            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        } catch (Exception $e) {
-            error_log("Export Data Error: " . $e->getMessage());
-            error_log("Export SQL: " . ($sql ?? 'SQL not set'));
-            error_log("Export Params: " . json_encode($params ?? []));
-            throw $e;
+        // Apply global extension filter first
+        list($extWhere, $extParams) = $this->getExtensionFilterClause();
+        if ($extWhere) {
+            $where[] = $extWhere;
+            $params = array_merge($params, $extParams);
         }
+
+        if (!empty($_GET['date_from'])) {
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL 2 HOUR) >= ?';
+            $params[] = $_GET['date_from'];
+        }
+        if (!empty($_GET['date_to'])) {
+            $where[] = 'DATE_ADD(call_start_time, INTERVAL 2 HOUR) <= ?';
+            $params[] = $_GET['date_to'];
+        }
+        if (!empty($_GET['phone'])) {
+            $where[] = 'phone_number LIKE ?';
+            $params[] = '%' . $_GET['phone'] . '%';
+        }
+        if (!empty($_GET['extension']) && !$this->globalExtensionFilter) {
+            // Only apply manual extension filter if global filter is not active
+            $where[] = 'extension = ?';
+            $params[] = $_GET['extension'];
+        }
+        if (!empty($_GET['outcome'])) {
+            $where[] = 'call_outcome = ?';
+            $params[] = $_GET['outcome'];
+        }
+
+        $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
+        $sql = "SELECT *,
+                       DATE_ADD(call_start_time, INTERVAL 2 HOUR) as call_start_time,
+                       CASE WHEN call_end_time IS NOT NULL
+                            THEN DATE_ADD(call_end_time, INTERVAL 2 HOUR)
+                            ELSE NULL END as call_end_time
+                FROM {$this->table} WHERE {$whereClause} ORDER BY call_start_time DESC";
+        
+        // Add limit if specified
+        if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
+            $sql .= " LIMIT " . intval($_GET['limit']);
+        }
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        
+        $data = $stmt->fetchAll();
         
         // Calculate totals
         $totals = [
@@ -3279,162 +3279,12 @@ class AGIAnalytics {
         }
         
         $totals['total_tts_all'] = $totals['total_google_tts'] + $totals['total_edge_tts'];
-        $totals['total_api_calls_all'] = $totals['total_google_tts'] + $totals['total_google_stt'] +
-                                        $totals['total_edge_tts'] + $totals['total_geocoding'] +
-                                        $totals['total_user_api'] + $totals['total_registration_api'] +
+        $totals['total_api_calls_all'] = $totals['total_google_tts'] + $totals['total_google_stt'] + 
+                                        $totals['total_edge_tts'] + $totals['total_geocoding'] + 
+                                        $totals['total_user_api'] + $totals['total_registration_api'] + 
                                         $totals['total_date_parsing_api'];
-
+        
         return ['data' => $data, 'totals' => $totals];
-    }
-
-    /**
-     * Get summary statistics for export (filtered)
-     */
-    private function getExportSummaryData() {
-        try {
-            $where = [];
-            $params = [];
-
-            // Apply global extension filter first
-            list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            if ($extWhere) {
-                $where[] = $extWhere;
-                $params = array_merge($params, $extParams);
-            }
-
-            if (!empty($_GET['date_from'])) {
-                $where[] = "DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) >= ?";
-                $params[] = $_GET['date_from'];
-            }
-            if (!empty($_GET['date_to'])) {
-                $where[] = "DATE(DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR)) <= ?";
-                $params[] = $_GET['date_to'];
-            }
-            if (!empty($_GET['phone'])) {
-                $where[] = 'phone_number LIKE ?';
-                $params[] = '%' . $_GET['phone'] . '%';
-            }
-            if (!empty($_GET['extension']) && !$this->globalExtensionFilter) {
-                $where[] = 'extension = ?';
-                $params[] = $_GET['extension'];
-            }
-            if (!empty($_GET['outcome'])) {
-                $where[] = 'call_outcome = ?';
-                $params[] = $_GET['outcome'];
-            }
-
-            $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
-
-            // Get summary statistics
-            $sql = "SELECT
-                        COUNT(*) as total_calls,
-                        COUNT(CASE WHEN call_outcome = 'success' THEN 1 END) as successful_calls,
-                        COUNT(CASE WHEN call_outcome = 'hangup' THEN 1 END) as hangup_calls,
-                        COUNT(CASE WHEN call_outcome = 'operator_transfer' THEN 1 END) as operator_transfers,
-                        COUNT(CASE WHEN is_reservation = 1 THEN 1 END) as reservation_calls,
-                        AVG(call_duration) as avg_duration,
-                        MAX(call_duration) as max_duration,
-                        MIN(call_duration) as min_duration,
-                        COUNT(DISTINCT phone_number) as unique_callers,
-                        COUNT(DISTINCT extension) as extensions_used,
-                        SUM(google_tts_calls) as google_tts_total,
-                        SUM(edge_tts_calls) as edge_tts_total,
-                        SUM(google_stt_calls) as google_stt_total,
-                        SUM(geocoding_api_calls) as geocoding_total,
-                        SUM(user_api_calls) as user_api_total,
-                        SUM(registration_api_calls) as registration_total
-                    FROM {$this->table}
-                    WHERE {$whereClause}";
-
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            $summary = $stmt->fetch();
-
-            // Calculate success rate
-            $summary['success_rate'] = $summary['total_calls'] > 0
-                ? round(($summary['successful_calls'] / $summary['total_calls']) * 100, 2)
-                : 0;
-
-            // Calculate total API calls
-            $summary['total_api_calls'] = ($summary['google_tts_total'] ?? 0) +
-                                         ($summary['edge_tts_total'] ?? 0) +
-                                         ($summary['google_stt_total'] ?? 0) +
-                                         ($summary['geocoding_total'] ?? 0) +
-                                         ($summary['user_api_total'] ?? 0) +
-                                         ($summary['registration_total'] ?? 0);
-
-            return $summary;
-
-        } catch (Exception $e) {
-            error_log("Export Summary Data Error: " . $e->getMessage());
-            throw $e;
-        }
-    }
-
-    // Helper method to get export data stream (for CSV memory-efficient export)
-    private function getExportDataStream() {
-        try {
-            $where = [];
-            $params = [];
-
-            // Apply global extension filter first
-            list($extWhere, $extParams) = $this->getExtensionFilterClause();
-            if ($extWhere) {
-                $where[] = $extWhere;
-                $params = array_merge($params, $extParams);
-            }
-
-            if (!empty($_GET['date_from'])) {
-                $where[] = "DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) >= ?";
-                $params[] = $_GET['date_from'];
-            }
-            if (!empty($_GET['date_to'])) {
-                $where[] = "DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) <= ?";
-                $params[] = $_GET['date_to'];
-            }
-            if (!empty($_GET['phone'])) {
-                $where[] = 'phone_number LIKE ?';
-                $params[] = '%' . $_GET['phone'] . '%';
-            }
-            if (!empty($_GET['extension']) && !$this->globalExtensionFilter) {
-                // Only apply manual extension filter if global filter is not active
-                $where[] = 'extension = ?';
-                $params[] = $_GET['extension'];
-            }
-            if (!empty($_GET['outcome'])) {
-                $where[] = 'call_outcome = ?';
-                $params[] = $_GET['outcome'];
-            }
-
-            $whereClause = empty($where) ? '1=1' : implode(' AND ', $where);
-            $sql = "SELECT *,
-                           DATE_ADD(call_start_time, INTERVAL {$this->tzOffset} HOUR) as call_start_time,
-                           CASE WHEN call_end_time IS NOT NULL
-                                THEN DATE_ADD(call_end_time, INTERVAL {$this->tzOffset} HOUR)
-                                ELSE NULL END as call_end_time
-                    FROM {$this->table} WHERE {$whereClause} ORDER BY id DESC";
-
-            // Add limit if specified (but allow 'all' for streaming)
-            if (!empty($_GET['limit']) && $_GET['limit'] !== 'all' && is_numeric($_GET['limit'])) {
-                $sql .= " LIMIT " . intval($_GET['limit']);
-            }
-
-            // Debug logging
-            error_log("Export Stream SQL: " . $sql);
-            error_log("Export Stream Params: " . json_encode($params));
-
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-
-            // Return the statement for streaming
-            return $stmt;
-
-        } catch (Exception $e) {
-            error_log("Export Stream Error: " . $e->getMessage());
-            error_log("Export Stream SQL: " . ($sql ?? 'SQL not set'));
-            error_log("Export Stream Params: " . json_encode($params ?? []));
-            throw $e;
-        }
     }
     
     // Helper method to get CSS class for outcome
@@ -4119,21 +3969,6 @@ class AGIAnalytics {
             }
         }
 
-        /* Tablet screens */
-        @media (max-width: 1024px) {
-            .stats-grid {
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            }
-
-            .stat-card-wide {
-                grid-column: span 2;
-            }
-
-            .period-stats-container {
-                grid-template-columns: 1fr;
-            }
-        }
-
         /* Mobile phones only */
         @media (max-width: 768px) {
             .header-content {
@@ -4543,11 +4378,11 @@ class AGIAnalytics {
         
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
-
+        
         .stat-card {
             background: white;
             padding: 2rem;
@@ -4558,62 +4393,7 @@ class AGIAnalytics {
             position: relative;
             overflow: hidden;
         }
-
-        .stat-card-wide {
-            grid-column: span 2;
-        }
-
-        .period-stats-container {
-            grid-column: 1 / -1;
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1.5rem;
-            overflow: hidden;
-            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
-            max-height: 500px;
-            opacity: 1;
-        }
-
-        .period-stats-container.collapsed {
-            max-height: 0;
-            opacity: 0;
-            margin: 0;
-        }
-
-        /* Desktop styles for period stats grid */
-        .period-stats-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1.5rem 1rem;
-        }
-
-        .toggle-period-stats {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1.5rem;
-            border: none;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            background: var(--gray-100);
-            color: var(--gray-800);
-        }
-
-        .toggle-period-stats:hover {
-            background: var(--gray-200);
-        }
-
-        .toggle-period-stats i {
-            transition: transform 0.3s ease;
-        }
-
-        .toggle-period-stats.collapsed i {
-            transform: rotate(180deg);
-        }
-
+        
         .stat-card::before {
             content: '';
             position: absolute;
@@ -5661,71 +5441,9 @@ class AGIAnalytics {
             }
             
             .stats-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             }
-
-            .stat-card-wide {
-                grid-column: span 1;
-            }
-
-            /* Period stats container becomes horizontal scroll container on mobile */
-            .period-stats-container {
-                display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                overflow-x: auto !important;
-                overflow-y: hidden !important;
-                -webkit-overflow-scrolling: touch !important;
-                gap: 1rem !important;
-                grid-template-columns: unset !important;
-                scroll-snap-type: x mandatory !important;
-                scroll-behavior: smooth !important;
-                padding-bottom: 0.5rem !important;
-            }
-
-            /* Each card (weekly/monthly) has fixed width and scrolls */
-            .period-stats-container > .stat-card {
-                flex: 0 0 auto !important;
-                min-width: 85vw !important; /* 85% of viewport width */
-                max-width: 85vw !important;
-                scroll-snap-align: start !important;
-            }
-
-            /* Grid inside each card stays as grid, responsive */
-            .period-stats-grid {
-                display: grid !important;
-                grid-template-columns: repeat(2, 1fr) !important; /* 2 columns on mobile */
-                gap: 1rem 0.75rem !important;
-            }
-
-            /* Adjust font sizes inside period stats for mobile readability */
-            .period-stats-container .stat-card .period-stats-grid > div > div[style*="font-size: 0.7rem"] {
-                font-size: 0.65rem !important;
-            }
-
-            .period-stats-container .stat-card .period-stats-grid > div > div[style*="font-size: 1.75rem"] {
-                font-size: 1.5rem !important;
-            }
-
-            /* Custom scrollbar for period stats container */
-            .period-stats-container::-webkit-scrollbar {
-                height: 6px;
-            }
-
-            .period-stats-container::-webkit-scrollbar-track {
-                background: #e2e8f0;
-                border-radius: 3px;
-            }
-
-            .period-stats-container::-webkit-scrollbar-thumb {
-                background: #94a3b8;
-                border-radius: 3px;
-            }
-
-            .period-stats-container::-webkit-scrollbar-thumb:hover {
-                background: #64748b;
-            }
-
+            
             .chart-container {
                 height: 350px;
             }
@@ -6291,7 +6009,6 @@ class AGIAnalytics {
                                 <option value="100"><?php echo $this->t('last_100_records'); ?></option>
                                 <option value="500"><?php echo $this->t('last_500_records'); ?></option>
                                 <option value="1000"><?php echo $this->t('last_1000_records'); ?></option>
-                                <option value="5000"><?php echo $this->t('last_5000_records'); ?></option>
                                 <option value="all" selected><?php echo $this->t('all_records'); ?></option>
                             </select>
                         </div>
@@ -6488,11 +6205,9 @@ class AGIAnalytics {
                 today: '<?php echo $this->t('today'); ?>',
                 total_calls: '<?php echo $this->t('total_calls'); ?>',
                 successful_calls: '<?php echo $this->t('successful_calls'); ?>',
-                failed_calls: '<?php echo $this->t('failed_calls'); ?>',
                 total_calls_today: '<?php echo $this->t('total_calls_today'); ?>',
                 active: '<?php echo $this->t('active'); ?>',
                 success_rate: '<?php echo $this->t('success_rate'); ?>',
-                failed_count: '<?php echo $this->t('failed_count'); ?>',
                 avg_duration: '<?php echo $this->t('avg_duration'); ?>',
                 per_call_average: '<?php echo $this->t('per_call_average'); ?>',
                 unique_callers: '<?php echo $this->t('unique_callers'); ?>',
@@ -6503,8 +6218,6 @@ class AGIAnalytics {
                 reservation: '<?php echo $this->t('reservation'); ?>',
                 operator: '<?php echo $this->t('operator'); ?>',
                 different_numbers: '<?php echo $this->t('different_numbers'); ?>',
-                weekly_stats: '<?php echo $this->t('weekly_stats'); ?>',
-                monthly_stats: '<?php echo $this->t('monthly_stats'); ?>',
                 phone_number_label: '<?php echo $this->t('phone_number_label'); ?>',
                 extension_label: '<?php echo $this->t('extension_label'); ?>',
                 duration_label: '<?php echo $this->t('duration_label'); ?>',
@@ -7055,14 +6768,10 @@ class AGIAnalytics {
             showLoading();
             loadStats();
             loadCalls();
-            // Only refresh hourly chart if "Today" is selected
-            // Otherwise, keep showing the user's selected date
-            if (isChartShowingToday()) {
-                loadHourlyChart();
-            }
+            loadHourlyChart();
             loadLocationHeatmap();
             hideLoading();
-
+            
             // Auto-start real-time updates (as requested by user)
             setTimeout(() => {
                 startRealtime();
@@ -7083,34 +6792,16 @@ class AGIAnalytics {
                     }
                     return response.json();
                 })
-                .then(function(data) {
+                .then(function(data) { 
                     var stats = data.today_summary || data.realtime_stats || {};
-                    var weeklyStats = data.weekly_summary || {};
-                    var monthlyStats = data.monthly_summary || {};
-                    renderStats(stats, weeklyStats, monthlyStats);
+                    renderStats(stats);
                 })
-                .catch(function(error) {
+                .catch(function(error) { 
                     console.error('Error loading stats:', error);
                     // Render with default/empty stats on error
                     renderStats({
                         total_calls: 0,
                         successful_calls: 0,
-                        avg_duration: 0,
-                        unique_callers: 0
-                    }, {
-                        total_calls: 0,
-                        successful_calls: 0,
-                        hangup_calls: 0,
-                        operator_calls: 0,
-                        reservation_calls: 0,
-                        avg_duration: 0,
-                        unique_callers: 0
-                    }, {
-                        total_calls: 0,
-                        successful_calls: 0,
-                        hangup_calls: 0,
-                        operator_calls: 0,
-                        reservation_calls: 0,
                         avg_duration: 0,
                         unique_callers: 0
                     });
@@ -7147,30 +6838,18 @@ class AGIAnalytics {
             }
         }
         
-        function renderStats(stats, weeklyStats, monthlyStats) {
-            stats = stats || {};
-            weeklyStats = weeklyStats || {};
-            monthlyStats = monthlyStats || {};
-
+        function renderStats(stats) {
             var statsGrid = document.getElementById('statsGrid');
-
+            
             var totalCalls = stats.total_calls || 0;
             var successfulCalls = stats.successful_calls || 0;
             var successRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
-
-            var weeklyTotalCalls = weeklyStats.total_calls || 0;
-            var weeklySuccessfulCalls = weeklyStats.successful_calls || 0;
-            var weeklySuccessRate = weeklyTotalCalls > 0 ? Math.round((weeklySuccessfulCalls / weeklyTotalCalls) * 100) : 0;
-
-            var monthlyTotalCalls = monthlyStats.total_calls || 0;
-            var monthlySuccessfulCalls = monthlyStats.successful_calls || 0;
-            var monthlySuccessRate = monthlyTotalCalls > 0 ? Math.round((monthlySuccessfulCalls / monthlyTotalCalls) * 100) : 0;
-
+            
             // Calculate changes
             const totalCallsIncrease = previousStats.total_calls ? (totalCalls - previousStats.total_calls) : 0;
             const successfulCallsIncrease = previousStats.successful_calls ? (successfulCalls - previousStats.successful_calls) : 0;
             const uniqueCallersIncrease = previousStats.unique_callers ? ((stats.unique_callers || 0) - previousStats.unique_callers) : 0;
-
+            
             // Show animation for increases
             function showPlusAnimation(elementId, increase) {
                 if (increase > 0) {
@@ -7181,7 +6860,7 @@ class AGIAnalytics {
                         plusElement.className = 'plus-one-animation';
                         element.style.position = 'relative';
                         element.appendChild(plusElement);
-
+                        
                         setTimeout(() => {
                             if (plusElement.parentNode) {
                                 plusElement.parentNode.removeChild(plusElement);
@@ -7190,8 +6869,8 @@ class AGIAnalytics {
                     }
                 }
             }
-
-            var htmlContent =
+            
+            statsGrid.innerHTML = 
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
                         '<span class="stat-card-title">' + LANG.translations.total_calls_today + '</span>' +
@@ -7204,7 +6883,7 @@ class AGIAnalytics {
                         '<i class="fas fa-arrow-up"></i> ' + LANG.translations.active +
                     '</div>' +
                 '</div>' +
-
+                
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
                         '<span class="stat-card-title">' + LANG.translations.successful_calls + '</span>' +
@@ -7217,20 +6896,7 @@ class AGIAnalytics {
                         successRate + '% ' + LANG.translations.success_rate +
                     '</div>' +
                 '</div>' +
-
-                '<div class="stat-card">' +
-                    '<div class="stat-card-header">' +
-                        '<span class="stat-card-title">' + LANG.translations.failed_calls + '</span>' +
-                        '<div class="stat-card-icon icon-danger">' +
-                            '<i class="fas fa-times-circle"></i>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="stat-value" id="failedCallsStat">' + (totalCalls - successfulCalls).toLocaleString() + '</div>' +
-                    '<div class="stat-change">' +
-                        LANG.translations.failed_count +
-                    '</div>' +
-                '</div>' +
-
+                
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
                         '<span class="stat-card-title">' + LANG.translations.avg_duration + '</span>' +
@@ -7243,7 +6909,7 @@ class AGIAnalytics {
                         LANG.translations.per_call_average +
                     '</div>' +
                 '</div>' +
-
+                
                 '<div class="stat-card">' +
                     '<div class="stat-card-header">' +
                         '<span class="stat-card-title">' + LANG.translations.unique_callers + '</span>' +
@@ -7255,160 +6921,15 @@ class AGIAnalytics {
                     '<div class="stat-change">' +
                         LANG.translations.different_numbers +
                     '</div>' +
-                '</div>' +
-
-                // Toggle button for period stats
-                '<div style="grid-column: 1 / -1; display: flex; justify-content: center; margin: 0.75rem 0 0.5rem 0;">' +
-                    '<button class="toggle-period-stats" id="togglePeriodStats" onclick="togglePeriodStats()">' +
-                        '<i class="fas fa-chevron-up"></i>' +
-                        '<span id="togglePeriodStatsText">' + (LANG.current === 'el' ? 'Απόκρυψη Εβδομαδιαίων/Μηνιαίων' : 'Hide Weekly/Monthly') + '</span>' +
-                    '</button>' +
-                '</div>' +
-
-                // Period stats container with weekly and monthly cards
-                '<div class="period-stats-container" id="periodStatsContainer">' +
-                '<div class="stat-card">' +
-                    '<div class="stat-card-header" style="margin-bottom: 1.5rem;">' +
-                        '<span class="stat-card-title" style="font-size: 1rem; font-weight: 700;">' +
-                            '<i class="fas fa-calendar-week" style="color: #8b5cf6; margin-right: 0.5rem;"></i>' +
-                            LANG.translations.weekly_stats +
-                        '</span>' +
-                    '</div>' +
-                    '<div class="period-stats-grid">' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-phone" style="color: #3b82f6;"></i> ' + LANG.translations.total_calls +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #3b82f6;">' + weeklyTotalCalls.toLocaleString() + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-check-circle" style="color: #10b981;"></i> ' + LANG.translations.successful_calls +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #10b981;">' + weeklySuccessfulCalls.toLocaleString() + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-percentage" style="color: #10b981;"></i> ' + LANG.translations.success_rate +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #10b981;">' + weeklySuccessRate + '%</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-phone-slash" style="color: #ef4444;"></i> ' + LANG.translations.hangup +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #ef4444;">' + (weeklyStats.hangup_calls || 0) + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-headset" style="color: #f59e0b;"></i> ' + LANG.translations.operator +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #f59e0b;">' + (weeklyStats.operator_calls || 0) + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-calendar-check" style="color: #8b5cf6;"></i> ' + LANG.translations.reservation +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #8b5cf6;">' + (weeklyStats.reservation_calls || 0) + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-clock" style="color: #06b6d4;"></i> ' + LANG.translations.avg_duration +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #06b6d4;">' + formatDuration(Math.round(weeklyStats.avg_duration || 0)) + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-users" style="color: #ec4899;"></i> ' + LANG.translations.unique_callers +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #ec4899;">' + (weeklyStats.unique_callers || 0) + '</div>' +
-                        '</div>' +
-                    '</div>' + // Close period-stats-grid
-                '</div>' + // Close stat-card
-
-                '<div class="stat-card">' +
-                    '<div class="stat-card-header" style="margin-bottom: 1.5rem;">' +
-                        '<span class="stat-card-title" style="font-size: 1rem; font-weight: 700;">' +
-                            '<i class="fas fa-calendar-alt" style="color: #ec4899; margin-right: 0.5rem;"></i>' +
-                            LANG.translations.monthly_stats +
-                        '</span>' +
-                    '</div>' +
-                    '<div class="period-stats-grid">' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-phone" style="color: #3b82f6;"></i> ' + LANG.translations.total_calls +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #3b82f6;">' + monthlyTotalCalls.toLocaleString() + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-check-circle" style="color: #10b981;"></i> ' + LANG.translations.successful_calls +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #10b981;">' + monthlySuccessfulCalls.toLocaleString() + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-percentage" style="color: #10b981;"></i> ' + LANG.translations.success_rate +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #10b981;">' + monthlySuccessRate + '%</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-phone-slash" style="color: #ef4444;"></i> ' + LANG.translations.hangup +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #ef4444;">' + (monthlyStats.hangup_calls || 0) + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-headset" style="color: #f59e0b;"></i> ' + LANG.translations.operator +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #f59e0b;">' + (monthlyStats.operator_calls || 0) + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-calendar-check" style="color: #8b5cf6;"></i> ' + LANG.translations.reservation +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #8b5cf6;">' + (monthlyStats.reservation_calls || 0) + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-clock" style="color: #06b6d4;"></i> ' + LANG.translations.avg_duration +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #06b6d4;">' + formatDuration(Math.round(monthlyStats.avg_duration || 0)) + '</div>' +
-                        '</div>' +
-                        '<div style="text-align: center;">' +
-                            '<div style="font-size: 0.7rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 600;">' +
-                                '<i class="fas fa-users" style="color: #ec4899;"></i> ' + LANG.translations.unique_callers +
-                            '</div>' +
-                            '<div style="font-size: 1.75rem; font-weight: 800; color: #ec4899;">' + (monthlyStats.unique_callers || 0) + '</div>' +
-                        '</div>' +
-                    '</div>' + // Close period-stats-grid
-                '</div>' + // Close stat-card
-            '</div>'; // Close period-stats-container
-
-            // Set the complete HTML
-            statsGrid.innerHTML = htmlContent;
-
-            // Restore toggle state from localStorage
-            const isPeriodStatsCollapsed = localStorage.getItem('periodStatsCollapsed') === 'true';
-            if (isPeriodStatsCollapsed) {
-                const container = document.getElementById('periodStatsContainer');
-                const toggleBtn = document.getElementById('togglePeriodStats');
-                const toggleText = document.getElementById('togglePeriodStatsText');
-                if (container && toggleBtn && toggleText) {
-                    container.classList.add('collapsed');
-                    toggleBtn.classList.add('collapsed');
-                    toggleText.textContent = LANG.current === 'el' ? 'Εμφάνιση Εβδομαδιαίων/Μηνιαίων' : 'Show Weekly/Monthly';
-                }
-            }
-
+                '</div>';
+            
             // Show animations for increases (after a brief delay to let DOM update)
             setTimeout(() => {
                 showPlusAnimation('totalCallsStat', totalCallsIncrease);
                 showPlusAnimation('successfulCallsStat', successfulCallsIncrease);
                 showPlusAnimation('uniqueCallersStat', uniqueCallersIncrease);
             }, 100);
-
+            
             // Store current stats for next comparison
             previousStats = {
                 total_calls: totalCalls,
@@ -7416,69 +6937,7 @@ class AGIAnalytics {
                 unique_callers: stats.unique_callers || 0
             };
         }
-
-        // Toggle period stats (weekly/monthly) visibility
-        function togglePeriodStats() {
-            const container = document.getElementById('periodStatsContainer');
-            const toggleBtn = document.getElementById('togglePeriodStats');
-            const toggleText = document.getElementById('togglePeriodStatsText');
-
-            if (!container || !toggleBtn || !toggleText) return;
-
-            const isCollapsed = container.classList.contains('collapsed');
-
-            if (isCollapsed) {
-                // Expand
-                container.classList.remove('collapsed');
-                toggleBtn.classList.remove('collapsed');
-                toggleText.textContent = LANG.current === 'el' ? 'Απόκρυψη Εβδομαδιαίων/Μηνιαίων' : 'Hide Weekly/Monthly';
-                localStorage.setItem('periodStatsCollapsed', 'false');
-            } else {
-                // Collapse
-                container.classList.add('collapsed');
-                toggleBtn.classList.add('collapsed');
-                toggleText.textContent = LANG.current === 'el' ? 'Εμφάνιση Εβδομαδιαίων/Μηνιαίων' : 'Show Weekly/Monthly';
-                localStorage.setItem('periodStatsCollapsed', 'true');
-            }
-        }
-
-        // Initialize scroll indicators for period stats
-        function initPeriodStatsScroll() {
-            const wrappers = document.querySelectorAll('.period-stats-scroll-wrapper');
-
-            wrappers.forEach(wrapper => {
-                const updateScrollIndicators = () => {
-                    const scrollLeft = wrapper.scrollLeft;
-                    const scrollWidth = wrapper.scrollWidth;
-                    const clientWidth = wrapper.clientWidth;
-                    const scrollRight = scrollWidth - clientWidth - scrollLeft;
-
-                    // Show/hide left shadow
-                    if (scrollLeft > 10) {
-                        wrapper.style.setProperty('--show-left-shadow', '1');
-                    } else {
-                        wrapper.style.setProperty('--show-left-shadow', '0');
-                    }
-
-                    // Show/hide right shadow
-                    if (scrollRight > 10) {
-                        wrapper.style.setProperty('--show-right-shadow', '1');
-                    } else {
-                        wrapper.style.setProperty('--show-right-shadow', '0');
-                    }
-                };
-
-                // Initial check
-                setTimeout(updateScrollIndicators, 100);
-
-                // Update on scroll
-                wrapper.addEventListener('scroll', updateScrollIndicators);
-
-                // Update on resize
-                window.addEventListener('resize', updateScrollIndicators);
-            });
-        }
-
+        
         // Load calls table
         function loadCalls() {
             var params = new URLSearchParams();
@@ -7640,38 +7099,21 @@ class AGIAnalytics {
             const url = '?' + urlParams.toString();
 
             fetch(url)
-                .then(function(response) {
+                .then(function(response) { 
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
                     }
-                    return response.json();
+                    return response.json(); 
                 })
-                .then(function(data) {
+                .then(function(data) { 
                     var hourlyData = data.hourly_data || [];
                     renderHourlyChart(hourlyData);
                 })
-                .catch(function(error) {
+                .catch(function(error) { 
                     console.error('Error loading hourly chart:', error);
                     // Render empty chart on error
                     renderHourlyChart([]);
                 });
-        }
-
-        // Helper function to check if "Today" is selected in the chart
-        function isChartShowingToday() {
-            const select = document.getElementById('hourlyDateSelect');
-            if (!select) return true; // Default to true if select doesn't exist
-
-            // The first option in the dropdown is always "Today"
-            // Compare selected value with the first option's value
-            // This is more reliable than computing today's date independently
-            // because it handles midnight transitions correctly
-            if (select.options.length === 0) return true; // No options yet
-
-            const firstOptionValue = select.options[0].value; // Always "Today"'s date value
-
-            // Check if selected value matches the first option (today) or is empty
-            return select.value === firstOptionValue || select.value === '';
         }
         
         // Render hourly chart
@@ -7796,10 +7238,7 @@ class AGIAnalytics {
                     if (currentPage === 1) {
                         loadCalls();
                     }
-                    // Only refresh hourly chart if "Today" is selected
-                    if (isChartShowingToday()) {
-                        loadHourlyChart(); // Refresh the hourly chart with today's data
-                    }
+                    loadHourlyChart(); // Also refresh the hourly chart
                     loadLocationHeatmap();
                 }, 10000); // Update every 10 seconds
 
@@ -8927,10 +8366,7 @@ class AGIAnalytics {
             const dateFrom = document.getElementById('exportDateFrom').value;
             const dateTo = document.getElementById('exportDateTo').value;
             const includeFilters = document.getElementById('includeCurrentFilters').checked;
-            const limitElement = document.getElementById('exportLimit');
-            const limit = limitElement ? limitElement.value : '1000';
-
-            console.log('Export limit value:', limit); // Debug logging
+            const limit = document.getElementById('exportLimit').value;
 
             // Build parameters
             const params = new URLSearchParams();
@@ -8950,8 +8386,9 @@ class AGIAnalytics {
                     params.set('date_to', convertedTo);
                 }
             }
-            // Always send limit parameter
-            params.set('limit', limit || '1000');
+            if (limit !== 'all') {
+                params.set('limit', limit);
+            }
 
             // Include current filters if checked
             if (includeFilters) {
