@@ -1691,7 +1691,7 @@ class AGICallHandler
                 "encoding" => "LINEAR16",
                 "sampleRateHertz" => 8000,
                 "languageCode" => $language_code,
-                "profanityFilter" => false
+                "profanityFilter" => true
             ],
             "audio" => ["content" => $audio_content]
         ];
