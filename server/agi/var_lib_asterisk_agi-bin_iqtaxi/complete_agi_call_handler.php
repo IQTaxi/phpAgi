@@ -2206,6 +2206,24 @@ class AGICallHandler
         ];
     }
 
+    /**
+     * Remove "taxi" word (English and Greek) from address before geocoding
+     * Example: "i want taxi for athens center" becomes "i want for athens center"
+     */
+    private function removeTaxiFromAddress($address)
+    {
+        // Remove "taxi" in English (case-insensitive) with word boundaries
+        $address = preg_replace('/\b(taxi|TAXI|Taxi)\b/u', '', $address);
+
+        // Remove "ταξί" (Greek taxi - all variations)
+        $address = preg_replace('/(ταξί|ταξι|ΤΑΞΙ|Ταξί|Ταξι)/u', '', $address);
+
+        // Clean up extra spaces that may result from removing the word
+        $address = preg_replace('/\s+/', ' ', $address);
+
+        return trim($address);
+    }
+
     private function handleSpecialAddresses($address, $is_pickup)
     {
         $normalized_address = $this->removeDiacritics(strtolower(trim($address)));
@@ -2610,7 +2628,8 @@ class AGICallHandler
             $this->logMessage("STT result for pickup: {$pickup}", 'INFO', 'STT');
 
             if (!empty($pickup) && strlen(trim($pickup)) > 2) {
-                $location = $this->getLatLngFromGoogle($pickup, true);
+                $pickup_cleaned = $this->removeTaxiFromAddress($pickup);
+                $location = $this->getLatLngFromGoogle($pickup_cleaned, true);
                 $this->stopMusicOnHold();
 
                 if ($location) {
@@ -2683,7 +2702,8 @@ class AGICallHandler
             $this->logMessage("STT result for destination: {$dest}", 'INFO', 'STT');
 
             if (!empty($dest) && strlen(trim($dest)) > 2) {
-                $location = $this->getLatLngFromGoogle($dest, false);
+                $dest_cleaned = $this->removeTaxiFromAddress($dest);
+                $location = $this->getLatLngFromGoogle($dest_cleaned, false);
                 $this->stopMusicOnHold();
 
                 if ($location) {
