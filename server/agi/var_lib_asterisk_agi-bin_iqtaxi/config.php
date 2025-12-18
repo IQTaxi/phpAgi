@@ -49,6 +49,14 @@
 // true = Skip initial message and welcome message, immediately proceed as if user pressed 1 (ASAP mode)
 // false = Play initial message and welcome message normally, wait for user input (default behavior)
 
+// useGeocodingProxy configuration:
+// true = Use proxy/caching server for geocoding requests instead of direct Google API calls
+// false = Use direct Google API URLs (maps.googleapis.com and places.googleapis.com)
+
+// geocodingProxyBaseUrl configuration:
+// Base URL for the geocoding proxy server (e.g., "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy")
+// The system will append "/geocode" for Geocoding API v1 and "/places" for Places API v2
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -79,7 +87,9 @@ class AGICallHandlerConfig
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
         "foreignRedirect" => false,
-        "bypassWelcome" => false
+        "bypassWelcome" => false,
+        "useGeocodingProxy" => true,
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -108,7 +118,9 @@ class AGICallHandlerConfig
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
         "foreignRedirect" => false,
-        "bypassWelcome" => false
+        "bypassWelcome" => false,
+        "useGeocodingProxy" => true,
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -137,7 +149,9 @@ class AGICallHandlerConfig
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
         "foreignRedirect" => false,
-        "bypassWelcome" => false
+        "bypassWelcome" => false,
+        "useGeocodingProxy" => true,
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -166,7 +180,9 @@ class AGICallHandlerConfig
         "customFallCallTo" => false,
         "customFallCallToURL" => "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
         "foreignRedirect" => false,
-        "bypassWelcome" => false
+        "bypassWelcome" => false,
+        "useGeocodingProxy" => true,
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -194,7 +210,9 @@ class AGICallHandlerConfig
 		"announceName" => true,
 		"requireLocality" => false,
 		"foreignRedirect" => false,
-	"bypassWelcome" => false
+	"bypassWelcome" => false,
+        "useGeocodingProxy" => true,
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
     ]
 ];
 }

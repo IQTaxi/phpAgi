@@ -1869,7 +1869,17 @@ class AGICallHandler
 
         $startTime = microtime(true);
 
-        $url = "https://maps.googleapis.com/maps/api/geocode/json";
+        // Determine URL based on proxy configuration
+        $useProxy = $this->config[$this->extension]['useGeocodingProxy'] ?? false;
+        $proxyBaseUrl = $this->config[$this->extension]['geocodingProxyBaseUrl'] ?? '';
+
+        if ($useProxy && !empty($proxyBaseUrl)) {
+            $url = rtrim($proxyBaseUrl, '/') . '/geocode';
+            $this->logMessage("🔄 GEOCODING API: Using proxy URL: {$url}", 'DEBUG', 'GEOCODING');
+        } else {
+            $url = "https://maps.googleapis.com/maps/api/geocode/json";
+            $this->logMessage("🌐 GEOCODING API: Using direct Google URL: {$url}", 'DEBUG', 'GEOCODING');
+        }
 
         // Map current language to Google API language code
         $lang_config = $this->getLanguageConfig();
@@ -1989,8 +1999,18 @@ class AGICallHandler
 
         $startTime = microtime(true);
 
-        $url = "https://places.googleapis.com/v1/places:searchText";
-        
+        // Determine URL based on proxy configuration
+        $useProxy = $this->config[$this->extension]['useGeocodingProxy'] ?? false;
+        $proxyBaseUrl = $this->config[$this->extension]['geocodingProxyBaseUrl'] ?? '';
+
+        if ($useProxy && !empty($proxyBaseUrl)) {
+            $url = rtrim($proxyBaseUrl, '/') . '/places';
+            $this->logMessage("🔄 PLACES API: Using proxy URL: {$url}", 'DEBUG', 'GEOCODING');
+        } else {
+            $url = "https://places.googleapis.com/v1/places:searchText";
+            $this->logMessage("🌐 PLACES API: Using direct Google URL: {$url}", 'DEBUG', 'GEOCODING');
+        }
+
         $headers = [
             "Content-Type: application/json",
             "X-Goog-Api-Key: " . $this->api_key,

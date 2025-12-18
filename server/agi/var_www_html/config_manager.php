@@ -1828,9 +1828,11 @@ $currentConfig = $configManager->getConfig();
             bypassWelcome: false,
             dtmfTimeout: 10,
             uppercaseComments: false,
-            commentsPrefix: ''
+            commentsPrefix: '',
+            useGeocodingProxy: true,
+            geocodingProxyBaseUrl: "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
         };
-        
+
         const translations = {
             en: {
                 // Field labels
@@ -1866,6 +1868,8 @@ $currentConfig = $configManager->getConfig();
                 'dtmfTimeout': 'DTMF Timeout (seconds)',
                 'uppercaseComments': 'Uppercase Comments',
                 'commentsPrefix': 'Comments Prefix',
+                'useGeocodingProxy': 'Use Geocoding Proxy',
+                'geocodingProxyBaseUrl': 'Geocoding Proxy Base URL',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -1899,6 +1903,8 @@ $currentConfig = $configManager->getConfig();
                 'dtmfTimeout_tooltip': 'Time in seconds to wait for DTMF input from user during all prompts (welcome, options, confirmations). Default is 10 seconds. Lower values make the system respond faster but give users less time to press keys.',
                 'uppercaseComments_tooltip': 'Enable to convert comments field to UPPERCASE when sending to registration API. Disable to send comments as they are.',
                 'commentsPrefix_tooltip': 'Text to prepend to the comments field when sending to registration API. Leave empty for no prefix. Example: "ΨΗΦΙΑΚΗ ΚΛΗΣΗ" will add this text before the comments.',
+                'useGeocodingProxy_tooltip': 'Enable to route geocoding requests through a caching proxy server instead of direct Google API calls. Reduces API costs and improves response times for repeated addresses.',
+                'geocodingProxyBaseUrl_tooltip': 'Base URL for the geocoding proxy server. The system appends /geocode or /places to this URL. Example: https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -2009,6 +2015,8 @@ $currentConfig = $configManager->getConfig();
                 'dtmfTimeout': 'Χρονικό Όριο DTMF (δευτερόλεπτα)',
                 'uppercaseComments': 'Κεφαλαία Σχόλια',
                 'commentsPrefix': 'Πρόθεμα Σχολίων',
+                'useGeocodingProxy': 'Χρήση Geocoding Proxy',
+                'geocodingProxyBaseUrl': 'Βασικό URL Geocoding Proxy',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -2042,6 +2050,8 @@ $currentConfig = $configManager->getConfig();
                 'dtmfTimeout_tooltip': 'Χρόνος σε δευτερόλεπτα αναμονής για είσοδο DTMF από τον χρήστη κατά τη διάρκεια όλων των προτροπών (καλωσόρισμα, επιλογές, επιβεβαιώσεις). Προεπιλογή είναι 10 δευτερόλεπτα. Χαμηλότερες τιμές κάνουν το σύστημα να ανταποκρίνεται πιο γρήγορα, αλλά δίνουν λιγότερο χρόνο στους χρήστες να πατήσουν πλήκτρα.',
                 'uppercaseComments_tooltip': 'Ενεργοποιήστε για μετατροπή του πεδίου σχολίων σε ΚΕΦΑΛΑΙΑ κατά την αποστολή στο API εγγραφής. Απενεργοποιήστε για αποστολή σχολίων όπως είναι.',
                 'commentsPrefix_tooltip': 'Κείμενο που θα προστεθεί στην αρχή του πεδίου σχολίων κατά την αποστολή στο API εγγραφής. Αφήστε κενό για χωρίς πρόθεμα. Παράδειγμα: "ΨΗΦΙΑΚΗ ΚΛΗΣΗ" θα προσθέσει αυτό το κείμενο πριν από τα σχόλια.',
+                'useGeocodingProxy_tooltip': 'Ενεργοποιήστε για δρομολόγηση αιτημάτων geocoding μέσω διακομιστή caching proxy αντί για απευθείας κλήσεις Google API. Μειώνει το κόστος API και βελτιώνει τους χρόνους απόκρισης για επαναλαμβανόμενες διευθύνσεις.',
+                'geocodingProxyBaseUrl_tooltip': 'Βασικό URL για τον διακομιστή geocoding proxy. Το σύστημα προσθέτει /geocode ή /places σε αυτό το URL. Παράδειγμα: https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',
@@ -3062,7 +3072,9 @@ $currentConfig = $configManager->getConfig();
             customFallCallTo: false,
             customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
             foreignRedirect: false,
-            bypassWelcome: false
+            bypassWelcome: false,
+            useGeocodingProxy: true,
+            geocodingProxyBaseUrl: "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
             };
             
             fetch('config_manager.php', {
