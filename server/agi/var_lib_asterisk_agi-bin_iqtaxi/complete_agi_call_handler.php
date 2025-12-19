@@ -2247,7 +2247,7 @@ class AGICallHandler
     private function handleSpecialAddresses($address, $is_pickup)
     {
         $normalized_address = $this->removeDiacritics(strtolower(trim($address)));
-        $center_addresses = ["κεντρο", "τοπικο", "κεντρο αθηνα", "αθηνα κεντρο", "κεντρο θεσσαλονικη", "θεσσαλονικη κεντρο"];
+        $center_addresses = ["κεντρο", "τοπικο", "τοπικό", "κεντρο αθηνα", "αθηνα κεντρο", "κεντρο θεσσαλονικη", "θεσσαλονικη κεντρο"];
 
         // Check if address contains center terms (not exact match)
         $is_center = false;
