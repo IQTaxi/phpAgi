@@ -17,7 +17,9 @@
       "Bash(curl:*)",
       "Bash(paste:*)",
       "Bash(del:*)",
-      "WebFetch(domain:192.168.1.5)"
+      "WebFetch(domain:192.168.1.5)",
+      "Bash(findstr:*)",
+      "Bash(where:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\billy\\Documents\\phpAgi\\server",

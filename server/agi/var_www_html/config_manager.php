@@ -242,27 +242,40 @@ class ConfigManager {
 }
 
 /**
- * Convert WAV file to Asterisk-compatible format (8kHz, mono, 16-bit PCM)
+ * Convert audio file to Asterisk-compatible format (8kHz, mono, 16-bit PCM)
+ * Supports: WAV, MP3, OGG, FLAC, M4A, AAC, WMA
  */
 function convertToAsteriskFormat($inputPath) {
-    // First check if ffmpeg is available
-    exec('which ffmpeg', $output, $returnCode);
+    // Find ffmpeg - check common locations
+    $ffmpeg = 'ffmpeg'; // Default, works if in PATH
+    $ffmpegPaths = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/ffmpeg/bin/ffmpeg'];
+
+    foreach ($ffmpegPaths as $path) {
+        if (file_exists($path) && is_executable($path)) {
+            $ffmpeg = $path;
+            break;
+        }
+    }
+
+    // Verify ffmpeg works
+    exec($ffmpeg . ' -version 2>&1', $versionOutput, $returnCode);
     if ($returnCode !== 0) {
+        error_log("FFmpeg not found or not executable");
         // ffmpeg not available, try to use the original file if it's already a WAV
         if (strtolower(pathinfo($inputPath, PATHINFO_EXTENSION)) === 'wav') {
             return $inputPath; // Return original file
         }
         return false;
     }
-    
+
     // Create a temporary file for the converted audio
     $tempFile = tempnam(sys_get_temp_dir(), 'asterisk_wav_') . '.wav';
-    
+
     // Use ffmpeg to convert to Asterisk format
-    $command = "ffmpeg -y -i " . escapeshellarg($inputPath) . 
-              " -ar 8000 -ac 1 -acodec pcm_s16le -f wav " . 
+    $command = $ffmpeg . " -y -i " . escapeshellarg($inputPath) .
+              " -ar 8000 -ac 1 -acodec pcm_s16le -f wav " .
               escapeshellarg($tempFile) . " 2>&1";
-    
+
     exec($command, $output, $returnCode);
     
     if ($returnCode === 0 && file_exists($tempFile) && filesize($tempFile) > 0) {
@@ -513,24 +526,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
             
-            // Check file type - only WAV allowed
-            $allowedTypes = ['audio/wav', 'audio/wave'];
-            $allowedExtensions = ['wav'];
+            // Check file type - accept common audio formats (will be converted to WAV)
+            $allowedTypes = ['audio/wav', 'audio/wave', 'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/flac', 'audio/x-m4a', 'audio/aac', 'audio/x-ms-wma', 'audio/x-wav'];
+            $allowedExtensions = ['wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac', 'wma'];
             $fileExtension = strtolower(pathinfo($uploadedFile['name'], PATHINFO_EXTENSION));
-            
+
             if (!in_array($uploadedFile['type'], $allowedTypes) && !in_array($fileExtension, $allowedExtensions)) {
-                echo json_encode(['success' => false, 'message' => 'Invalid file type. Only WAV files are allowed.']);
+                echo json_encode(['success' => false, 'message' => 'Invalid file type. Allowed formats: WAV, MP3, OGG, FLAC, M4A, AAC, WMA']);
                 exit;
             }
             
-            // Auto-convert WAV file to 8kHz mono if needed
+            // Auto-convert audio file to 8kHz mono WAV
             $tempPath = $uploadedFile['tmp_name'];
-            
+
             try {
                 $convertedPath = convertToAsteriskFormat($tempPath);
-                
+
                 if (!$convertedPath) {
-                    echo json_encode(['success' => false, 'message' => 'Failed to process WAV file. Please ensure ffmpeg is installed or use an 8kHz mono WAV file.']);
+                    echo json_encode(['success' => false, 'message' => 'Failed to convert audio file. Please ensure ffmpeg is installed on the server.']);
                     exit;
                 }
                 
@@ -542,8 +555,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
             
-            // Create filename with language suffix
-            $fileName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $soundName) . '_' . $language . '.' . $fileExtension;
+            // Create filename with language suffix (always .wav output)
+            $sanitizedName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $soundName); // Replace invalid chars with underscore
+            $sanitizedName = preg_replace('/_+/', '_', $sanitizedName); // Remove consecutive underscores
+            $sanitizedName = trim($sanitizedName, '_'); // Remove leading/trailing underscores
+            $fileName = $sanitizedName . '_' . $language . '.wav'; // Always WAV output
             $targetPath = $soundPath . '/' . $fileName;
             
             // Check if file already exists
@@ -1768,7 +1784,7 @@ $currentConfig = $configManager->getConfig();
                             <input type="text" id="newSoundName" class="form-input" placeholder="Enter sound name...">
                         </div>
                         <div class="file-input-wrapper">
-                            <input type="file" id="soundFile" class="file-input" accept=".wav,.mp3,.ogg">
+                            <input type="file" id="soundFile" class="file-input" accept=".wav,.mp3,.ogg,.flac,.m4a,.aac,.wma,audio/*">
                             <label for="soundFile" class="file-input-label" data-en="Choose Sound File" data-el="Επιλογή Αρχείου Ήχου">Choose Sound File</label>
                         </div>
                         <button class="btn btn-primary" onclick="uploadSound()" data-en="Upload Sound" data-el="Ανέβασμα Ήχου">Upload Sound</button>
@@ -1962,6 +1978,7 @@ $currentConfig = $configManager->getConfig();
                 'no_sounds_found': 'No sounds found in this directory',
                 'upload_success': 'Sound uploaded successfully!',
                 'upload_error': 'Error uploading sound file.',
+                'select_sound_confirm': 'Selecting this sound will set it as the initial message (before welcome). Are you sure?',
                 'invalid_sound_path': 'Please enter a valid sound path first.',
                 'loading': 'Loading...',
                 'loading_sounds': 'Loading sounds...',
@@ -2109,6 +2126,7 @@ $currentConfig = $configManager->getConfig();
                 'no_sounds_found': 'Δεν βρέθηκαν ήχοι σε αυτόν τον κατάλογο',
                 'upload_success': 'Ο ήχος ανέβηκε επιτυχώς!',
                 'upload_error': 'Σφάλμα στο ανέβασμα του αρχείου ήχου.',
+                'select_sound_confirm': 'Η επιλογή αυτού του ήχου θα τον ορίσει ως αρχικό μήνυμα (πριν το καλωσόρισμα). Είστε σίγουροι;',
                 'invalid_sound_path': 'Παρακαλώ εισάγετε πρώτα έγκυρη διαδρομή ήχου.',
                 'loading': 'Φόρτωση...',
                 'loading_sounds': 'Φόρτωση ήχων...',
@@ -3413,6 +3431,12 @@ $currentConfig = $configManager->getConfig();
         }
         
         function selectSound(soundName) {
+            // Show confirmation alert - selecting will set as initial message (before welcome)
+            const confirmMsg = getTranslation('select_sound_confirm');
+            if (!confirm(confirmMsg)) {
+                return; // User cancelled
+            }
+
             // Find the soundPath input and update its value
             const soundPathInputs = document.querySelectorAll('input[type="text"]');
             let soundPathInput = null;
