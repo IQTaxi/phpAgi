@@ -1061,6 +1061,9 @@ class AGIAnalytics {
             if ($call['call_end_time']) {
                 $call['call_end_time'] = $this->dateHelper->utcToLocal($call['call_end_time']);
             }
+            if ($call['reservation_time']) {
+                $call['reservation_time'] = $this->dateHelper->utcToLocal($call['reservation_time']);
+            }
             $call = $this->enhanceCallData($call);
         }
 
@@ -1100,6 +1103,9 @@ class AGIAnalytics {
         if ($call['call_end_time']) {
             $call['call_end_time'] = $this->dateHelper->utcToLocal($call['call_end_time']);
         }
+        if ($call['reservation_time']) {
+            $call['reservation_time'] = $this->dateHelper->utcToLocal($call['reservation_time']);
+        }
 
         $call = $this->enhanceCallData($call, true);
         $this->sendResponse($call);
@@ -1126,6 +1132,9 @@ class AGIAnalytics {
         $call['call_start_time'] = $this->dateHelper->utcToLocal($call['call_start_time']);
         if ($call['call_end_time']) {
             $call['call_end_time'] = $this->dateHelper->utcToLocal($call['call_end_time']);
+        }
+        if ($call['reservation_time']) {
+            $call['reservation_time'] = $this->dateHelper->utcToLocal($call['reservation_time']);
         }
 
         $call = $this->enhanceCallData($call, true);
@@ -1156,6 +1165,9 @@ class AGIAnalytics {
             $call['call_start_time'] = $this->dateHelper->utcToLocal($call['call_start_time']);
             if ($call['call_end_time']) {
                 $call['call_end_time'] = $this->dateHelper->utcToLocal($call['call_end_time']);
+            }
+            if ($call['reservation_time']) {
+                $call['reservation_time'] = $this->dateHelper->utcToLocal($call['reservation_time']);
             }
             $call = $this->enhanceCallData($call);
         }
@@ -1976,6 +1988,9 @@ class AGIAnalytics {
                 $call['call_start_time'] = $this->dateHelper->utcToLocal($call['call_start_time']);
                 if ($call['call_end_time']) {
                     $call['call_end_time'] = $this->dateHelper->utcToLocal($call['call_end_time']);
+                }
+                if ($call['reservation_time']) {
+                    $call['reservation_time'] = $this->dateHelper->utcToLocal($call['reservation_time']);
                 }
                 $call = $this->enhanceCallData($call);
             }
