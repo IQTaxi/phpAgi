@@ -89,11 +89,13 @@ class AGICallHandler
     private $start_time;
     private $db_connection = null;
     private $call_finalized = false;
+    private static $instance = null;
 
     // === INITIALIZATION ===
     
     public function __construct()
     {
+        self::$instance = $this;
         $this->setupAGIEnvironment();
         $this->setupFilePaths();
         $this->loadConfiguration();
@@ -302,7 +304,24 @@ class AGICallHandler
             'destination_attempts' => 0,
             'reservation_attempts' => 0,
             'confirmed_default_address' => 0,
-            'successful_registration' => 0
+            'successful_registration' => 0,
+            // Initialize fields that are populated later in the call flow
+            'user_name' => null,
+            'initial_choice' => null,
+            'operator_transfer_reason' => null,
+            'error_messages' => null,
+            'registration_result' => null,
+            'registration_id' => null,
+            'api_response_time' => 0,
+            'reservation_time' => null,
+            'call_duration' => 0,
+            'call_end_time' => null,
+            'pickup_address' => null,
+            'pickup_lat' => null,
+            'pickup_lng' => null,
+            'destination_address' => null,
+            'destination_lat' => null,
+            'destination_lng' => null
         ];
         
         // Insert initial record immediately and track pickup
@@ -439,6 +458,16 @@ class AGICallHandler
     
     private function setCallOutcome($outcome, $reason = '')
     {
+        // CRITICAL LOCK: If API returned success (successful_registration = 1),
+        // the outcome MUST be 'success' and CANNOT be changed to anything else.
+        // This is the ultimate protection - successful API response = success, period.
+        if (($this->analytics_data['successful_registration'] ?? 0) === 1) {
+            if ($outcome !== 'success') {
+                $this->logMessage("ANALYTICS: LOCKED - Ignoring attempt to change outcome to '$outcome' because API returned success (successful_registration=1)", 'INFO', 'ANALYTICS');
+                return; // Don't allow any change
+            }
+        }
+
         $this->trackStep('call_outcome_set');
         $this->analytics_data['call_outcome'] = $outcome;
         if (!empty($reason)) {
@@ -607,7 +636,35 @@ class AGICallHandler
         // Log call completion summary
         $this->logCallComplete();
     }
-    
+
+    /**
+     * Emergency finalization for shutdown handler and exception handling
+     * Static method to allow access from global shutdown handler
+     *
+     * CRITICAL: The source of truth is successful_registration field.
+     * - If successful_registration = 1 → outcome MUST be 'success'
+     * - If successful_registration = 0 → check current_outcome for final states
+     */
+    public static function emergencyFinalize()
+    {
+        if (self::$instance !== null && !self::$instance->call_finalized) {
+            $successful_registration = self::$instance->analytics_data['successful_registration'] ?? 0;
+            $current_outcome = self::$instance->analytics_data['call_outcome'] ?? '';
+
+            if ($successful_registration === 1) {
+                // API returned success - force 'success' outcome (this is the lock)
+                self::$instance->analytics_data['call_outcome'] = 'success';
+                self::$instance->logMessage("ANALYTICS: Emergency finalize - API was successful, forcing 'success' outcome", 'INFO', 'ANALYTICS');
+            } elseif ($current_outcome !== 'success' && $current_outcome !== 'operator_transfer') {
+                // API did not return success, and not in final state - set error
+                self::$instance->setCallOutcome('error', 'Script terminated unexpectedly');
+            }
+            // If already 'operator_transfer', leave it as is
+
+            self::$instance->finalizeCall();
+        }
+    }
+
     private function sendAnalyticsData($endpoint = 'call', $method = 'POST')
     {
         // Only log initial creation and final hangup completion
@@ -829,15 +886,24 @@ class AGICallHandler
 
     /**
      * Log messages to file with unified pretty formatting for multiple concurrent calls
+     * Routing:
+     *   - DEBUG level -> debug.log (technical details)
+     *   - INFO level -> calls.log (human-readable)
+     *   - Individual call logs -> unchanged (full detail per call)
      */
     private function logMessage($message, $level = 'INFO', $category = 'GENERAL')
     {
         $timestamp = date('H:i:s');
         $call_duration = $this->call_start_time ? round((microtime(true) - $this->call_start_time) * 1000) : 0;
-        
-        // Create a pretty, unified log entry
-        $this->writeUnifiedLog($timestamp, $level, $category, $message, $call_duration);
-        
+
+        // Route DEBUG messages to separate debug log
+        if ($level === 'DEBUG') {
+            $this->writeDebugLog($message, $category);
+        } else {
+            // INFO and other levels go to unified pretty log
+            $this->writeUnifiedLog($timestamp, $level, $category, $message, $call_duration);
+        }
+
         // Also log to individual call log (non-analytics only)
         if (!empty($this->filebase) && !$this->isAnalyticsMessage($message)) {
             $detailed_entry = sprintf(
@@ -847,210 +913,251 @@ class AGICallHandler
                 $category,
                 mb_convert_encoding($message, 'UTF-8', 'UTF-8')
             );
-            
+
             // Use file_put_contents with UTF-8 handling instead of error_log
             $individual_log = "{$this->filebase}/log.txt";
             $individual_dir = dirname($individual_log);
             if (!is_dir($individual_dir)) {
                 mkdir($individual_dir, 0755, true);
             }
-            
+
             // Initialize with UTF-8 BOM if new file
             if (!file_exists($individual_log)) {
                 file_put_contents($individual_log, "\xEF\xBB\xBF", LOCK_EX);
             }
-            
+
             file_put_contents($individual_log, $detailed_entry, FILE_APPEND | LOCK_EX);
         }
     }
     
     /**
      * Write to unified pretty log with multi-call support
+     * New format: [HH:MM:SS] LABEL     Message
      */
     private function writeUnifiedLog($timestamp, $level, $category, $message, $call_duration)
     {
         // Skip analytics spam and low-level noise
-        if ($this->isAnalyticsMessage($message) || 
+        if ($this->isAnalyticsMessage($message) ||
             strpos($message, 'Channel status') !== false ||
-            strpos($message, 'Audio conversion') !== false ||
-            strpos($message, 'DEBUG') !== false) {
+            strpos($message, 'Audio conversion') !== false) {
             return;
         }
-        
-        $phone_short = substr($this->caller_num, -4); // Last 4 digits for identification
-        $duration_display = $call_duration > 0 ? sprintf("%4dms", $call_duration) : "   0ms";
-        
+
         // Format message based on category and content
-        $formatted_message = $this->formatUnifiedMessage($message, $category);
-        
-        if (!empty($formatted_message)) {
-            // Create a pretty, UTF-8 encoded log entry
-            $log_entry = sprintf(
-                "%s │ %s │ %s │ %s\n",
-                $timestamp,
-                $phone_short,
-                $duration_display,
-                mb_convert_encoding($formatted_message, 'UTF-8', 'UTF-8')
-            );
-            
+        $formatted = $this->formatUnifiedMessage($message, $category);
+
+        if (!empty($formatted)) {
+            // Handle structured format from formatUnifiedMessage
+            if (is_array($formatted)) {
+                $label = $formatted['label'];
+                $msg = $formatted['message'];
+                $is_sub = $formatted['is_sub'] ?? false;
+
+                if ($is_sub) {
+                    // Sub-step format: [HH:MM:SS]   -> STATUS  Message
+                    $log_entry = sprintf("[%s]   -> %-6s %s\n", $timestamp, $label, $msg);
+                } else {
+                    // Main format: [HH:MM:SS] LABEL     Message (10-char width for label)
+                    $log_entry = sprintf("[%s] %-10s %s\n", $timestamp, $label, $msg);
+                }
+            } else {
+                // Legacy string format (fallback)
+                $log_entry = sprintf("[%s] %-10s %s\n", $timestamp, 'INFO', $formatted);
+            }
+
+            $log_entry = mb_convert_encoding($log_entry, 'UTF-8', 'UTF-8');
+
             // Ensure UTF-8 encoding and proper file handling
             $log_file = "/var/log/auto_register_call/calls.log";
-            
+
             // Create directory if it doesn't exist
             $log_dir = dirname($log_file);
             if (!is_dir($log_dir)) {
                 mkdir($log_dir, 0755, true);
             }
-            
+
             // Initialize log file with UTF-8 BOM if it doesn't exist
             if (!file_exists($log_file)) {
                 // Create with UTF-8 BOM for proper encoding detection
                 file_put_contents($log_file, "\xEF\xBB\xBF", LOCK_EX);
             }
-            
+
             // Write with proper UTF-8 encoding and file locking
             file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
         }
     }
-    
+
+    /**
+     * Write technical debug information to separate debug log
+     * Used for: API requests/responses, geocoding details, STT/TTS timing, error traces
+     * Location: /var/log/auto_register_call/debug.log
+     */
+    private function writeDebugLog($message, $category = 'DEBUG')
+    {
+        $timestamp = date('Y-m-d H:i:s');
+        $phone_short = substr($this->caller_num, -4);
+
+        $log_entry = sprintf("[%s] [%s] [%s] %s\n",
+            $timestamp,
+            $phone_short,
+            $category,
+            mb_convert_encoding($message, 'UTF-8', 'UTF-8')
+        );
+
+        $log_file = "/var/log/auto_register_call/debug.log";
+        $log_dir = dirname($log_file);
+        if (!is_dir($log_dir)) {
+            mkdir($log_dir, 0755, true);
+        }
+        if (!file_exists($log_file)) {
+            file_put_contents($log_file, "\xEF\xBB\xBF", LOCK_EX);
+        }
+        file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
+    }
+
     /**
      * Format messages for the unified pretty log
+     * Returns structured array: ['label' => 'NAME', 'message' => '...', 'is_sub' => false]
+     * Labels: WELCOME, USER, NAME, PICKUP, DEST, CONFIRM, API, COMPLETE, HANGUP, TRANSFER
+     * Sub-labels (is_sub=true): OK, ERR, RETRY
      */
     private function formatUnifiedMessage($message, $category)
     {
-        // Call flow transitions
-        if (preg_match('/STEP: (\w+) -> (\w+) \(took (\d+)ms\)/', $message, $matches)) {
-            $from_step = $this->humanizeStepName($matches[1]);
-            $to_step = $this->humanizeStepName($matches[2]);
-            return sprintf("🔄 %s → %s (%sms)", $from_step, $to_step, $matches[3]);
+        // Call flow transitions - skip these, too verbose
+        if (preg_match('/STEP: (\w+) -> (\w+)/', $message)) {
+            return null;
         }
-        
-        // Call initiation
-        if (preg_match('/🎯 CALL INITIATED/', $message)) {
-            // Extract key info from multi-line message
-            preg_match('/Phone: ([^\n]+)/', $message, $phone_match);
-            preg_match('/Extension: ([^\n]+)/', $message, $ext_match);
-            preg_match('/Language: ([^\n]+)/', $message, $lang_match);
-            preg_match('/Areas: ([^\n]+)/', $message, $area_match);
-            
-            $phone = $phone_match[1] ?? 'Unknown';
-            $extension = $ext_match[1] ?? 'Unknown';
-            $lang = $lang_match[1] ?? 'Unknown';
-            $areas = $area_match[1] ?? 'None';
-            
-            return sprintf("🎯 CALL START: %s | Ext: %s | Lang: %s | Areas: %s", 
-                $phone, $extension, $lang, $areas);
+
+        // Call initiation - handled by logCallStart() now
+        if (strpos($message, 'CALL INITIATED') !== false) {
+            return null; // logCallStart writes its own header
         }
-        
-        // Call completion
-        if (preg_match('/🏁 CALL COMPLETED/', $message)) {
-            preg_match('/Outcome: ([^\n]+)/', $message, $outcome_match);
-            preg_match('/Total Duration: (\d+ms)/', $message, $duration_match);
-            preg_match('/Name: ([^\n]+)/', $message, $name_match);
-            preg_match('/Pickup: ([^\n]+)/', $message, $pickup_match);
-            preg_match('/Destination: ([^\n]+)/', $message, $dest_match);
-            
-            $outcome = $outcome_match[1] ?? 'Unknown';
-            $duration = $duration_match[1] ?? '0ms';
-            $name = $name_match[1] ?? 'Not captured';
-            $pickup = $pickup_match[1] ?? 'Not captured';
-            $dest = $dest_match[1] ?? 'Not captured';
-            
-            // Use appropriate emoji based on outcome
-            $outcome_emoji = '🏁';
-            if (strtolower($outcome) === 'hangup') {
-                $outcome_emoji = '📞';
-            } elseif (strtolower($outcome) === 'operator_transfer') {
-                $outcome_emoji = '👨‍💼';
-            }
-            
-            return sprintf("%s END: %s (%s) | %s | %s → %s", 
-                $outcome_emoji, $outcome, $duration, $name, 
-                $pickup === 'Not captured' ? '❌' : '✅ ' . $pickup,
-                $dest === 'Not captured' ? '❌' : '✅ ' . $dest);
+
+        // Call completion - handled by logCallComplete() now
+        if (strpos($message, 'CALL COMPLETED') !== false) {
+            return null; // logCallComplete writes its own summary
         }
-        
-        // User interactions
+
+        // Welcome message
+        if (strpos($message, 'Playing welcome') !== false ||
+            strpos($message, 'welcome message') !== false) {
+            return ['label' => 'WELCOME', 'message' => 'Playing welcome message', 'is_sub' => false];
+        }
+
+        // User interactions - service type selection
         if (preg_match('/User choice: (.+)/', $message, $matches)) {
             $choice = trim($matches[1]);
             if (empty($choice)) {
-                return "⏱️ User timeout (no input)";
+                return ['label' => 'USER', 'message' => 'Timeout (no input)', 'is_sub' => false];
             }
-            return sprintf("👤 User selected: '%s'", $choice);
+            $choice_text = ($choice == '1') ? 'ASAP taxi (pressed 1)' :
+                          (($choice == '2') ? 'Schedule taxi (pressed 2)' : "Option: $choice");
+            return ['label' => 'USER', 'message' => "Selected: $choice_text", 'is_sub' => false];
         }
-        
+
+        // User pickup address choice
         if (preg_match('/User pickup address choice: (.+)/', $message, $matches)) {
             $choice = trim($matches[1]);
-            $action = $choice == '1' ? 'Use saved address' : 'Enter new address';
-            return sprintf("📍 Pickup: %s", $action);
+            $action = ($choice == '1') ? 'Using saved address' : 'Entering new address';
+            return ['label' => 'PICKUP', 'message' => $action, 'is_sub' => false];
         }
-        
-        // Data collection
+
+        // Data collection - STT results
         if (preg_match('/STT result for (\w+): (.+)/', $message, $matches)) {
-            $field = strtoupper($matches[1]);
+            $field = strtolower($matches[1]);
             $result = trim($matches[2], "'");
-            return sprintf("🗣️ %s: %s", $field, $result);
+            $label = 'USER';
+            if ($field === 'name') $label = 'NAME';
+            elseif ($field === 'pickup' || $field === 'address') $label = 'PICKUP';
+            elseif ($field === 'destination' || $field === 'dropoff') $label = 'DEST';
+            return ['label' => $label, 'message' => "\"$result\"", 'is_sub' => false];
         }
-        
+
+        // Successfully captured data
         if (preg_match('/successfully captured: (.+)/', $message, $matches)) {
             $data = $matches[1];
-            $icon = '📝';
-            if (strpos($message, 'Name') !== false) $icon = '👤';
-            elseif (strpos($message, 'Pickup') !== false) $icon = '📍';
-            elseif (strpos($message, 'Destination') !== false) $icon = '🎯';
-            return sprintf("%s Captured: %s", $icon, $data);
+            $label = 'USER';
+            if (strpos($message, 'Name') !== false) $label = 'NAME';
+            elseif (strpos($message, 'Pickup') !== false) $label = 'PICKUP';
+            elseif (strpos($message, 'Destination') !== false) $label = 'DEST';
+            return ['label' => 'OK', 'message' => "$data (captured)", 'is_sub' => true];
         }
-        
-        // Geocoding
-        if (preg_match('/🗺️ GEOCODING: Using (.+) \| (.+) \| Address: (.+)/', $message, $matches)) {
-            $api = str_replace(['Google ', ' API'], '', $matches[1]);
-            $areas = $matches[2];
-            $address = $matches[3];
-            return sprintf("🗺️ %s | %s | %s", $api, $areas, $address);
+
+        // Geocoding search
+        if (preg_match('/GEOCODING.*Address: (.+)/', $message, $matches) ||
+            preg_match('/Geocoding address: (.+)/', $message, $matches)) {
+            $address = $matches[1];
+            // Determine if pickup or destination from context
+            $label = (strpos($message, 'destination') !== false || strpos($message, 'dropoff') !== false)
+                ? 'DEST' : 'PICKUP';
+            return ['label' => $label, 'message' => "Searching: $address", 'is_sub' => false];
         }
-        
+
+        // Location accepted
         if (strpos($message, 'Location accepted') !== false) {
-            preg_match('/type: ([^,]+), address: (.+)/', $message, $matches);
-            $type = $matches[1] ?? 'unknown';
-            $address = $matches[2] ?? 'unknown';
-            return sprintf("✅ Location: %s (%s)", $address, $type);
+            preg_match('/address: (.+)/', $message, $matches);
+            $address = $matches[1] ?? 'unknown';
+            return ['label' => 'OK', 'message' => "$address (verified)", 'is_sub' => true];
         }
-        
+
+        // Location rejected
         if (strpos($message, 'LOCATION REJECTED') !== false) {
-            return "❌ Location rejected (outside allowed areas)";
+            return ['label' => 'ERR', 'message' => 'Location rejected (outside allowed areas)', 'is_sub' => true];
         }
-        
-        // Registration
+
+        // Too vague / retry needed
+        if (strpos($message, 'too vague') !== false ||
+            strpos($message, 'Too vague') !== false ||
+            strpos($message, 'more details') !== false) {
+            return ['label' => 'RETRY', 'message' => 'Too vague - asking for more details', 'is_sub' => true];
+        }
+
+        // User confirmation
+        if (strpos($message, 'confirmed') !== false && strpos($message, 'User') !== false) {
+            return ['label' => 'CONFIRM', 'message' => 'User confirmed (pressed 1)', 'is_sub' => false];
+        }
+
+        // Registration/API calls
+        if (strpos($message, 'Registering order') !== false ||
+            strpos($message, 'RegisterOrder') !== false) {
+            return ['label' => 'API', 'message' => 'Registering with IQTaxi...', 'is_sub' => false];
+        }
+
         if (strpos($message, 'Registration result') !== false) {
             $call_operator = strpos($message, 'callOperator: true') !== false;
-            return $call_operator ? "❌ Registration failed" : "✅ Registration successful";
+            if ($call_operator) {
+                return ['label' => 'ERR', 'message' => 'Registration failed', 'is_sub' => true];
+            }
+            // Extract registration ID if available
+            preg_match('/id["\s:]+(\d+)/', $message, $id_match);
+            $reg_id = $id_match[1] ?? '';
+            $msg = $reg_id ? "Registration ID: $reg_id" : 'Registration successful';
+            return ['label' => 'OK', 'message' => $msg, 'is_sub' => true];
         }
-        
-        // Errors and important events
+
+        // Hangup events
         if (strpos($message, 'dead channel') !== false) {
-            return "📞 Call dropped (channel disconnected)";
+            return ['label' => 'HANGUP', 'message' => 'Call dropped (channel disconnected)', 'is_sub' => false];
         }
-        
-        if (strpos($message, 'Hangup detected') !== false || 
+
+        if (strpos($message, 'Hangup detected') !== false ||
             strpos($message, 'User hung up') !== false ||
             strpos($message, 'No selection received (likely hangup)') !== false) {
-            return "📞 User hangup";
+            return ['label' => 'HANGUP', 'message' => 'User disconnected', 'is_sub' => false];
         }
-        
-        if (strpos($message, 'Redirecting to operator') !== false) {
-            return "📞 → Operator transfer";
+
+        // Operator transfer
+        if (strpos($message, 'Redirecting to operator') !== false ||
+            strpos($message, 'operator transfer') !== false) {
+            return ['label' => 'TRANSFER', 'message' => 'Transferred to operator', 'is_sub' => false];
         }
-        
+
+        // Existing customer found
         if (strpos($message, 'Found existing user data') !== false) {
-            return "👤 Found existing customer data";
+            return ['label' => 'USER', 'message' => 'Found existing customer data', 'is_sub' => false];
         }
-        
-        // Analytics creation (only the important one)
-        if (strpos($message, 'Creating new call record') !== false) {
-            return "📊 Analytics record created";
-        }
-        
-        // Ignore everything else
+
+        // Ignore everything else - keeps log clean
         return null;
     }
     
@@ -1083,66 +1190,95 @@ class AGICallHandler
     }
     
     /**
-     * Log call start with summary information
+     * Log call start with header block
+     * Format:
+     * ================================================================================
+     * CALL START | 6945123456 | Ext: 1001 (Taxi Athens) | 14:32:05
+     * ================================================================================
      */
     private function logCallStart()
     {
         $config = $this->config[$this->extension] ?? [];
         $extension_name = $config['name'] ?? 'Unknown';
-        
-        $summary = sprintf(
-            "🎯 CALL INITIATED\n" .
-            "   📞 Phone: %s\n" .
-            "   📋 Extension: %s (%s)\n" .
-            "   🌐 Language: %s\n" .
-            "   🔧 Geocoding: API v%s\n" .
-            "   📍 Admin Areas: %s\n" .
-            "   🏷️ Call ID: %s",
+        $timestamp = date('H:i:s');
+
+        $separator = str_repeat('=', 80);
+        $header = sprintf("CALL START | %s | Ext: %s (%s) | %s",
             $this->calling_number,
             $this->extension,
             $extension_name,
-            strtoupper($this->current_language),
-            $config['geocodingApiVersion'] ?? '1',
-            empty($config['bounds']) ? 'No bounds' : 'Bounds set',
-            $this->analytics_data['call_id'] ?? 'Unknown'
+            $timestamp
         );
-        
-        $this->logMessage($summary, 'INFO', 'CALL_START');
+
+        $log_entry = "\n$separator\n$header\n$separator\n";
+
+        // Write directly to log file
+        $log_file = "/var/log/auto_register_call/calls.log";
+        $log_dir = dirname($log_file);
+        if (!is_dir($log_dir)) {
+            mkdir($log_dir, 0755, true);
+        }
+        if (!file_exists($log_file)) {
+            file_put_contents($log_file, "\xEF\xBB\xBF", LOCK_EX);
+        }
+        file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX);
     }
     
     /**
-     * Log call completion with final summary
+     * Log call completion with summary block
+     * Format:
+     * [14:32:25] COMPLETE    SUCCESS
+     * --------------------------------------------------------------------------------
+     * SUMMARY | Phone: 6945123456 | Duration: 20s | Result: SUCCESS
+     *         | Name: Γιώργος Παπαδόπουλος
+     *         | From: Λεωφόρος Αλεξάνδρας 50, Αθήνα
+     *         | To:   Αεροδρόμιο Ελ. Βενιζέλος
+     *         | API Calls: STT=3, TTS=5, Geo=2
+     * ================================================================================
      */
     private function logCallComplete()
     {
         $end_time = microtime(true);
-        $total_duration = round(($end_time - $this->call_start_time) * 1000);
-        $outcome = $this->analytics_data['call_outcome'] ?? 'unknown';
-        
-        $summary = sprintf(
-            "🏁 CALL COMPLETED\n" .
-            "   📞 Phone: %s\n" .
-            "   ⏱️ Total Duration: %dms (%ds)\n" .
-            "   🎯 Outcome: %s\n" .
-            "   👤 Name: %s\n" .
-            "   📍 Pickup: %s\n" .
-            "   🎯 Destination: %s\n" .
-            "   🔍 STT Calls: %d\n" .
-            "   🗣️ TTS Calls: %d\n" .
-            "   🗺️ Geocoding Calls: %d",
-            $this->calling_number,
-            $total_duration,
-            round($total_duration / 1000),
-            strtoupper($outcome),
-            $this->analytics_data['customer_name'] ?? 'Not captured',
-            $this->analytics_data['pickup_address'] ?? 'Not captured',
-            $this->analytics_data['destination_address'] ?? 'Not captured',
-            $this->analytics_data['google_stt_calls'] ?? 0,
-            $this->analytics_data['google_tts_calls'] ?? 0,
-            $this->analytics_data['geocoding_calls'] ?? 0
-        );
-        
-        $this->logMessage($summary, 'INFO', 'CALL_COMPLETE');
+        $total_duration_ms = round(($end_time - $this->call_start_time) * 1000);
+        $total_duration_s = round($total_duration_ms / 1000);
+        $outcome = strtoupper($this->analytics_data['call_outcome'] ?? 'UNKNOWN');
+        $timestamp = date('H:i:s');
+
+        $name = $this->analytics_data['user_name'] ?? '';
+        $pickup = $this->analytics_data['pickup_address'] ?? '';
+        $dest = $this->analytics_data['destination_address'] ?? '';
+        $stt = $this->analytics_data['google_stt_calls'] ?? 0;
+        $tts = $this->analytics_data['google_tts_calls'] ?? 0;
+        $geo = $this->analytics_data['geocoding_api_calls'] ?? 0;
+
+        // Format addresses for display
+        $name_display = empty($name) ? '(not captured)' : $name;
+        $pickup_display = empty($pickup) ? '(not captured)' : $pickup;
+        $dest_display = empty($dest) ? '(not captured)' : $dest;
+
+        $separator_thin = str_repeat('-', 80);
+        $separator_thick = str_repeat('=', 80);
+
+        $log_entry = sprintf("[%s] %-10s %s\n", $timestamp, 'COMPLETE', $outcome);
+        $log_entry .= "$separator_thin\n";
+        $log_entry .= sprintf("SUMMARY | Phone: %s | Duration: %ds | Result: %s\n",
+            $this->calling_number, $total_duration_s, $outcome);
+        $log_entry .= sprintf("        | Name: %s\n", $name_display);
+        $log_entry .= sprintf("        | From: %s\n", $pickup_display);
+        $log_entry .= sprintf("        | To:   %s\n", $dest_display);
+        $log_entry .= sprintf("        | API Calls: STT=%d, TTS=%d, Geo=%d\n", $stt, $tts, $geo);
+        $log_entry .= "$separator_thick\n";
+
+        // Write directly to log file
+        $log_file = "/var/log/auto_register_call/calls.log";
+        $log_dir = dirname($log_file);
+        if (!is_dir($log_dir)) {
+            mkdir($log_dir, 0755, true);
+        }
+        if (!file_exists($log_file)) {
+            file_put_contents($log_file, "\xEF\xBB\xBF", LOCK_EX);
+        }
+        file_put_contents($log_file, mb_convert_encoding($log_entry, 'UTF-8', 'UTF-8'), FILE_APPEND | LOCK_EX);
     }
     
     /**
@@ -1196,11 +1332,19 @@ class AGICallHandler
             strpos($response, 'HANGUP') !== false) {
             $this->logMessage("Hangup detected during AGI command: $command");
 
-            // Only set hangup outcome if the call wasn't already successful
-            // This preserves the success status when user hangs up after successful registration in callback mode 2
-            if ($this->analytics_data['call_outcome'] !== 'success') {
+            // CRITICAL: Check successful_registration first - this is the source of truth
+            $successful_registration = $this->analytics_data['successful_registration'] ?? 0;
+            $current_outcome = $this->analytics_data['call_outcome'] ?? '';
+
+            if ($successful_registration === 1) {
+                // API returned success - force 'success' outcome regardless of current state
+                $this->analytics_data['call_outcome'] = 'success';
+                $this->logMessage("Hangup detected but API was successful - forcing 'success' outcome", 'INFO', 'ANALYTICS');
+            } elseif ($current_outcome !== 'success' && $current_outcome !== 'operator_transfer') {
+                // API did not return success, and not in final state - set hangup
                 $this->setCallOutcome('hangup', 'User hung up during call');
             }
+            // If already 'operator_transfer', leave it as is
 
             $this->finalizeCall();
             exit(0);
@@ -3170,16 +3314,26 @@ class AGICallHandler
         $this->trackStep('registering_call');
         $this->logMessage("User confirmed, registering call");
 
-        // CRITICAL FIX: Set success outcome BEFORE API call to protect against abnormal hangups
-        // User has already confirmed all details (name, pickup, destination, time)
-        // If user hangs up during registerCall() API request, we still want to record it as success
-        // The hangup detection (line ~1195) will preserve this 'success' outcome
-        $this->setCallOutcome('success');
-        $this->logMessage("SUCCESS outcome set BEFORE registration API call to protect against hangups during API request", 'INFO', 'REGISTRATION');
+        // NOTE: We do NOT pre-set 'success' here anymore.
+        // The outcome is determined by the actual API response:
+        // - successful_registration = 1 (set inside registerCall) → success
+        // - successful_registration = 0 → operator_transfer or hangup
+        // This ensures we only mark as 'success' when API actually returns success.
 
         $this->startMusicOnHold();
         $result = $this->registerCall();
         $this->stopMusicOnHold();
+
+        // Set outcome based on actual API result
+        // Note: trackRegistrationAPICall inside registerCall() already set successful_registration
+        if ($result['callOperator']) {
+            $this->setCallOutcome('operator_transfer', 'Registration failed - will transfer to operator');
+            $this->logMessage("Outcome set to operator_transfer - API returned failure (callOperator=true)", 'INFO', 'REGISTRATION');
+        } else {
+            // API returned success - set outcome (this is now LOCKED by setCallOutcome)
+            $this->setCallOutcome('success');
+            $this->logMessage("Outcome set to success - API returned success (successful_registration=1)", 'INFO', 'REGISTRATION');
+        }
 
         $callback_mode = $this->config[$this->extension]['callbackMode'] ?? 1;
 
@@ -3194,8 +3348,7 @@ class AGICallHandler
 
         if ($result['callOperator']) {
             $this->logMessage("Transferring to operator due to registration issue");
-            // Reset outcome to 'error' since API failed - this allows redirectToOperator to change it to 'operator_transfer'
-            $this->setCallOutcome('error', 'Registration API call failed');
+            // Outcome was already set to 'operator_transfer' right after API returned (line ~3185)
             $this->redirectToOperator();
         } else {
             $this->logMessage("Registration successful - ending call normally");
@@ -3604,15 +3757,27 @@ class AGICallHandler
     private function processConfirmedReservation()
     {
         $this->logMessage("User confirmed, registering reservation");
+
+        // NOTE: We do NOT pre-set 'success' here anymore.
+        // The outcome is determined by the actual API response:
+        // - successful_registration = 1 (set inside registerCall) → success
+        // - successful_registration = 0 → operator_transfer or hangup
+        // This ensures we only mark as 'success' when API actually returns success.
+
         $this->startMusicOnHold();
         $result = $this->registerCall();
         $this->stopMusicOnHold();
 
-        // Set success outcome BEFORE playing the message (in case user hangs up during playback)
-        // Immediately finalize to persist SUCCESS before any hangup can occur
-        if (!$result['callOperator']) {
+        // Set outcome based on actual API result
+        // Note: trackRegistrationAPICall inside registerCall() already set successful_registration
+        if ($result['callOperator']) {
+            // Registration failed - will transfer to operator
+            $this->setCallOutcome('operator_transfer', 'Registration failed - will transfer to operator');
+            $this->logMessage("Outcome set to operator_transfer - API returned failure (callOperator=true)", 'INFO', 'REGISTRATION');
+        } else {
+            // API returned success - set outcome (this is now LOCKED by setCallOutcome)
             $this->setCallOutcome('success');
-            $this->logMessage("SUCCESS outcome set and finalized for reservation", 'INFO', 'REGISTRATION');
+            $this->logMessage("Outcome set to success - API returned success (successful_registration=1)", 'INFO', 'REGISTRATION');
             $this->finalizeCall();
         }
 
@@ -4246,6 +4411,15 @@ class AGICallHandler
 
 // === MAIN EXECUTION ===
 
+// Register shutdown handler for fatal errors and timeouts
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE])) {
+        error_log("AGI: Fatal error detected in shutdown handler: " . $error['message']);
+        AGICallHandler::emergencyFinalize();
+    }
+});
+
 // Initialize and run the call handler
 try {
     error_log("AGI: Starting main execution");
@@ -4257,11 +4431,13 @@ try {
 } catch (Exception $e) {
     error_log("Fatal error in AGI Call Handler: " . $e->getMessage());
     error_log("AGI: Stack trace: " . $e->getTraceAsString());
+    AGICallHandler::emergencyFinalize();
     echo "HANGUP\n";
     exit(1); // Exit with error code on exception
 } catch (Error $e) {
     error_log("Fatal PHP error in AGI Call Handler: " . $e->getMessage());
     error_log("AGI: Stack trace: " . $e->getTraceAsString());
+    AGICallHandler::emergencyFinalize();
     echo "HANGUP\n";
     exit(1); // Exit with error code on PHP error
 }
