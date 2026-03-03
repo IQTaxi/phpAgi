@@ -6697,6 +6697,16 @@ class AGIAnalytics {
         loadLocationHeatmap();
         startRealtime();
 
+        // Check for id parameter to auto-open call details
+        const urlParams = new URLSearchParams(window.location.search);
+        const callId = urlParams.get('id');
+        if (callId) {
+            // Small delay to ensure dashboard is loaded
+            setTimeout(function() {
+                showCallDetail(callId);
+            }, 1000);
+        }
+
         // Mobile drawer handlers
         const mobileMenuBtn = document.getElementById('mobileMenuBtn');
         const mobileOverlay = document.getElementById('mobileOverlay');
