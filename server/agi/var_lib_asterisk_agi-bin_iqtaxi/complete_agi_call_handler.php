@@ -56,6 +56,7 @@ class AGICallHandler
     private $initial_message_sound = '';
     private $redirect_to_operator = false;
     private $bypass_welcome = false;
+    private $not_working_rules = [];
     private $auto_call_centers_mode = 3;
 
     // Call data properties
@@ -224,6 +225,7 @@ class AGICallHandler
             $this->initial_message_sound = $config['initialMessageSound'] ?? '';
             $this->redirect_to_operator = $config['redirectToOperator'] ?? false;
             $this->bypass_welcome = $config['bypassWelcome'] ?? false;
+            $this->not_working_rules = $config['notWorking'] ?? [];
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
             $this->max_retries = intval($config['maxRetries'] ?? 3);
             $this->dtmf_timeout = intval($config['dtmfTimeout'] ?? 10);
@@ -4208,6 +4210,97 @@ class AGICallHandler
         $this->redirectToOperator();
     }
 
+    /**
+     * Check if current time falls within any not-working-hours rule.
+     * Uses Europe/Athens timezone for local time evaluation.
+     */
+    private function isNotWorkingHours()
+    {
+        if (empty($this->not_working_rules)) {
+            return false;
+        }
+
+        $tz = new DateTimeZone('Europe/Athens');
+        $now = new DateTime('now', $tz);
+        $currentTime = $now->format('H:i');
+        $currentDayOfWeek = (int)$now->format('w'); // 0=Sunday...6=Saturday
+
+        foreach ($this->not_working_rules as $rule) {
+            // Skip disabled rules
+            if (isset($rule['enabled']) && $rule['enabled'] === false) {
+                continue;
+            }
+
+            $type = $rule['type'] ?? '';
+
+            if ($type === 'recurring') {
+                $startTime = $rule['startTime'] ?? '';
+                $endTime = $rule['endTime'] ?? '';
+                // activeDays: days where this rule IS active. Empty array = all days active.
+                $activeDays = $rule['activeDays'] ?? [];
+                $allDaysActive = empty($activeDays);
+
+                if ($startTime === '' || $endTime === '') {
+                    continue;
+                }
+
+                if ($startTime === $endTime) {
+                    // Same start/end = full 24h block
+                    if ($allDaysActive || in_array($currentDayOfWeek, $activeDays, true)) {
+                        $this->logMessage("Not-working match: recurring full-day on day {$currentDayOfWeek}");
+                        return true;
+                    }
+                } elseif ($endTime > $startTime) {
+                    // Same-day rule (e.g., 00:00-07:30)
+                    if (($allDaysActive || in_array($currentDayOfWeek, $activeDays, true)) &&
+                        $currentTime >= $startTime && $currentTime < $endTime) {
+                        $this->logMessage("Not-working match: recurring {$startTime}-{$endTime} on day {$currentDayOfWeek}");
+                        return true;
+                    }
+                } else {
+                    // Overnight rule (e.g., 22:00-06:00)
+                    // Evening part: startTime <= currentTime (today)
+                    if ($currentTime >= $startTime) {
+                        if ($allDaysActive || in_array($currentDayOfWeek, $activeDays, true)) {
+                            $this->logMessage("Not-working match: overnight {$startTime}-{$endTime} evening part on day {$currentDayOfWeek}");
+                            return true;
+                        }
+                    }
+                    // Morning part: currentTime < endTime (started yesterday)
+                    if ($currentTime < $endTime) {
+                        $yesterday = ($currentDayOfWeek + 6) % 7;
+                        if ($allDaysActive || in_array($yesterday, $activeDays, true)) {
+                            $this->logMessage("Not-working match: overnight {$startTime}-{$endTime} morning part (started day {$yesterday})");
+                            return true;
+                        }
+                    }
+                }
+            } elseif ($type === 'dateRange') {
+                $startDate = $rule['startDate'] ?? '';
+                $endDate = $rule['endDate'] ?? '';
+
+                if ($startDate === '' || $endDate === '') {
+                    continue;
+                }
+
+                try {
+                    $rangeStart = new DateTime($startDate, $tz);
+                    $rangeEnd = new DateTime($endDate, $tz);
+
+                    if ($now >= $rangeStart && $now < $rangeEnd) {
+                        $this->logMessage("Not-working match: dateRange {$startDate} to {$endDate}");
+                        return true;
+                    }
+                } catch (Exception $e) {
+                    $this->logMessage("Invalid dateRange rule: " . $e->getMessage());
+                    continue;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private function getInitialUserChoice()
     {
         // Check if we should redirect to operator first (takes precedence over bypass_welcome)
@@ -4219,6 +4312,17 @@ class AGICallHandler
             $this->logMessage("Redirecting to operator as configured");
             $this->redirectToOperator();
             // Safety exit in case redirectToOperator somehow doesn't hang up
+            exit(0);
+        }
+
+        // Check if system is in not-working hours (priority after redirectToOperator, before bypassWelcome)
+        if ($this->isNotWorkingHours()) {
+            if (!empty($this->initial_message_sound)) {
+                $this->playInitialMessage();
+            }
+            $this->logMessage("System is in not-working hours - redirecting to operator");
+            $this->setCallOutcome('operator_transfer', 'Not working hours');
+            $this->redirectToOperator();
             exit(0);
         }
 

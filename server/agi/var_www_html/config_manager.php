@@ -82,10 +82,18 @@ class ConfigManager {
         $configContent .= "// bypassWelcome configuration:\n";
         $configContent .= "// true = Skip initial message and welcome message, immediately proceed as if user pressed 1 (ASAP mode)\n";
         $configContent .= "// false = Play initial message and welcome message normally, wait for user input (default behavior)\n\n";
+        $configContent .= "// notWorking configuration:\n";
+        $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
+        $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
+        $configContent .= "// Rule types:\n";
+        $configContent .= "//   recurring: Repeats daily. startTime/endTime in HH:MM. Overnight supported (e.g. 22:00-06:00).\n";
+        $configContent .= "//             activeDays: array of day numbers (0=Sun..6=Sat) where rule applies. Empty = all days.\n";
+        $configContent .= "//   dateRange: One-time range. startDate/endDate in 'Y-m-d H:i' format.\n";
+        $configContent .= "// Example: [{\"type\":\"recurring\",\"startTime\":\"00:00\",\"endTime\":\"07:30\",\"activeDays\":[]}]\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
         $configContent .= "];\n}\n";
-        
+
         // Create directory if it doesn't exist
         $configDir = dirname($this->configPath);
         if (!is_dir($configDir)) {
@@ -147,6 +155,14 @@ class ConfigManager {
         $configContent .= "// bypassWelcome configuration:\n";
         $configContent .= "// true = Skip initial message and welcome message, immediately proceed as if user pressed 1 (ASAP mode)\n";
         $configContent .= "// false = Play initial message and welcome message normally, wait for user input (default behavior)\n\n";
+        $configContent .= "// notWorking configuration:\n";
+        $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
+        $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
+        $configContent .= "// Rule types:\n";
+        $configContent .= "//   recurring: Repeats daily. startTime/endTime in HH:MM. Overnight supported (e.g. 22:00-06:00).\n";
+        $configContent .= "//             activeDays: array of day numbers (0=Sun..6=Sat) where rule applies. Empty = all days.\n";
+        $configContent .= "//   dateRange: One-time range. startDate/endDate in 'Y-m-d H:i' format.\n";
+        $configContent .= "// Example: [{\"type\":\"recurring\",\"startTime\":\"00:00\",\"endTime\":\"07:30\",\"activeDays\":[]}]\n\n";
         $configContent .= "class AGICallHandlerConfig\n{\n";
         $configContent .= " public \$globalConfiguration = [\n";
 
@@ -162,36 +178,61 @@ class ConfigManager {
                     $configContent .= "        \"$key\" => $value,\n";
                 } elseif (is_array($value)) {
                     // Check if it's an associative array (object) or indexed array
-                    $isAssoc = (array_keys($value) !== range(0, count($value) - 1));
-                    
-                    if ($isAssoc || empty($value)) {
+                    $isAssoc = !empty($value) && (array_keys($value) !== range(0, count($value) - 1));
+
+                    if ($isAssoc) {
                         // Handle as object/associative array (like bounds)
-                        if (empty($value)) {
-                            $configContent .= "        \"$key\" => null,\n";
-                        } else {
-                            $arrayContent = '[';
-                            $arrayItems = [];
-                            foreach ($value as $k => $v) {
-                                if (is_numeric($v)) {
-                                    $arrayItems[] = "\"$k\" => $v";
+                        $arrayContent = '[';
+                        $arrayItems = [];
+                        foreach ($value as $k => $v) {
+                            if (is_numeric($v)) {
+                                $arrayItems[] = "\"$k\" => $v";
+                            } else {
+                                $arrayItems[] = "\"$k\" => \"" . addslashes($v) . "\"";
+                            }
+                        }
+                        $arrayContent .= implode(', ', $arrayItems);
+                        $arrayContent .= ']';
+                        $configContent .= "        \"$key\" => $arrayContent,\n";
+                    } elseif (empty($value)) {
+                        // Empty array renders as []
+                        $configContent .= "        \"$key\" => [],\n";
+                    } elseif (is_array($value[0] ?? null)) {
+                        // Array of associative arrays (like notWorking rules)
+                        $configContent .= "        \"$key\" => [\n";
+                        foreach ($value as $item) {
+                            $configContent .= "            [";
+                            $itemParts = [];
+                            foreach ($item as $ik => $iv) {
+                                if (is_array($iv)) {
+                                    $subItems = array_map(function($si) {
+                                        return is_numeric($si) ? $si : "\"" . addslashes($si) . "\"";
+                                    }, $iv);
+                                    $itemParts[] = "\"$ik\" => [" . implode(', ', $subItems) . "]";
+                                } elseif (is_bool($iv)) {
+                                    $itemParts[] = "\"$ik\" => " . ($iv ? 'true' : 'false');
+                                } elseif (is_numeric($iv)) {
+                                    $itemParts[] = "\"$ik\" => $iv";
                                 } else {
-                                    $arrayItems[] = "\"$k\" => \"" . addslashes($v) . "\"";
+                                    $itemParts[] = "\"$ik\" => \"" . addslashes($iv) . "\"";
                                 }
                             }
-                            $arrayContent .= implode(', ', $arrayItems);
-                            $arrayContent .= ']';
-                            $configContent .= "        \"$key\" => $arrayContent,\n";
+                            $configContent .= implode(', ', $itemParts);
+                            $configContent .= "],\n";
                         }
+                        $configContent .= "        ],\n";
                     } else {
-                        // Handle as indexed array
+                        // Handle as indexed array of scalars
                         $arrayContent = '[';
-                        if (!empty($value)) {
-                            $arrayItems = [];
-                            foreach ($value as $item) {
+                        $arrayItems = [];
+                        foreach ($value as $item) {
+                            if (is_numeric($item)) {
+                                $arrayItems[] = $item;
+                            } else {
                                 $arrayItems[] = '"' . addslashes($item) . '"';
                             }
-                            $arrayContent .= implode(', ', $arrayItems);
                         }
+                        $arrayContent .= implode(', ', $arrayItems);
                         $arrayContent .= ']';
                         $configContent .= "        \"$key\" => $arrayContent,\n";
                     }
@@ -1626,6 +1667,338 @@ $currentConfig = $configManager->getConfig();
                 font-size: 13px;
             }
         }
+
+        /* Not Working Hours Schedule */
+        .nw-container {
+            width: 100%;
+        }
+
+        .nw-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .nw-card {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-left: 4px solid var(--primary);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            position: relative;
+        }
+
+        .nw-card.dateRange {
+            border-left-color: #f59e0b;
+        }
+
+        .nw-card.disabled {
+            opacity: 0.5;
+        }
+
+        .nw-card.disabled .nw-card-body {
+            pointer-events: none;
+        }
+
+        .nw-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .nw-card-header-left {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Toggle switch */
+        .nw-toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .nw-toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .nw-toggle-slider {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--gray-300);
+            border-radius: 20px;
+            transition: 0.2s;
+        }
+
+        .nw-toggle-slider::before {
+            content: '';
+            position: absolute;
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+
+        .nw-toggle-switch input:checked + .nw-toggle-slider {
+            background: var(--success, #22c55e);
+        }
+
+        .nw-toggle-switch input:checked + .nw-toggle-slider::before {
+            transform: translateX(16px);
+        }
+
+        .nw-card-type {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--primary);
+            background: var(--gray-50);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.25rem;
+        }
+
+        .nw-card.dateRange .nw-card-type {
+            color: #f59e0b;
+        }
+
+        .nw-remove-btn {
+            background: none;
+            border: none;
+            color: var(--gray-400);
+            cursor: pointer;
+            padding: 0.25rem;
+            font-size: 1.1rem;
+            line-height: 1;
+            border-radius: 0.25rem;
+            transition: all 0.15s;
+        }
+
+        .nw-remove-btn:hover {
+            color: var(--danger);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .nw-card-body {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .nw-time-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nw-time-group label {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            font-weight: 500;
+            min-width: fit-content;
+        }
+
+        .nw-time-group input[type="time"],
+        .nw-time-group input[type="datetime-local"] {
+            padding: 0.375rem 0.5rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            color: var(--gray-700);
+            background: white;
+        }
+
+        .nw-time-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+        }
+
+        .nw-days-section {
+            width: 100%;
+            margin-top: 0.5rem;
+        }
+
+        .nw-days-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.375rem;
+        }
+
+        .nw-days-label {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            font-weight: 500;
+        }
+
+        .nw-days-toggles {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .nw-toggle-btn {
+            padding: 0.15rem 0.5rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.25rem;
+            background: white;
+            color: var(--gray-500);
+            font-size: 0.65rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .nw-toggle-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .nw-days-row {
+            display: flex;
+            gap: 0.375rem;
+            flex-wrap: wrap;
+        }
+
+        .nw-day-btn {
+            width: 2.25rem;
+            height: 2.25rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.375rem;
+            background: white;
+            color: var(--gray-600);
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+
+        .nw-day-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .nw-day-btn.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        .nw-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .nw-add-btn {
+            padding: 0.5rem 1rem;
+            border: 1px dashed var(--gray-300);
+            border-radius: 0.375rem;
+            background: white;
+            color: var(--gray-600);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+        }
+
+        .nw-add-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: var(--gray-50);
+        }
+
+        .nw-add-btn.date-range:hover {
+            border-color: #f59e0b;
+            color: #f59e0b;
+        }
+
+        /* Date range DD/MM/YYYY inputs */
+        .nw-datetime-group {
+            flex-wrap: wrap;
+        }
+
+        .nw-date-inputs {
+            display: flex;
+            align-items: center;
+            gap: 0;
+        }
+
+        .nw-date-part {
+            padding: 0.375rem 0.25rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0;
+            font-size: 0.875rem;
+            color: var(--gray-700);
+            background: white;
+            text-align: center;
+            font-family: monospace;
+        }
+
+        .nw-date-part:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+            z-index: 1;
+            position: relative;
+        }
+
+        .nw-date-dd, .nw-date-mm {
+            width: 2.2rem;
+        }
+
+        .nw-date-yyyy {
+            width: 3.2rem;
+        }
+
+        .nw-date-dd {
+            border-radius: 0.375rem 0 0 0.375rem;
+        }
+
+        .nw-date-yyyy {
+            border-radius: 0 0.375rem 0.375rem 0;
+        }
+
+        .nw-date-sep {
+            color: var(--gray-400);
+            font-size: 0.875rem;
+            padding: 0 0.1rem;
+            user-select: none;
+        }
+
+        .nw-time-sep {
+            padding: 0 0.35rem;
+        }
+
+        .nw-date-time {
+            padding: 0.375rem 0.5rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            color: var(--gray-700);
+            background: white;
+        }
+
+        .nw-date-time:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+        }
     </style>
     
     <!-- Leaflet CSS for OpenStreetMap -->
@@ -1814,6 +2187,7 @@ $currentConfig = $configManager->getConfig();
         // Define the complete expected configuration structure with default values
         const expectedConfigStructure = {
             name: '',
+            notWorking: [],
             googleApiKey: 'AIzaSyDtMW5sRWQ2IsBtAT7ZxoR5LywsKdiVPJw',
             clientToken: '',
             registerBaseUrl: '',
@@ -1996,7 +2370,28 @@ $currentConfig = $configManager->getConfig();
                 'center_bias_map': 'Center Bias: Click map to set center, Drag marker to move',
                 'edit_title_prefix': 'Edit Configuration - Extension',
                 'save_changes_title': 'Save Changes',
-                'back_to_list_title': 'Back to List'
+                'back_to_list_title': 'Back to List',
+                // Not Working Hours
+                'notWorking': 'Not Working Hours Schedule',
+                'notWorking_tooltip': 'Define schedules when the system should NOT accept calls and redirect to operator instead. Supports recurring daily rules and specific date ranges.',
+                'nw_recurring': 'Recurring',
+                'nw_dateRange': 'Date Range',
+                'nw_start_time': 'From',
+                'nw_end_time': 'To',
+                'nw_start_date': 'From',
+                'nw_end_date': 'To',
+                'nw_active_days': 'Active on days:',
+                'nw_all_days': 'All',
+                'nw_no_days': 'None',
+                'nw_add_recurring': '+ Add Recurring Rule',
+                'nw_add_daterange': '+ Add Date Range',
+                'nw_day_sun': 'Sun',
+                'nw_day_mon': 'Mon',
+                'nw_day_tue': 'Tue',
+                'nw_day_wed': 'Wed',
+                'nw_day_thu': 'Thu',
+                'nw_day_fri': 'Fri',
+                'nw_day_sat': 'Sat'
             },
             el: {
                 // Field labels
@@ -2144,7 +2539,28 @@ $currentConfig = $configManager->getConfig();
                 'center_bias_map': 'Κεντρική Προκατάληψη: Κάντε κλικ στο χάρτη για να ορίσετε κέντρο, Σύρετε τον δείκτη για να μετακινηθείτε',
                 'edit_title_prefix': 'Επεξεργασία Ρυθμίσεων - Extension',
                 'save_changes_title': 'Αποθήκευση Αλλαγών',
-                'back_to_list_title': 'Πίσω στη Λίστα'
+                'back_to_list_title': 'Πίσω στη Λίστα',
+                // Not Working Hours
+                'notWorking': 'Πρόγραμμα Μη Εργάσιμων Ωρών',
+                'notWorking_tooltip': 'Ορίστε προγράμματα όπου το σύστημα ΔΕΝ δέχεται κλήσεις και ανακατευθύνει στον χειριστή. Υποστηρίζει επαναλαμβανόμενους ημερήσιους κανόνες και συγκεκριμένα εύρη ημερομηνιών.',
+                'nw_recurring': 'Επαναλαμβανόμενο',
+                'nw_dateRange': 'Εύρος Ημερομηνιών',
+                'nw_start_time': 'Από',
+                'nw_end_time': 'Έως',
+                'nw_start_date': 'Από',
+                'nw_end_date': 'Έως',
+                'nw_active_days': 'Ενεργό τις ημέρες:',
+                'nw_all_days': 'Όλες',
+                'nw_no_days': 'Καμία',
+                'nw_add_recurring': '+ Προσθήκη Επαναλαμβανόμενου',
+                'nw_add_daterange': '+ Προσθήκη Εύρους Ημερομηνιών',
+                'nw_day_sun': 'Κυρ',
+                'nw_day_mon': 'Δευ',
+                'nw_day_tue': 'Τρι',
+                'nw_day_wed': 'Τετ',
+                'nw_day_thu': 'Πεμ',
+                'nw_day_fri': 'Παρ',
+                'nw_day_sat': 'Σαβ'
             }
         };
         
@@ -2315,7 +2731,11 @@ $currentConfig = $configManager->getConfig();
             // Copy existing values
             Object.keys(config).forEach(key => {
                 if (normalizedConfig.hasOwnProperty(key)) {
-                    normalizedConfig[key] = config[key];
+                    if (Array.isArray(config[key])) {
+                        normalizedConfig[key] = JSON.parse(JSON.stringify(config[key]));
+                    } else {
+                        normalizedConfig[key] = config[key];
+                    }
                 }
             });
             
@@ -2778,6 +3198,331 @@ $currentConfig = $configManager->getConfig();
                 }, 100);
                 
                 return container;
+            } else if (fieldType === 'notWorking') {
+                const container = document.createElement('div');
+                container.className = 'nw-container';
+
+                const cardsDiv = document.createElement('div');
+                cardsDiv.className = 'nw-cards';
+                container.appendChild(cardsDiv);
+
+                const dayNames = ['nw_day_sun', 'nw_day_mon', 'nw_day_tue', 'nw_day_wed', 'nw_day_thu', 'nw_day_fri', 'nw_day_sat'];
+
+                function renderCards() {
+                    cardsDiv.innerHTML = '';
+                    const rules = currentExtensionConfig[key] || [];
+
+                    rules.forEach((rule, idx) => {
+                        const card = document.createElement('div');
+                        card.className = 'nw-card' + (rule.type === 'dateRange' ? ' dateRange' : '');
+
+                        // Header
+                        const header = document.createElement('div');
+                        header.className = 'nw-card-header';
+
+                        const headerLeft = document.createElement('div');
+                        headerLeft.className = 'nw-card-header-left';
+                        const typeLabel = document.createElement('span');
+                        typeLabel.className = 'nw-card-type';
+                        typeLabel.textContent = getTranslation(rule.type === 'dateRange' ? 'nw_dateRange' : 'nw_recurring');
+                        headerLeft.appendChild(typeLabel);
+
+                        // Enable/disable toggle
+                        const toggleLabel = document.createElement('label');
+                        toggleLabel.className = 'nw-toggle-switch';
+                        const toggleInput = document.createElement('input');
+                        toggleInput.type = 'checkbox';
+                        toggleInput.checked = rule.enabled !== false;
+                        toggleInput.onchange = () => {
+                            currentExtensionConfig[key][idx].enabled = toggleInput.checked;
+                            card.classList.toggle('disabled', !toggleInput.checked);
+                        };
+                        const toggleSlider = document.createElement('span');
+                        toggleSlider.className = 'nw-toggle-slider';
+                        toggleLabel.appendChild(toggleInput);
+                        toggleLabel.appendChild(toggleSlider);
+                        headerLeft.appendChild(toggleLabel);
+                        header.appendChild(headerLeft);
+
+                        const removeBtn = document.createElement('button');
+                        removeBtn.className = 'nw-remove-btn';
+                        removeBtn.type = 'button';
+                        removeBtn.innerHTML = '&#x2715;';
+                        removeBtn.onclick = () => {
+                            const arr = [...(currentExtensionConfig[key] || [])];
+                            arr.splice(idx, 1);
+                            currentExtensionConfig[key] = arr;
+                            renderCards();
+                        };
+                        header.appendChild(removeBtn);
+                        card.appendChild(header);
+
+                        // Apply disabled visual state
+                        if (rule.enabled === false) card.classList.add('disabled');
+
+                        // Body
+                        const body = document.createElement('div');
+                        body.className = 'nw-card-body';
+
+                        if (rule.type === 'recurring') {
+                            // Start time
+                            const startGroup = document.createElement('div');
+                            startGroup.className = 'nw-time-group';
+                            const startLabel = document.createElement('label');
+                            startLabel.textContent = getTranslation('nw_start_time');
+                            const startInput = document.createElement('input');
+                            startInput.type = 'time';
+                            startInput.value = rule.startTime || '';
+                            startInput.onchange = () => {
+                                currentExtensionConfig[key][idx].startTime = startInput.value;
+                            };
+                            startGroup.appendChild(startLabel);
+                            startGroup.appendChild(startInput);
+                            body.appendChild(startGroup);
+
+                            // End time
+                            const endGroup = document.createElement('div');
+                            endGroup.className = 'nw-time-group';
+                            const endLabel = document.createElement('label');
+                            endLabel.textContent = getTranslation('nw_end_time');
+                            const endInput = document.createElement('input');
+                            endInput.type = 'time';
+                            endInput.value = rule.endTime || '';
+                            endInput.onchange = () => {
+                                currentExtensionConfig[key][idx].endTime = endInput.value;
+                            };
+                            endGroup.appendChild(endLabel);
+                            endGroup.appendChild(endInput);
+                            body.appendChild(endGroup);
+
+                            // Active days
+                            const daysSection = document.createElement('div');
+                            daysSection.className = 'nw-days-section';
+
+                            const daysHeader = document.createElement('div');
+                            daysHeader.className = 'nw-days-header';
+                            const daysLabel = document.createElement('span');
+                            daysLabel.className = 'nw-days-label';
+                            daysLabel.textContent = getTranslation('nw_active_days');
+                            daysHeader.appendChild(daysLabel);
+
+                            // All/None toggle buttons
+                            const toggleBtns = document.createElement('div');
+                            toggleBtns.className = 'nw-days-toggles';
+                            const allBtn = document.createElement('button');
+                            allBtn.type = 'button';
+                            allBtn.className = 'nw-toggle-btn';
+                            allBtn.textContent = getTranslation('nw_all_days');
+                            allBtn.onclick = () => {
+                                currentExtensionConfig[key][idx].activeDays = [];
+                                renderCards();
+                            };
+                            const noneBtn = document.createElement('button');
+                            noneBtn.type = 'button';
+                            noneBtn.className = 'nw-toggle-btn';
+                            noneBtn.textContent = getTranslation('nw_no_days');
+                            noneBtn.onclick = () => {
+                                currentExtensionConfig[key][idx].activeDays = [-1];
+                                renderCards();
+                            };
+                            toggleBtns.appendChild(allBtn);
+                            toggleBtns.appendChild(noneBtn);
+                            daysHeader.appendChild(toggleBtns);
+                            daysSection.appendChild(daysHeader);
+
+                            const daysRow = document.createElement('div');
+                            daysRow.className = 'nw-days-row';
+
+                            const activeDays = rule.activeDays || [];
+                            const allDaysActive = activeDays.length === 0;
+
+                            for (let d = 0; d < 7; d++) {
+                                const dayBtn = document.createElement('button');
+                                dayBtn.type = 'button';
+                                const isActive = allDaysActive || activeDays.includes(d);
+                                dayBtn.className = 'nw-day-btn' + (isActive ? ' active' : '');
+                                dayBtn.textContent = getTranslation(dayNames[d]);
+                                dayBtn.onclick = () => {
+                                    let current = [...(currentExtensionConfig[key][idx].activeDays || [])];
+                                    const wasAllActive = current.length === 0;
+
+                                    if (wasAllActive) {
+                                        // Was "all days" - switch to explicit: all except clicked
+                                        current = [0,1,2,3,4,5,6].filter(x => x !== d);
+                                    } else {
+                                        const pos = current.indexOf(d);
+                                        if (pos >= 0) {
+                                            current.splice(pos, 1);
+                                            // Filter out sentinel -1 if present
+                                            current = current.filter(x => x >= 0);
+                                        } else {
+                                            current.push(d);
+                                            current = current.filter(x => x >= 0);
+                                            current.sort();
+                                        }
+                                        // If all 7 selected, go back to empty (= all)
+                                        if (current.length === 7) current = [];
+                                    }
+                                    currentExtensionConfig[key][idx].activeDays = current;
+                                    renderCards();
+                                };
+                                daysRow.appendChild(dayBtn);
+                            }
+                            daysSection.appendChild(daysRow);
+                            body.appendChild(daysSection);
+
+                        } else if (rule.type === 'dateRange') {
+                            // Helper: parse "YYYY-MM-DD HH:mm" into parts
+                            function parseDateStr(str) {
+                                if (!str) return { day: '', month: '', year: '', hour: '00', minute: '00' };
+                                const m = str.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
+                                if (m) return { day: m[3], month: m[2], year: m[1], hour: m[4], minute: m[5] };
+                                return { day: '', month: '', year: '', hour: '00', minute: '00' };
+                            }
+                            // Helper: build "YYYY-MM-DD HH:mm" from parts
+                            function buildDateStr(p) {
+                                if (!p.day || !p.month || !p.year) return '';
+                                const dd = p.day.padStart(2, '0');
+                                const mm = p.month.padStart(2, '0');
+                                const yyyy = p.year.padStart(4, '0');
+                                const hh = (p.hour || '00').padStart(2, '0');
+                                const min = (p.minute || '00').padStart(2, '0');
+                                return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+                            }
+                            // Helper: create a DD/MM/YYYY HH:MM input group
+                            function createDateTimeGroup(labelText, dateStr, onUpdate) {
+                                const group = document.createElement('div');
+                                group.className = 'nw-time-group nw-datetime-group';
+                                const lbl = document.createElement('label');
+                                lbl.textContent = labelText;
+                                group.appendChild(lbl);
+
+                                const parts = parseDateStr(dateStr);
+                                const wrapper = document.createElement('div');
+                                wrapper.className = 'nw-date-inputs';
+
+                                const dayInput = document.createElement('input');
+                                dayInput.type = 'text';
+                                dayInput.className = 'nw-date-part nw-date-dd';
+                                dayInput.placeholder = 'DD';
+                                dayInput.maxLength = 2;
+                                dayInput.value = parts.day;
+
+                                const sep1 = document.createElement('span');
+                                sep1.className = 'nw-date-sep';
+                                sep1.textContent = '/';
+
+                                const monthInput = document.createElement('input');
+                                monthInput.type = 'text';
+                                monthInput.className = 'nw-date-part nw-date-mm';
+                                monthInput.placeholder = 'MM';
+                                monthInput.maxLength = 2;
+                                monthInput.value = parts.month;
+
+                                const sep2 = document.createElement('span');
+                                sep2.className = 'nw-date-sep';
+                                sep2.textContent = '/';
+
+                                const yearInput = document.createElement('input');
+                                yearInput.type = 'text';
+                                yearInput.className = 'nw-date-part nw-date-yyyy';
+                                yearInput.placeholder = 'YYYY';
+                                yearInput.maxLength = 4;
+                                yearInput.value = parts.year;
+
+                                const timeSep = document.createElement('span');
+                                timeSep.className = 'nw-date-sep nw-time-sep';
+                                timeSep.textContent = ' ';
+
+                                const timeInput = document.createElement('input');
+                                timeInput.type = 'time';
+                                timeInput.className = 'nw-date-time';
+                                timeInput.value = parts.hour + ':' + parts.minute;
+
+                                function sync() {
+                                    const p = {
+                                        day: dayInput.value,
+                                        month: monthInput.value,
+                                        year: yearInput.value,
+                                        hour: timeInput.value.split(':')[0] || '00',
+                                        minute: timeInput.value.split(':')[1] || '00'
+                                    };
+                                    onUpdate(buildDateStr(p));
+                                }
+
+                                // Auto-advance: when 2 digits typed in DD, jump to MM; when 2 in MM, jump to YYYY
+                                dayInput.oninput = () => {
+                                    if (dayInput.value.length === 2) monthInput.focus();
+                                    sync();
+                                };
+                                monthInput.oninput = () => {
+                                    if (monthInput.value.length === 2) yearInput.focus();
+                                    sync();
+                                };
+                                yearInput.oninput = () => {
+                                    if (yearInput.value.length === 4) timeInput.focus();
+                                    sync();
+                                };
+                                timeInput.onchange = sync;
+
+                                wrapper.appendChild(dayInput);
+                                wrapper.appendChild(sep1);
+                                wrapper.appendChild(monthInput);
+                                wrapper.appendChild(sep2);
+                                wrapper.appendChild(yearInput);
+                                wrapper.appendChild(timeSep);
+                                wrapper.appendChild(timeInput);
+                                group.appendChild(wrapper);
+                                return group;
+                            }
+
+                            body.appendChild(createDateTimeGroup(
+                                getTranslation('nw_start_date'),
+                                rule.startDate || '',
+                                (val) => { currentExtensionConfig[key][idx].startDate = val; }
+                            ));
+                            body.appendChild(createDateTimeGroup(
+                                getTranslation('nw_end_date'),
+                                rule.endDate || '',
+                                (val) => { currentExtensionConfig[key][idx].endDate = val; }
+                            ));
+                        }
+
+                        card.appendChild(body);
+                        cardsDiv.appendChild(card);
+                    });
+                }
+
+                renderCards();
+
+                // Action buttons
+                const actions = document.createElement('div');
+                actions.className = 'nw-actions';
+
+                const addRecurring = document.createElement('button');
+                addRecurring.type = 'button';
+                addRecurring.className = 'nw-add-btn';
+                addRecurring.textContent = getTranslation('nw_add_recurring');
+                addRecurring.onclick = () => {
+                    if (!currentExtensionConfig[key]) currentExtensionConfig[key] = [];
+                    currentExtensionConfig[key] = [...currentExtensionConfig[key], { type: 'recurring', startTime: '00:00', endTime: '07:30', activeDays: [], enabled: true }];
+                    renderCards();
+                };
+                actions.appendChild(addRecurring);
+
+                const addDateRange = document.createElement('button');
+                addDateRange.type = 'button';
+                addDateRange.className = 'nw-add-btn date-range';
+                addDateRange.textContent = getTranslation('nw_add_daterange');
+                addDateRange.onclick = () => {
+                    if (!currentExtensionConfig[key]) currentExtensionConfig[key] = [];
+                    currentExtensionConfig[key] = [...currentExtensionConfig[key], { type: 'dateRange', startDate: '', endDate: '', enabled: true }];
+                    renderCards();
+                };
+                actions.appendChild(addDateRange);
+
+                container.appendChild(actions);
+                return container;
             } else if (fieldType === 'array') {
                 const container = document.createElement('div');
                 container.className = 'tags-container';
@@ -2929,6 +3674,7 @@ $currentConfig = $configManager->getConfig();
             if (key === 'boundsRestrictionMode') return 'select';
             if (key === 'bounds') return 'bounds';
             if (key === 'centerBias') return 'centerBias';
+            if (key === 'notWorking') return 'notWorking';
             if (key === 'getUser_enabled') return 'checkbox';
             if (key === 'customFallCallTo') return 'checkbox';
             if (typeof value === 'number') return 'number';
