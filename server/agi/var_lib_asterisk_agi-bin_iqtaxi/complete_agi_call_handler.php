@@ -55,7 +55,7 @@ class AGICallHandler
     private $default_language = 'el';
     private $initial_message_sound = '';
     private $redirect_to_operator = false;
-    private $bypass_welcome = false;
+    private $bypass_welcome = 0;
     private $not_working_rules = [];
     private $auto_call_centers_mode = 3;
 
@@ -224,7 +224,10 @@ class AGICallHandler
             $this->current_language = $this->default_language;
             $this->initial_message_sound = $config['initialMessageSound'] ?? '';
             $this->redirect_to_operator = $config['redirectToOperator'] ?? false;
-            $this->bypass_welcome = $config['bypassWelcome'] ?? false;
+            $bypassValue = $config['bypassWelcome'] ?? 0;
+            if ($bypassValue === true) $bypassValue = 1; // backward compat: true → ASAP
+            if ($bypassValue === false) $bypassValue = 0; // backward compat: false → disabled
+            $this->bypass_welcome = intval($bypassValue);
             $this->not_working_rules = $config['notWorking'] ?? [];
             $this->auto_call_centers_mode = intval($config['autoCallCentersMode'] ?? 3);
             $this->max_retries = intval($config['maxRetries'] ?? 3);
@@ -4327,12 +4330,14 @@ class AGICallHandler
         }
 
         // Check if bypass_welcome is enabled - skip initial message and welcome message entirely
-        if ($this->bypass_welcome) {
-            $this->logMessage("Bypass welcome enabled - skipping initial message and welcome message, proceeding as if user pressed 1 (ASAP mode)");
+        // bypass_welcome: 0=disabled, 1=bypass to ASAP, 2=bypass to Reservation
+        if ($this->bypass_welcome > 0) {
+            $modeLabel = ($this->bypass_welcome === 1) ? 'ASAP' : 'Reservation';
+            $this->logMessage("Bypass welcome enabled - skipping initial message and welcome message, proceeding to mode {$this->bypass_welcome} ({$modeLabel})");
             // Answer the channel explicitly since we're skipping all audio playback
             $this->agiCommand('ANSWER');
             $this->logMessage("Channel answered for bypass mode");
-            return '1';
+            return strval($this->bypass_welcome);
         }
 
         // Play initial message if configured

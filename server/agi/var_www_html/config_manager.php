@@ -80,8 +80,9 @@ class ConfigManager {
         $configContent .= "// false = Accept all international numbers and process normally (default behavior)\n";
         $configContent .= "// When enabled, numbers > 10 digits that don't start with allowed prefixes (+30, +359, 0030) are redirected\n\n";
         $configContent .= "// bypassWelcome configuration:\n";
-        $configContent .= "// true = Skip initial message and welcome message, immediately proceed as if user pressed 1 (ASAP mode)\n";
-        $configContent .= "// false = Play initial message and welcome message normally, wait for user input (default behavior)\n\n";
+        $configContent .= "// 0 = Disabled - Play initial message and welcome message normally, wait for user input (default behavior)\n";
+        $configContent .= "// 1 = Bypass to ASAP mode - Skip initial message and welcome, immediately proceed to ASAP call flow\n";
+        $configContent .= "// 2 = Bypass to Reservation mode - Skip initial message and welcome, immediately proceed to Reservation call flow\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -153,8 +154,9 @@ class ConfigManager {
         $configContent .= "// false = Accept all international numbers and process normally (default behavior)\n";
         $configContent .= "// When enabled, numbers > 10 digits that don't start with allowed prefixes (+30, +359, 0030) are redirected\n\n";
         $configContent .= "// bypassWelcome configuration:\n";
-        $configContent .= "// true = Skip initial message and welcome message, immediately proceed as if user pressed 1 (ASAP mode)\n";
-        $configContent .= "// false = Play initial message and welcome message normally, wait for user input (default behavior)\n\n";
+        $configContent .= "// 0 = Disabled - Play initial message and welcome message normally, wait for user input (default behavior)\n";
+        $configContent .= "// 1 = Bypass to ASAP mode - Skip initial message and welcome, immediately proceed to ASAP call flow\n";
+        $configContent .= "// 2 = Bypass to Reservation mode - Skip initial message and welcome, immediately proceed to Reservation call flow\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -2215,7 +2217,7 @@ $currentConfig = $configManager->getConfig();
             customFallCallTo: false,
             customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
             foreignRedirect: false,
-            bypassWelcome: false,
+            bypassWelcome: 0,
             dtmfTimeout: 10,
             uppercaseComments: false,
             commentsPrefix: '',
@@ -2289,7 +2291,10 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallTo_tooltip': 'Enable custom API-based fallback number retrieval when redirecting to operator',
                 'customFallCallToURL_tooltip': 'Base URL for custom fallback API. Caller number will be appended to this URL',
                 'foreignRedirect_tooltip': 'Enable to redirect foreign numbers (not in allowed prefixes list) to operator. When enabled, numbers > 10 digits without allowed prefixes (+30, +359, 0030) are redirected',
-                'bypassWelcome_tooltip': 'Enable to skip initial message and welcome message. Call will immediately proceed as if user pressed 1 (ASAP mode). Disable for normal behavior with playback prompts.',
+                'bypassWelcome_tooltip': 'Skip initial message and welcome message, immediately proceeding to the selected call mode. Set to Disabled for normal behavior with playback prompts.',
+                'select_bypass_disabled': 'Disabled (Normal Behavior)',
+                'select_bypass_asap': 'Bypass to ASAP',
+                'select_bypass_reservation': 'Bypass to Reservation',
                 'dtmfTimeout_tooltip': 'Time in seconds to wait for DTMF input from user during all prompts (welcome, options, confirmations). Default is 10 seconds. Lower values make the system respond faster but give users less time to press keys.',
                 'uppercaseComments_tooltip': 'Enable to convert comments field to UPPERCASE when sending to registration API. Disable to send comments as they are.',
                 'commentsPrefix_tooltip': 'Text to prepend to the comments field when sending to registration API. Leave empty for no prefix. Example: "ΨΗΦΙΑΚΗ ΚΛΗΣΗ" will add this text before the comments.',
@@ -2458,7 +2463,10 @@ $currentConfig = $configManager->getConfig();
                 'customFallCallTo_tooltip': 'Ενεργοποιήστε την ανάκτηση προσαρμοσμένου αριθμού εφεδρείας μέσω API κατά την ανακατεύθυνση σε χειριστή',
                 'customFallCallToURL_tooltip': 'Βασικό URL για προσαρμοσμένο API εφεδρείας. Ο αριθμός καλούντος θα προστεθεί στο τέλος αυτού του URL',
                 'foreignRedirect_tooltip': 'Ενεργοποιήστε για ανακατεύθυνση αλλοδαπών αριθμών (που δεν είναι στη λίστα επιτρεπόμενων προθεμάτων) στον χειριστή. Όταν ενεργοποιηθεί, αριθμοί > 10 ψηφία χωρίς επιτρεπόμενα προθέματα (+30, +359, 0030) ανακατευθύνονται',
-                'bypassWelcome_tooltip': 'Ενεργοποιήστε για παράκαμψη αρχικού μηνύματος και μηνύματος καλωσορίσματος. Η κλήση θα προχωρήσει αμέσως σαν ο χρήστης να πάτησε 1 (λειτουργία ASAP). Απενεργοποιήστε για κανονική συμπεριφορά με αναπαραγωγή μηνυμάτων.',
+                'bypassWelcome_tooltip': 'Παράκαμψη αρχικού μηνύματος και μηνύματος καλωσορίσματος, με άμεση μετάβαση στην επιλεγμένη λειτουργία κλήσης. Ορίστε σε Απενεργοποιημένο για κανονική συμπεριφορά με αναπαραγωγή μηνυμάτων.',
+                'select_bypass_disabled': 'Απενεργοποιημένο (Κανονική Συμπεριφορά)',
+                'select_bypass_asap': 'Παράκαμψη σε ASAP',
+                'select_bypass_reservation': 'Παράκαμψη σε Κράτηση',
                 'dtmfTimeout_tooltip': 'Χρόνος σε δευτερόλεπτα αναμονής για είσοδο DTMF από τον χρήστη κατά τη διάρκεια όλων των προτροπών (καλωσόρισμα, επιλογές, επιβεβαιώσεις). Προεπιλογή είναι 10 δευτερόλεπτα. Χαμηλότερες τιμές κάνουν το σύστημα να ανταποκρίνεται πιο γρήγορα, αλλά δίνουν λιγότερο χρόνο στους χρήστες να πατήσουν πλήκτρα.',
                 'uppercaseComments_tooltip': 'Ενεργοποιήστε για μετατροπή του πεδίου σχολίων σε ΚΕΦΑΛΑΙΑ κατά την αποστολή στο API εγγραφής. Απενεργοποιήστε για αποστολή σχολίων όπως είναι.',
                 'commentsPrefix_tooltip': 'Κείμενο που θα προστεθεί στην αρχή του πεδίου σχολίων κατά την αποστολή στο API εγγραφής. Αφήστε κενό για χωρίς πρόθεμα. Παράδειγμα: "ΨΗΦΙΑΚΗ ΚΛΗΣΗ" θα προσθέσει αυτό το κείμενο πριν από τα σχόλια.',
@@ -2727,7 +2735,7 @@ $currentConfig = $configManager->getConfig();
         
         function normalizeConfig(config) {
             const normalizedConfig = { ...expectedConfigStructure };
-            
+
             // Copy existing values
             Object.keys(config).forEach(key => {
                 if (normalizedConfig.hasOwnProperty(key)) {
@@ -2738,7 +2746,11 @@ $currentConfig = $configManager->getConfig();
                     }
                 }
             });
-            
+
+            // Backward compat: convert boolean bypassWelcome to integer
+            if (normalizedConfig.bypassWelcome === true) normalizedConfig.bypassWelcome = 1;
+            if (normalizedConfig.bypassWelcome === false) normalizedConfig.bypassWelcome = 0;
+
             return normalizedConfig;
         }
         
@@ -2809,7 +2821,7 @@ $currentConfig = $configManager->getConfig();
                 select.className = inputClass;
                 select.innerHTML = getSelectOptions(key);
                 select.value = value;
-                select.onchange = () => updateConfigValue(key, fieldType === 'number' ? parseInt(select.value) : select.value);
+                select.onchange = () => updateConfigValue(key, key === 'bypassWelcome' ? parseInt(select.value) || 0 : select.value);
                 return select;
             } else if (fieldType === 'bounds') {
                 const container = document.createElement('div');
@@ -3672,6 +3684,7 @@ $currentConfig = $configManager->getConfig();
             if (key === 'geocodingApiVersion') return 'select';
             if (key === 'autoCallCentersMode') return 'select';
             if (key === 'boundsRestrictionMode') return 'select';
+            if (key === 'bypassWelcome') return 'select';
             if (key === 'bounds') return 'bounds';
             if (key === 'centerBias') return 'centerBias';
             if (key === 'notWorking') return 'notWorking';
@@ -3697,6 +3710,8 @@ $currentConfig = $configManager->getConfig();
                     return `<option value="0">0 - ${getTranslation('select_all_disabled_operator')}</option><option value="1">1 - ${getTranslation('select_asap_calls_only')}</option><option value="2">2 - ${getTranslation('select_reservations_only')}</option><option value="3">3 - ${getTranslation('select_all_enabled')}</option>`;
                 case 'boundsRestrictionMode':
                     return `<option value="">None - ${getTranslation('select_bounds_none')}</option><option value="1">1 - ${getTranslation('select_bounds_pickup_only')}</option><option value="2">2 - ${getTranslation('select_bounds_dropoff_only')}</option><option value="3">3 - ${getTranslation('select_bounds_both')}</option>`;
+                case 'bypassWelcome':
+                    return `<option value="0">0 - ${getTranslation('select_bypass_disabled')}</option><option value="1">1 - ${getTranslation('select_bypass_asap')}</option><option value="2">2 - ${getTranslation('select_bypass_reservation')}</option>`;
                 case 'bounds':
                     return ''; // Bounds will be handled by map interface
                 case 'centerBias':
@@ -3836,7 +3851,7 @@ $currentConfig = $configManager->getConfig();
             customFallCallTo: false,
             customFallCallToURL: "https://www.iqtaxi.com/IQ_WebApiV3/api/asterisk/GetRedirectDrvPhoneFull/",
             foreignRedirect: false,
-            bypassWelcome: false,
+            bypassWelcome: 0,
             useGeocodingProxy: true,
             geocodingProxyBaseUrl: "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
             };
