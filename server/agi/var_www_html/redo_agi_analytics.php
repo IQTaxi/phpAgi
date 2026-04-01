@@ -222,7 +222,7 @@ class AGIAnalytics {
         'host' => '127.0.0.1',
         'dbname' => 'asterisk',
         'primary_user' => 'freepbxuser',
-        'primary_pass' => 'nFDuTRLJSY0n',
+        'primary_pass' => '18r4QZANKtuQ',
         'fallback_user' => 'root',
         'fallback_pass' => '',
         'port' => '3306',
@@ -287,6 +287,7 @@ class AGIAnalytics {
                 'filters' => 'Φίλτρα',
                 'export' => 'Εξαγωγή',
                 'refresh' => 'Ανανέωση',
+                'share' => 'Κοινοποίηση',
                 'stop' => 'Στοπ',
                 'live' => 'Ζωντανά',
                 'search' => 'Αναζήτηση',
@@ -492,6 +493,7 @@ class AGIAnalytics {
                 'filters' => 'Filters',
                 'export' => 'Export',
                 'refresh' => 'Refresh',
+                'share' => 'Share',
                 'stop' => 'Stop',
                 'live' => 'Live',
                 'search' => 'Search',
@@ -5087,6 +5089,14 @@ class AGIAnalytics {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.6; }
         }
+        @keyframes shareNotifyIn {
+            from { opacity: 0; transform: translateX(10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes shareNotifyOut {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(10px); }
+        }
 
         .truncate {
             overflow: hidden;
@@ -5428,6 +5438,12 @@ class AGIAnalytics {
             </div>
             <div class="modal-body">
                 <div class="form-row">
+                    <div class="form-group" style="flex:1 1 100%;">
+                        <label class="form-label"><?php echo $this->t('search'); ?></label>
+                        <input type="text" id="filterSearch" class="form-control" placeholder="<?php echo $this->t('placeholder_search'); ?>">
+                    </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label class="form-label"><?php echo $this->t('phone_number'); ?></label>
                         <input type="text" id="filterPhone" class="form-control" placeholder="<?php echo $this->t('placeholder_phone'); ?>">
@@ -5484,6 +5500,7 @@ class AGIAnalytics {
             <div class="modal-header">
                 <h3 class="modal-title"><i class="fas fa-phone-alt"></i> <?php echo $this->t('call_details'); ?></h3>
                 <div class="modal-actions">
+                    <button class="btn btn-sm btn-ghost" onclick="shareCallLink()" title="<?php echo $this->t('share'); ?>"><i class="fas fa-share-alt"></i></button>
                     <button class="btn btn-sm btn-ghost" onclick="refreshCallDetail()" title="<?php echo $this->t('refresh'); ?>"><i class="fas fa-sync-alt"></i></button>
                     <button class="btn btn-sm btn-ghost" onclick="editCall()" title="<?php echo $this->t('edit'); ?>"><i class="fas fa-edit"></i></button>
                     <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
@@ -5777,8 +5794,24 @@ class AGIAnalytics {
     }
     function truncate(str, len) { if (!str) return 'N/A'; return str.length > len ? str.substr(0, len) + '...' : str; }
 
+    function updateURL() {
+        const params = new URLSearchParams();
+        // Preserve lang
+        const lang = new URLSearchParams(window.location.search).get('lang');
+        if (lang) params.set('lang', lang);
+        if (currentPage > 1) params.set('page', currentPage);
+        if (currentLimit !== 50) params.set('limit', currentLimit);
+        for (const [k, v] of Object.entries(currentFilters)) {
+            if (v) params.set(k, v);
+        }
+        const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+        window.history.replaceState({}, '', newUrl);
+    }
+
     function loadStats() {
-        fetch('?endpoint=dashboard').then(r => r.json()).then(data => {
+        const params = new URLSearchParams(window.location.search);
+        params.set('endpoint', 'dashboard');
+        fetch('?' + params.toString()).then(r => r.json()).then(data => {
             const today = data.today_summary || {};
             const week = data.weekly_summary || data.week_summary || {};
             const month = data.monthly_summary || data.month_summary || {};
@@ -5938,7 +5971,7 @@ class AGIAnalytics {
         container.innerHTML = html;
     }
 
-    function goToPage(page) { currentPage = page; loadCalls(); }
+    function goToPage(page) { currentPage = page; updateURL(); loadCalls(); }
 
     function getUserRecordingDescription(type, attempt) {
         attempt = attempt || 1;
@@ -6332,6 +6365,35 @@ class AGIAnalytics {
 
     function refreshCallDetail() { if (currentCallId) showCallDetail(currentCallId); }
 
+    function shareCallLink() {
+        if (!currentCallId) return;
+        const url = new URL(window.location.href);
+        // Keep only lang, set id
+        const lang = url.searchParams.get('lang');
+        const newUrl = new URL(window.location.pathname, window.location.origin);
+        if (lang) newUrl.searchParams.set('lang', lang);
+        newUrl.searchParams.set('id', currentCallId);
+        const link = newUrl.toString();
+        navigator.clipboard.writeText(link).then(() => {
+            // Show copied notification next to share button
+            const btn = document.querySelector('.modal-actions button[onclick="shareCallLink()"]');
+            if (btn) {
+                // Remove existing notification if any
+                const existing = btn.parentElement.querySelector('.share-notify');
+                if (existing) existing.remove();
+                // Create notification badge
+                const notify = document.createElement('span');
+                notify.className = 'share-notify';
+                notify.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.75rem;font-weight:600;background:var(--success, #10b981);color:#fff;white-space:nowrap;animation:shareNotifyIn 0.3s ease;';
+                notify.innerHTML = '<i class="fas fa-check"></i> ' + (LANG.current === 'el' ? 'Αντιγράφηκε!' : 'Copied!');
+                btn.parentElement.insertBefore(notify, btn);
+                setTimeout(() => { notify.style.animation = 'shareNotifyOut 0.3s ease forwards'; setTimeout(() => notify.remove(), 300); }, 5000);
+            }
+        }).catch(() => {
+            prompt(LANG.current === 'el' ? 'Αντιγράψτε τον σύνδεσμο:' : 'Copy the link:', link);
+        });
+    }
+
     function editCall() {
         if (!currentCallId) return;
         fetch('?endpoint=call&call_id=' + encodeURIComponent(currentCallId)).then(r => r.json()).then(call => {
@@ -6531,12 +6593,14 @@ class AGIAnalytics {
 
     function applyFilters() {
         currentFilters = {};
+        const search = document.getElementById('filterSearch').value;
         const phone = document.getElementById('filterPhone').value;
         const ext = document.getElementById('filterExtension').value;
         const type = document.getElementById('filterCallType').value;
         const outcome = document.getElementById('filterOutcome').value;
         const dateFrom = document.getElementById('filterDateFrom').value;
         const dateTo = document.getElementById('filterDateTo').value;
+        if (search) currentFilters.search = search;
         if (phone) currentFilters.phone = phone;
         if (ext) currentFilters.extension = ext;
         if (type) currentFilters.call_type = type;
@@ -6544,20 +6608,33 @@ class AGIAnalytics {
         if (dateFrom) currentFilters.date_from = dateFrom;
         if (dateTo) currentFilters.date_to = dateTo;
         currentPage = 1;
+        updateURL();
+        loadStats();
         loadCalls();
+        loadHourlyChart();
+        loadLocationHeatmap();
         closeFilterModal();
     }
 
     function clearFilters() {
+        document.getElementById('filterSearch').value = '';
         document.getElementById('filterPhone').value = '';
         document.getElementById('filterExtension').value = '';
         document.getElementById('filterCallType').value = '';
         document.getElementById('filterOutcome').value = '';
         document.getElementById('filterDateFrom').value = '';
         document.getElementById('filterDateTo').value = '';
+        // Clear flatpickr instances too
+        document.querySelectorAll('#filterDateFrom, #filterDateTo').forEach(el => {
+            if (el._flatpickr) el._flatpickr.clear();
+        });
         currentFilters = {};
         currentPage = 1;
+        updateURL();
+        loadStats();
         loadCalls();
+        loadHourlyChart();
+        loadLocationHeatmap();
     }
 
     // Database cleanup confirmation
@@ -6691,6 +6768,27 @@ class AGIAnalytics {
         flatpickr('#exportDateFrom', fpConfig);
         flatpickr('#exportDateTo', fpConfig);
         populateDateSelect();
+
+        // Load initial filters from URL parameters (e.g. ?extension=4036&date_from=2026-01-01)
+        const urlParams = new URLSearchParams(window.location.search);
+        for (const [key, value] of urlParams.entries()) {
+            if (key === 'page') { currentPage = parseInt(value) || 1; continue; }
+            if (key === 'limit') { currentLimit = parseInt(value) || 50; continue; }
+            if (['lang', 'endpoint', 'action', 'format', 'id'].includes(key)) continue;
+            currentFilters[key] = value;
+            // Populate form fields from URL params
+            const fieldMap = { search: 'filterSearch', phone: 'filterPhone', extension: 'filterExtension', call_type: 'filterCallType', outcome: 'filterOutcome', date_from: 'filterDateFrom', date_to: 'filterDateTo' };
+            const fieldId = fieldMap[key];
+            if (fieldId) {
+                const el = document.getElementById(fieldId);
+                if (el) {
+                    el.value = value;
+                    // Update flatpickr display if it's a date field
+                    if (el._flatpickr && value) el._flatpickr.setDate(value, false);
+                }
+            }
+        }
+
         loadStats();
         loadCalls();
         loadHourlyChart();
@@ -6698,7 +6796,6 @@ class AGIAnalytics {
         startRealtime();
 
         // Check for id parameter to auto-open call details
-        const urlParams = new URLSearchParams(window.location.search);
         const callId = urlParams.get('id');
         if (callId) {
             // Small delay to ensure dashboard is loaded
