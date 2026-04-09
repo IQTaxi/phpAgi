@@ -1410,6 +1410,7 @@ class AGICallHandler
             $this->caller_num === 'anonymous' ||
             $this->caller_num === '' ||
             $this->caller_num === 'unknown' ||
+			$this->caller_num === '9998' ||
             strlen($this->caller_num) <= 5;
     }
 
