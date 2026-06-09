@@ -83,6 +83,9 @@ class ConfigManager {
         $configContent .= "// 0 = Disabled - Play initial message and welcome message normally, wait for user input (default behavior)\n";
         $configContent .= "// 1 = Bypass to ASAP mode - Skip initial message and welcome, immediately proceed to ASAP call flow\n";
         $configContent .= "// 2 = Bypass to Reservation mode - Skip initial message and welcome, immediately proceed to Reservation call flow\n\n";
+        $configContent .= "// callbackWaitForCarAndTime configuration (callbackMode 2 only):\n";
+        $configContent .= "// false = Announce as soon as the driver accepts (status 10), even if the pickup ETA is not yet known (default behavior)\n";
+        $configContent .= "// true = Do not announce that a taxi was found until BOTH the car number AND the pickup ETA time are available; the ETA is included in the announcement\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -157,6 +160,9 @@ class ConfigManager {
         $configContent .= "// 0 = Disabled - Play initial message and welcome message normally, wait for user input (default behavior)\n";
         $configContent .= "// 1 = Bypass to ASAP mode - Skip initial message and welcome, immediately proceed to ASAP call flow\n";
         $configContent .= "// 2 = Bypass to Reservation mode - Skip initial message and welcome, immediately proceed to Reservation call flow\n\n";
+        $configContent .= "// callbackWaitForCarAndTime configuration (callbackMode 2 only):\n";
+        $configContent .= "// false = Announce as soon as the driver accepts (status 10), even if the pickup ETA is not yet known (default behavior)\n";
+        $configContent .= "// true = Do not announce that a taxi was found until BOTH the car number AND the pickup ETA time are available; the ETA is included in the announcement\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -2201,6 +2207,7 @@ $currentConfig = $configManager->getConfig();
             callbackMode: 1,
             callbackUrl: '',
             repeatTimes: 10,
+            callbackWaitForCarAndTime: false,
             strictDropoffLocation: false,
             geocodingApiVersion: 1,
             initialMessageSound: '',
@@ -2240,6 +2247,7 @@ $currentConfig = $configManager->getConfig();
                 'callbackMode': 'Callback Mode',
                 'callbackUrl': 'Callback URL',
                 'repeatTimes': 'Callback Check Duration',
+                'callbackWaitForCarAndTime': 'Wait For Car & Time (Callback 2)',
                 'strictDropoffLocation': 'Strict Dropoff Location',
                 'geocodingApiVersion': 'Geocoding API Version',
                 'initialMessageSound': 'Initial Message Sound',
@@ -2275,6 +2283,7 @@ $currentConfig = $configManager->getConfig();
                 'callbackMode_tooltip': 'Mode 1: Normal TTS, Mode 2: Callback with status file',
                 'callbackUrl_tooltip': 'URL for callback mode notifications',
                 'repeatTimes_tooltip': 'In Callback Mode 2: How many times to check for server response (checks every 3 seconds). Example: 10 = wait up to 30 seconds for taxi assignment. After this, transfers to operator if no taxi found',
+                'callbackWaitForCarAndTime_tooltip': 'Callback Mode 2 only. Enable to hold the "taxi found" announcement until BOTH the car number AND the pickup ETA time are received from the server; the ETA is then included in the announcement. While waiting, the caller keeps hearing the searching message. Disable for the default behavior (announce as soon as the driver accepts, even without an ETA).',
                 'strictDropoffLocation_tooltip': 'Require precise GPS coordinates for dropoff location',
                 'geocodingApiVersion_tooltip': 'API version: 1=Geocoding API, 2=Places API',
                 'initialMessageSound_tooltip': 'Sound file name to play before welcome message',
@@ -2412,6 +2421,7 @@ $currentConfig = $configManager->getConfig();
                 'callbackMode': 'Λειτουργία Callback',
                 'callbackUrl': 'URL Callback',
                 'repeatTimes': 'Διάρκεια Ελέγχου Callback',
+                'callbackWaitForCarAndTime': 'Αναμονή Αυτοκινήτου & Χρόνου (Callback 2)',
                 'strictDropoffLocation': 'Αυστηρή Τοποθεσία Προορισμού',
                 'geocodingApiVersion': 'Έκδοση API Γεωκωδικοποίησης',
                 'initialMessageSound': 'Ήχος Αρχικού Μηνύματος',
@@ -2447,6 +2457,7 @@ $currentConfig = $configManager->getConfig();
                 'callbackMode_tooltip': 'Λειτουργία 1: Κανονικό TTS, Λειτουργία 2: Callback με αρχείο κατάστασης',
                 'callbackUrl_tooltip': 'URL για ειδοποιήσεις callback mode',
                 'repeatTimes_tooltip': 'Σε Λειτουργία Callback 2: Πόσες φορές θα ελέγξει για απάντηση από τον διακομιστή (έλεγχος κάθε 3 δευτερόλεπτα). Παράδειγμα: 10 = αναμονή έως 30 δευτερόλεπτα για ανάθεση ταξί. Μετά, μεταφέρει σε χειριστή αν δεν βρεθεί ταξί',
+                'callbackWaitForCarAndTime_tooltip': 'Μόνο για Λειτουργία Callback 2. Ενεργοποιήστε για να καθυστερεί η ανακοίνωση "βρέθηκε ταξί" μέχρι να ληφθούν από τον διακομιστή ΚΑΙ ο αριθμός αυτοκινήτου ΚΑΙ ο εκτιμώμενος χρόνος παραλαβής· ο χρόνος συμπεριλαμβάνεται τότε στην ανακοίνωση. Όσο αναμένει, ο καλών ακούει το μήνυμα αναζήτησης. Απενεργοποιήστε για την προεπιλεγμένη συμπεριφορά (ανακοίνωση μόλις δεχτεί ο οδηγός, ακόμα και χωρίς χρόνο).',
                 'strictDropoffLocation_tooltip': 'Απαίτηση ακριβών συντεταγμένων GPS για τον προορισμό',
                 'geocodingApiVersion_tooltip': 'Έκδοση API: 1=Geocoding API, 2=Places API',
                 'initialMessageSound_tooltip': 'Όνομα αρχείου ήχου που θα παιχτεί πριν το μήνυμα καλωσορίσματος',
@@ -3835,6 +3846,7 @@ $currentConfig = $configManager->getConfig();
                 callbackMode: 1,
                 callbackUrl: "",
                 repeatTimes: 10,
+                callbackWaitForCarAndTime: false,
                 strictDropoffLocation: false,
                 geocodingApiVersion: 1,
                 initialMessageSound: "",

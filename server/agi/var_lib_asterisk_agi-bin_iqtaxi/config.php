@@ -57,6 +57,11 @@
 // Base URL for the geocoding proxy server (e.g., "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy")
 // The system will append "/geocode" for Geocoding API v1 and "/places" for Places API v2
 
+// callbackWaitForCarAndTime configuration (callbackMode 2 only):
+// false = Announce as soon as the driver accepts (status 10), even if the pickup ETA is not yet known (default behavior)
+// true  = Do not announce that a taxi was found until BOTH the car number AND the pickup ETA time are available.
+//         While waiting, the caller keeps hearing the "searching" message. The ETA is included in the announcement.
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -89,7 +94,8 @@ class AGICallHandlerConfig
         "foreignRedirect" => false,
         "bypassWelcome" => false,
         "useGeocodingProxy" => true,
-        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
+        "callbackWaitForCarAndTime" => false
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -120,7 +126,8 @@ class AGICallHandlerConfig
         "foreignRedirect" => false,
         "bypassWelcome" => false,
         "useGeocodingProxy" => true,
-        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
+        "callbackWaitForCarAndTime" => false
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -151,7 +158,8 @@ class AGICallHandlerConfig
         "foreignRedirect" => false,
         "bypassWelcome" => false,
         "useGeocodingProxy" => true,
-        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
+        "callbackWaitForCarAndTime" => false
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -182,7 +190,8 @@ class AGICallHandlerConfig
         "foreignRedirect" => false,
         "bypassWelcome" => false,
         "useGeocodingProxy" => true,
-        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
+        "callbackWaitForCarAndTime" => false
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -212,7 +221,8 @@ class AGICallHandlerConfig
 		"foreignRedirect" => false,
 	"bypassWelcome" => false,
         "useGeocodingProxy" => true,
-        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
+        "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
+        "callbackWaitForCarAndTime" => false
     ]
 ];
 }

@@ -3869,6 +3869,10 @@ class AGICallHandler
 
     private function processStatusUpdate($current_status, $current_car_no, $current_time, $status_file, &$has_announced, &$last_status, &$last_car_no, &$last_time)
     {
+        // When enabled, don't announce that a taxi was found until BOTH the car number
+        // AND the pickup ETA time are known (callbackMode 2 only). Default off = current behavior.
+        $wait_for_car_and_time = $this->config[$this->extension]['callbackWaitForCarAndTime'] ?? false;
+
         // Handle no taxi found (special case - transfer to operator)
         if ($current_status == 20) {
             $this->playStatusMessage('no_taxi_found', '', $status_file);
@@ -3897,8 +3901,18 @@ class AGICallHandler
                 return false;
             } else if ($current_status == 10 && !empty($current_car_no)) {
                 // Status 10: driver accepted
+                // When callbackWaitForCarAndTime is enabled, hold the "taxi found" announcement
+                // until we also have the pickup ETA time. Keep the caller on the searching message.
+                if ($wait_for_car_and_time && $current_time <= 0) {
+                    $this->logMessage("Car {$current_car_no} accepted but ETA time not available yet - waiting before announcing (callbackWaitForCarAndTime enabled)");
+                    $this->playStatusMessage('searching', '', $status_file);
+                    // Don't mark as announced yet, keep waiting for the time
+                    return false;
+                }
                 $this->logMessage("Driver accepted with car: {$current_car_no}");
-                $this->playStatusMessage('driver_accepted', $current_car_no, $status_file);
+                // Pass the ETA only when the wait-for-time feature is on, so default behavior
+                // (announce without time) stays unchanged
+                $this->playStatusMessage('driver_accepted', $current_car_no, $status_file, $current_status, $wait_for_car_and_time ? $current_time : 0);
                 $has_announced = true;
                 $this->updateLastValues($last_status, $last_car_no, $last_time, $current_status, $current_car_no, $current_time);
                 return false;
@@ -4043,12 +4057,22 @@ class AGICallHandler
                 
             case 'driver_accepted':
                 if ($this->current_language == 'en') {
-                    return "Taxi number {$car_no} " . $lang_status[10];
+                    $message = "Taxi number {$car_no} " . $lang_status[10];
+                    if ($time > 0) {
+                        $message .= " and will arrive in {$time} minutes";
+                    }
                 } else if ($this->current_language == 'bg') {
-                    return "Такси номер {$car_no} " . $lang_status[10];
+                    $message = "Такси номер {$car_no} " . $lang_status[10];
+                    if ($time > 0) {
+                        $message .= " и ще пристигне за {$time} минути";
+                    }
                 } else {
-                    return "Το ταξί με αριθμό {$car_no} " . $lang_status[10];
+                    $message = "Το ταξί με αριθμό {$car_no} " . $lang_status[10];
+                    if ($time > 0) {
+                        $message .= " και θα φτάσει σε {$time} λεπτά";
+                    }
                 }
+                return $message;
                 
             case 'transfer_to_operator':
                 if ($this->current_language == 'en') {
