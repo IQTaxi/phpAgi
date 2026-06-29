@@ -4056,23 +4056,25 @@ class AGICallHandler
                 return $lang_status[20];
                 
             case 'driver_accepted':
+                // When an ETA is provided (callbackWaitForCarAndTime), use a trimmed "accepted your call"
+                // phrase plus the time, to avoid the redundant "will be near you soon AND arrives in N min".
+                // Without an ETA, keep the original status-10 phrase unchanged (default behavior).
                 if ($this->current_language == 'en') {
-                    $message = "Taxi number {$car_no} " . $lang_status[10];
                     if ($time > 0) {
-                        $message .= " and will arrive in {$time} minutes";
+                        return "Taxi number {$car_no} accepted your call and will arrive in {$time} minutes";
                     }
+                    return "Taxi number {$car_no} " . $lang_status[10];
                 } else if ($this->current_language == 'bg') {
-                    $message = "Такси номер {$car_no} " . $lang_status[10];
                     if ($time > 0) {
-                        $message .= " и ще пристигне за {$time} минути";
+                        return "Такси номер {$car_no} прие вашето повикване и ще пристигне за {$time} минути";
                     }
+                    return "Такси номер {$car_no} " . $lang_status[10];
                 } else {
-                    $message = "Το ταξί με αριθμό {$car_no} " . $lang_status[10];
                     if ($time > 0) {
-                        $message .= " και θα φτάσει σε {$time} λεπτά";
+                        return "Το ταξί με αριθμό {$car_no} δέχτηκε την κλήση σας και θα φτάσει σε {$time} λεπτά";
                     }
+                    return "Το ταξί με αριθμό {$car_no} " . $lang_status[10];
                 }
-                return $message;
                 
             case 'transfer_to_operator':
                 if ($this->current_language == 'en') {
