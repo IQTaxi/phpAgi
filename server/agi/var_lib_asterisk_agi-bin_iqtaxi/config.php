@@ -67,6 +67,10 @@
 // "hangup"   = When no taxi is found (status 20), just end the call after the "no taxi found" message.
 //              The call is still marked as successful because registration already succeeded.
 
+// byPassZone configuration:
+// false = Normal zone handling by the dispatch server (default behavior)
+// true  = Send byPassZone=true in the register/reservation payload to bypass zone restrictions
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -101,7 +105,8 @@ class AGICallHandlerConfig
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
-        "callbackNoTaxiFoundAction" => "operator"
+        "callbackNoTaxiFoundAction" => "operator",
+        "byPassZone" => false
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -134,7 +139,8 @@ class AGICallHandlerConfig
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
-        "callbackNoTaxiFoundAction" => "operator"
+        "callbackNoTaxiFoundAction" => "operator",
+        "byPassZone" => false
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -167,7 +173,8 @@ class AGICallHandlerConfig
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
-        "callbackNoTaxiFoundAction" => "operator"
+        "callbackNoTaxiFoundAction" => "operator",
+        "byPassZone" => false
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -200,7 +207,8 @@ class AGICallHandlerConfig
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
-        "callbackNoTaxiFoundAction" => "operator"
+        "callbackNoTaxiFoundAction" => "operator",
+        "byPassZone" => false
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -232,7 +240,8 @@ class AGICallHandlerConfig
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
-        "callbackNoTaxiFoundAction" => "operator"
+        "callbackNoTaxiFoundAction" => "operator",
+        "byPassZone" => false
     ]
 ];
 }

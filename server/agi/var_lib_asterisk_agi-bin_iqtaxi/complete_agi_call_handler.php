@@ -2552,7 +2552,8 @@ class AGICallHandler
 			"comments" => mb_substr($comments, 0, 255),
 			"referencePath" => (string)$this->uniqueid,
 			"daysValid" => $this->days_valid,
-			"customerName" => mb_substr(!empty($this->name_result) ? $this->name_result : "N/A", 0, 50)
+			"customerName" => mb_substr(!empty($this->name_result) ? $this->name_result : "N/A", 0, 50),
+			"byPassZone" => (bool)($this->config[$this->extension]['byPassZone'] ?? false)
 		];
 
 		return $payload;

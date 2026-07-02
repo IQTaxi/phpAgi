@@ -89,6 +89,9 @@ class ConfigManager {
         $configContent .= "// callbackNoTaxiFoundAction configuration (callbackMode 2 only):\n";
         $configContent .= "// \"operator\" = When no taxi is found (status 20), play transfer message and redirect to operator (default behavior)\n";
         $configContent .= "// \"hangup\" = When no taxi is found (status 20), just end the call after the message (still marked as successful)\n\n";
+        $configContent .= "// byPassZone configuration:\n";
+        $configContent .= "// false = Normal zone handling by the dispatch server (default behavior)\n";
+        $configContent .= "// true = Send byPassZone=true in the register/reservation payload to bypass zone restrictions\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -169,6 +172,9 @@ class ConfigManager {
         $configContent .= "// callbackNoTaxiFoundAction configuration (callbackMode 2 only):\n";
         $configContent .= "// \"operator\" = When no taxi is found (status 20), play transfer message and redirect to operator (default behavior)\n";
         $configContent .= "// \"hangup\" = When no taxi is found (status 20), just end the call after the message (still marked as successful)\n\n";
+        $configContent .= "// byPassZone configuration:\n";
+        $configContent .= "// false = Normal zone handling by the dispatch server (default behavior)\n";
+        $configContent .= "// true = Send byPassZone=true in the register/reservation payload to bypass zone restrictions\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -2236,7 +2242,8 @@ $currentConfig = $configManager->getConfig();
             uppercaseComments: false,
             commentsPrefix: '',
             useGeocodingProxy: true,
-            geocodingProxyBaseUrl: "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
+            geocodingProxyBaseUrl: "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
+            byPassZone: false
         };
 
         const translations = {
@@ -2278,6 +2285,7 @@ $currentConfig = $configManager->getConfig();
                 'commentsPrefix': 'Comments Prefix',
                 'useGeocodingProxy': 'Use Geocoding Proxy',
                 'geocodingProxyBaseUrl': 'Geocoding Proxy Base URL',
+                'byPassZone': 'Bypass Zone',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -2320,6 +2328,7 @@ $currentConfig = $configManager->getConfig();
                 'commentsPrefix_tooltip': 'Text to prepend to the comments field when sending to registration API. Leave empty for no prefix. Example: "ΨΗΦΙΑΚΗ ΚΛΗΣΗ" will add this text before the comments.',
                 'useGeocodingProxy_tooltip': 'Enable to route geocoding requests through a caching proxy server instead of direct Google API calls. Reduces API costs and improves response times for repeated addresses.',
                 'geocodingProxyBaseUrl_tooltip': 'Base URL for the geocoding proxy server. The system appends /geocode or /places to this URL. Example: https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy',
+                'byPassZone_tooltip': 'Enable to send byPassZone=true in the register/reservation payload, telling the dispatch server to bypass zone restrictions. Disable (default) for normal zone handling.',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -2456,6 +2465,7 @@ $currentConfig = $configManager->getConfig();
                 'commentsPrefix': 'Πρόθεμα Σχολίων',
                 'useGeocodingProxy': 'Χρήση Geocoding Proxy',
                 'geocodingProxyBaseUrl': 'Βασικό URL Geocoding Proxy',
+                'byPassZone': 'Παράκαμψη Ζώνης',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -2498,6 +2508,7 @@ $currentConfig = $configManager->getConfig();
                 'commentsPrefix_tooltip': 'Κείμενο που θα προστεθεί στην αρχή του πεδίου σχολίων κατά την αποστολή στο API εγγραφής. Αφήστε κενό για χωρίς πρόθεμα. Παράδειγμα: "ΨΗΦΙΑΚΗ ΚΛΗΣΗ" θα προσθέσει αυτό το κείμενο πριν από τα σχόλια.',
                 'useGeocodingProxy_tooltip': 'Ενεργοποιήστε για δρομολόγηση αιτημάτων geocoding μέσω διακομιστή caching proxy αντί για απευθείας κλήσεις Google API. Μειώνει το κόστος API και βελτιώνει τους χρόνους απόκρισης για επαναλαμβανόμενες διευθύνσεις.',
                 'geocodingProxyBaseUrl_tooltip': 'Βασικό URL για τον διακομιστή geocoding proxy. Το σύστημα προσθέτει /geocode ή /places σε αυτό το URL. Παράδειγμα: https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy',
+                'byPassZone_tooltip': 'Ενεργοποιήστε για αποστολή byPassZone=true στο payload εγγραφής/κράτησης, ώστε ο διακομιστής dispatch να παρακάμπτει τους περιορισμούς ζώνης. Απενεργοποιήστε (προεπιλογή) για κανονική διαχείριση ζώνης.',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',
@@ -3884,7 +3895,8 @@ $currentConfig = $configManager->getConfig();
             foreignRedirect: false,
             bypassWelcome: 0,
             useGeocodingProxy: true,
-            geocodingProxyBaseUrl: "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy"
+            geocodingProxyBaseUrl: "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
+            byPassZone: false
             };
             
             fetch('config_manager.php', {
