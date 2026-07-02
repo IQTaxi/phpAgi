@@ -62,6 +62,11 @@
 // true  = Do not announce that a taxi was found until BOTH the car number AND the pickup ETA time are available.
 //         While waiting, the caller keeps hearing the "searching" message. The ETA is included in the announcement.
 
+// callbackNoTaxiFoundAction configuration (callbackMode 2 only):
+// "operator" = When no taxi is found (status 20), play the transfer message and redirect to operator (default behavior)
+// "hangup"   = When no taxi is found (status 20), just end the call after the "no taxi found" message.
+//              The call is still marked as successful because registration already succeeded.
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -95,7 +100,8 @@ class AGICallHandlerConfig
         "bypassWelcome" => false,
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
-        "callbackWaitForCarAndTime" => false
+        "callbackWaitForCarAndTime" => false,
+        "callbackNoTaxiFoundAction" => "operator"
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -127,7 +133,8 @@ class AGICallHandlerConfig
         "bypassWelcome" => false,
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
-        "callbackWaitForCarAndTime" => false
+        "callbackWaitForCarAndTime" => false,
+        "callbackNoTaxiFoundAction" => "operator"
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -159,7 +166,8 @@ class AGICallHandlerConfig
         "bypassWelcome" => false,
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
-        "callbackWaitForCarAndTime" => false
+        "callbackWaitForCarAndTime" => false,
+        "callbackNoTaxiFoundAction" => "operator"
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -191,7 +199,8 @@ class AGICallHandlerConfig
         "bypassWelcome" => false,
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
-        "callbackWaitForCarAndTime" => false
+        "callbackWaitForCarAndTime" => false,
+        "callbackNoTaxiFoundAction" => "operator"
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -222,7 +231,8 @@ class AGICallHandlerConfig
 	"bypassWelcome" => false,
         "useGeocodingProxy" => true,
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
-        "callbackWaitForCarAndTime" => false
+        "callbackWaitForCarAndTime" => false,
+        "callbackNoTaxiFoundAction" => "operator"
     ]
 ];
 }

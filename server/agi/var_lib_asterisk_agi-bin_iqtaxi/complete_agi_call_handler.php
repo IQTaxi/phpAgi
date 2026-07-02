@@ -3873,10 +3873,28 @@ class AGICallHandler
         // AND the pickup ETA time are known (callbackMode 2 only). Default off = current behavior.
         $wait_for_car_and_time = $this->config[$this->extension]['callbackWaitForCarAndTime'] ?? false;
 
-        // Handle no taxi found (special case - transfer to operator)
+        // Handle no taxi found (special case)
         if ($current_status == 20) {
             $this->playStatusMessage('no_taxi_found', '', $status_file);
-            // Play transfer message and redirect to operator
+
+            // callbackNoTaxiFoundAction: what to do when no taxi is found in callbackMode 2
+            //   'operator' (default) = play transfer message and redirect to operator
+            //   'hangup'             = just end the call (still counts as success - registration already succeeded)
+            $no_taxi_action = $this->config[$this->extension]['callbackNoTaxiFoundAction'] ?? 'operator';
+
+            if ($no_taxi_action === 'hangup') {
+                $this->logMessage("No taxi found - ending call per config (callbackNoTaxiFoundAction=hangup)");
+                // Status 20 occurs AFTER successful registration, so the call still counts as success
+                if ($this->analytics_data['call_outcome'] !== 'success') {
+                    $this->setCallOutcome('success', 'No taxi found - call ended (registration succeeded)');
+                } else {
+                    $this->logMessage("Preserving 'success' outcome despite no taxi found (post-registration issue)", 'INFO', 'REGISTRATION');
+                }
+                // Return true so handleCallbackMode finalizes and hangs up cleanly (no operator transfer)
+                return true;
+            }
+
+            // Default: play transfer message and redirect to operator
             $this->playStatusMessage('transfer_to_operator', '', $status_file . '_transfer');
             // CRITICAL FIX: Preserve 'success' outcome if registration was successful
             // Status 20 occurs AFTER successful registration - no taxi found is a post-registration issue

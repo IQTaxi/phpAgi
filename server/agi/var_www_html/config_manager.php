@@ -86,6 +86,9 @@ class ConfigManager {
         $configContent .= "// callbackWaitForCarAndTime configuration (callbackMode 2 only):\n";
         $configContent .= "// false = Announce as soon as the driver accepts (status 10), even if the pickup ETA is not yet known (default behavior)\n";
         $configContent .= "// true = Do not announce that a taxi was found until BOTH the car number AND the pickup ETA time are available; the ETA is included in the announcement\n\n";
+        $configContent .= "// callbackNoTaxiFoundAction configuration (callbackMode 2 only):\n";
+        $configContent .= "// \"operator\" = When no taxi is found (status 20), play transfer message and redirect to operator (default behavior)\n";
+        $configContent .= "// \"hangup\" = When no taxi is found (status 20), just end the call after the message (still marked as successful)\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -163,6 +166,9 @@ class ConfigManager {
         $configContent .= "// callbackWaitForCarAndTime configuration (callbackMode 2 only):\n";
         $configContent .= "// false = Announce as soon as the driver accepts (status 10), even if the pickup ETA is not yet known (default behavior)\n";
         $configContent .= "// true = Do not announce that a taxi was found until BOTH the car number AND the pickup ETA time are available; the ETA is included in the announcement\n\n";
+        $configContent .= "// callbackNoTaxiFoundAction configuration (callbackMode 2 only):\n";
+        $configContent .= "// \"operator\" = When no taxi is found (status 20), play transfer message and redirect to operator (default behavior)\n";
+        $configContent .= "// \"hangup\" = When no taxi is found (status 20), just end the call after the message (still marked as successful)\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -2208,6 +2214,7 @@ $currentConfig = $configManager->getConfig();
             callbackUrl: '',
             repeatTimes: 10,
             callbackWaitForCarAndTime: false,
+            callbackNoTaxiFoundAction: 'operator',
             strictDropoffLocation: false,
             geocodingApiVersion: 1,
             initialMessageSound: '',
@@ -2248,6 +2255,7 @@ $currentConfig = $configManager->getConfig();
                 'callbackUrl': 'Callback URL',
                 'repeatTimes': 'Callback Check Duration',
                 'callbackWaitForCarAndTime': 'Wait For Car & Time (Callback 2)',
+                'callbackNoTaxiFoundAction': 'No Taxi Found Action (Callback 2)',
                 'strictDropoffLocation': 'Strict Dropoff Location',
                 'geocodingApiVersion': 'Geocoding API Version',
                 'initialMessageSound': 'Initial Message Sound',
@@ -2284,6 +2292,9 @@ $currentConfig = $configManager->getConfig();
                 'callbackUrl_tooltip': 'URL for callback mode notifications',
                 'repeatTimes_tooltip': 'In Callback Mode 2: How many times to check for server response (checks every 3 seconds). Example: 10 = wait up to 30 seconds for taxi assignment. After this, transfers to operator if no taxi found',
                 'callbackWaitForCarAndTime_tooltip': 'Callback Mode 2 only. Enable to hold the "taxi found" announcement until BOTH the car number AND the pickup ETA time are received from the server; the ETA is then included in the announcement. While waiting, the caller keeps hearing the searching message. Disable for the default behavior (announce as soon as the driver accepts, even without an ETA).',
+                'callbackNoTaxiFoundAction_tooltip': 'Callback Mode 2 only. What to do when no taxi is found. "Redirect to operator" (default) plays the transfer message and forwards the caller to the operator. "Hang up" just ends the call after the "no taxi found" message. Either way the call is still counted as successful because registration already succeeded.',
+                'select_no_taxi_operator': 'Redirect to operator',
+                'select_no_taxi_hangup': 'Hang up (end call)',
                 'strictDropoffLocation_tooltip': 'Require precise GPS coordinates for dropoff location',
                 'geocodingApiVersion_tooltip': 'API version: 1=Geocoding API, 2=Places API',
                 'initialMessageSound_tooltip': 'Sound file name to play before welcome message',
@@ -2422,6 +2433,7 @@ $currentConfig = $configManager->getConfig();
                 'callbackUrl': 'URL Callback',
                 'repeatTimes': 'Διάρκεια Ελέγχου Callback',
                 'callbackWaitForCarAndTime': 'Αναμονή Αυτοκινήτου & Χρόνου (Callback 2)',
+                'callbackNoTaxiFoundAction': 'Ενέργεια όταν δεν βρεθεί ταξί (Callback 2)',
                 'strictDropoffLocation': 'Αυστηρή Τοποθεσία Προορισμού',
                 'geocodingApiVersion': 'Έκδοση API Γεωκωδικοποίησης',
                 'initialMessageSound': 'Ήχος Αρχικού Μηνύματος',
@@ -2458,6 +2470,9 @@ $currentConfig = $configManager->getConfig();
                 'callbackUrl_tooltip': 'URL για ειδοποιήσεις callback mode',
                 'repeatTimes_tooltip': 'Σε Λειτουργία Callback 2: Πόσες φορές θα ελέγξει για απάντηση από τον διακομιστή (έλεγχος κάθε 3 δευτερόλεπτα). Παράδειγμα: 10 = αναμονή έως 30 δευτερόλεπτα για ανάθεση ταξί. Μετά, μεταφέρει σε χειριστή αν δεν βρεθεί ταξί',
                 'callbackWaitForCarAndTime_tooltip': 'Μόνο για Λειτουργία Callback 2. Ενεργοποιήστε για να καθυστερεί η ανακοίνωση "βρέθηκε ταξί" μέχρι να ληφθούν από τον διακομιστή ΚΑΙ ο αριθμός αυτοκινήτου ΚΑΙ ο εκτιμώμενος χρόνος παραλαβής· ο χρόνος συμπεριλαμβάνεται τότε στην ανακοίνωση. Όσο αναμένει, ο καλών ακούει το μήνυμα αναζήτησης. Απενεργοποιήστε για την προεπιλεγμένη συμπεριφορά (ανακοίνωση μόλις δεχτεί ο οδηγός, ακόμα και χωρίς χρόνο).',
+                'callbackNoTaxiFoundAction_tooltip': 'Μόνο για Λειτουργία Callback 2. Τι θα γίνεται όταν δεν βρεθεί ταξί. "Ανακατεύθυνση σε χειριστή" (προεπιλογή) αναπαράγει το μήνυμα μεταφοράς και προωθεί τον καλούντα στον χειριστή. "Τερματισμός κλήσης" απλώς κλείνει την κλήση μετά το μήνυμα "δεν βρέθηκε ταξί". Και στις δύο περιπτώσεις η κλήση μετράει ως επιτυχής, καθώς η εγγραφή έχει ήδη ολοκληρωθεί.',
+                'select_no_taxi_operator': 'Ανακατεύθυνση σε χειριστή',
+                'select_no_taxi_hangup': 'Τερματισμός κλήσης',
                 'strictDropoffLocation_tooltip': 'Απαίτηση ακριβών συντεταγμένων GPS για τον προορισμό',
                 'geocodingApiVersion_tooltip': 'Έκδοση API: 1=Geocoding API, 2=Places API',
                 'initialMessageSound_tooltip': 'Όνομα αρχείου ήχου που θα παιχτεί πριν το μήνυμα καλωσορίσματος',
@@ -3696,6 +3711,7 @@ $currentConfig = $configManager->getConfig();
             if (key === 'autoCallCentersMode') return 'select';
             if (key === 'boundsRestrictionMode') return 'select';
             if (key === 'bypassWelcome') return 'select';
+            if (key === 'callbackNoTaxiFoundAction') return 'select';
             if (key === 'bounds') return 'bounds';
             if (key === 'centerBias') return 'centerBias';
             if (key === 'notWorking') return 'notWorking';
@@ -3723,6 +3739,8 @@ $currentConfig = $configManager->getConfig();
                     return `<option value="">None - ${getTranslation('select_bounds_none')}</option><option value="1">1 - ${getTranslation('select_bounds_pickup_only')}</option><option value="2">2 - ${getTranslation('select_bounds_dropoff_only')}</option><option value="3">3 - ${getTranslation('select_bounds_both')}</option>`;
                 case 'bypassWelcome':
                     return `<option value="0">0 - ${getTranslation('select_bypass_disabled')}</option><option value="1">1 - ${getTranslation('select_bypass_asap')}</option><option value="2">2 - ${getTranslation('select_bypass_reservation')}</option>`;
+                case 'callbackNoTaxiFoundAction':
+                    return `<option value="operator">${getTranslation('select_no_taxi_operator')}</option><option value="hangup">${getTranslation('select_no_taxi_hangup')}</option>`;
                 case 'bounds':
                     return ''; // Bounds will be handled by map interface
                 case 'centerBias':
@@ -3847,6 +3865,7 @@ $currentConfig = $configManager->getConfig();
                 callbackUrl: "",
                 repeatTimes: 10,
                 callbackWaitForCarAndTime: false,
+                callbackNoTaxiFoundAction: "operator",
                 strictDropoffLocation: false,
                 geocodingApiVersion: 1,
                 initialMessageSound: "",
