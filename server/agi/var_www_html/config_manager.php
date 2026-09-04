@@ -62,6 +62,14 @@ class ConfigManager {
         $configContent .= "// 1 = Apply bounds and centerBias only to pickup location\n";
         $configContent .= "// 2 = Apply bounds and centerBias only to dropoff location\n";
         $configContent .= "// 3 = Apply bounds and centerBias to both pickup and dropoff locations\n\n";
+        $configContent .= "// addressRequiredWords configuration:\n";
+        $configContent .= "// [] = No municipality/area word restriction (default behavior)\n";
+        $configContent .= "// Array of words = the address GOOGLE returns must contain at least one of these words,\n";
+        $configContent .= "//                  otherwise the result is discarded and the caller is asked for the address again.\n";
+        $configContent .= "// Matching is accent-insensitive and case-insensitive (text uppercased, tones removed) and is\n";
+        $configContent .= "// anchored at the start of a word, so a shorter stem also matches inflected forms.\n";
+        $configContent .= "// Multi-word entries are matched as a phrase.\n";
+        $configContent .= "// Applied only where boundsRestrictionMode allows it (1=pickup, 2=dropoff, 3=both, 0/null=never).\n\n";
         $configContent .= "// confirmation_mode configuration:\n";
         $configContent .= "// 1 = Full TTS confirmation: reads name, pickup, and dropoff addresses via TTS before asking for confirmation\n";
         $configContent .= "// 2 = Quick confirmation: only plays confirmation prompt without reading details (just 'press 0 to confirm')\n\n";
@@ -145,6 +153,14 @@ class ConfigManager {
         $configContent .= "// 1 = Apply bounds and centerBias only to pickup location\n";
         $configContent .= "// 2 = Apply bounds and centerBias only to dropoff location\n";
         $configContent .= "// 3 = Apply bounds and centerBias to both pickup and dropoff locations\n\n";
+        $configContent .= "// addressRequiredWords configuration:\n";
+        $configContent .= "// [] = No municipality/area word restriction (default behavior)\n";
+        $configContent .= "// Array of words = the address GOOGLE returns must contain at least one of these words,\n";
+        $configContent .= "//                  otherwise the result is discarded and the caller is asked for the address again.\n";
+        $configContent .= "// Matching is accent-insensitive and case-insensitive (text uppercased, tones removed) and is\n";
+        $configContent .= "// anchored at the start of a word, so a shorter stem also matches inflected forms.\n";
+        $configContent .= "// Multi-word entries are matched as a phrase.\n";
+        $configContent .= "// Applied only where boundsRestrictionMode allows it (1=pickup, 2=dropoff, 3=both, 0/null=never).\n\n";
         $configContent .= "// confirmation_mode configuration:\n";
         $configContent .= "// 1 = Full TTS confirmation: reads name, pickup, and dropoff addresses via TTS before asking for confirmation\n";
         $configContent .= "// 2 = Quick confirmation: only plays confirmation prompt without reading details (just 'press 0 to confirm')\n\n";
@@ -1222,6 +1238,242 @@ $currentConfig = $configManager->getConfig();
             background-color: #fef2f2;
         }
 
+        /* === Required address words (municipality filter) === */
+        .wl-container {
+            width: 100%;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.5rem;
+            background: white;
+            padding: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+        }
+
+        .wl-container.missing-key {
+            border-color: var(--danger);
+            background-color: #fef2f2;
+        }
+
+        .wl-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .wl-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 1rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .wl-badge.off {
+            background: var(--gray-100);
+            color: var(--gray-600);
+        }
+
+        .wl-badge.on {
+            background: rgba(16, 185, 129, 0.12);
+            color: #047857;
+        }
+
+        .wl-badge.warn {
+            background: rgba(245, 158, 11, 0.15);
+            color: #b45309;
+        }
+
+        .wl-toolbar-spacer {
+            flex: 1;
+        }
+
+        .wl-btn {
+            border: 1px solid var(--gray-300);
+            background: white;
+            color: var(--gray-700);
+            border-radius: 0.4rem;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.78rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .wl-btn:hover {
+            background: var(--gray-100);
+        }
+
+        .wl-btn.danger {
+            color: var(--danger);
+            border-color: #fecaca;
+        }
+
+        .wl-btn.danger:hover {
+            background: #fef2f2;
+        }
+
+        .wl-input-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .wl-input {
+            flex: 1;
+            min-width: 0;
+            padding: 0.5rem 0.65rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.4rem;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+
+        .wl-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .wl-add {
+            border: none;
+            background: var(--primary);
+            color: white;
+            border-radius: 0.4rem;
+            padding: 0.5rem 0.9rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .wl-add:hover {
+            background: var(--primary-dark);
+        }
+
+        .wl-preview {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+            min-height: 1rem;
+        }
+
+        .wl-preview code {
+            background: var(--gray-100);
+            padding: 0.05rem 0.3rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+        }
+
+        .wl-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            max-height: 16rem;
+            overflow-y: auto;
+            padding: 0.5rem;
+            border: 1px dashed var(--gray-300);
+            border-radius: 0.4rem;
+            background: var(--gray-50);
+        }
+
+        .wl-chips.is-empty {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--gray-600);
+            font-style: italic;
+        }
+
+        .wl-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: var(--primary);
+            color: white;
+            border-radius: 1rem;
+            padding: 0.2rem 0.35rem 0.2rem 0.6rem;
+            font-size: 0.82rem;
+            font-weight: 500;
+            max-width: 100%;
+        }
+
+        .wl-chip.dup {
+            background: var(--warning);
+        }
+
+        .wl-chip-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .wl-chip-norm {
+            font-size: 0.68rem;
+            font-weight: 400;
+            opacity: 0.8;
+        }
+
+        .wl-chip-remove {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            cursor: pointer;
+            width: 17px;
+            height: 17px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .wl-chip-remove:hover {
+            background: rgba(0, 0, 0, 0.25);
+        }
+
+        .wl-note {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+            line-height: 1.45;
+        }
+
+        .wl-warning {
+            display: none;
+            font-size: 0.78rem;
+            line-height: 1.45;
+            padding: 0.5rem 0.65rem;
+            border-radius: 0.4rem;
+            background: rgba(245, 158, 11, 0.12);
+            border-left: 3px solid var(--warning);
+            color: #92400e;
+        }
+
+        .wl-warning.show {
+            display: block;
+        }
+
+        .wl-test {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .wl-test-result {
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .wl-test-result.pass {
+            color: #047857;
+        }
+
+        .wl-test-result.fail {
+            color: var(--danger);
+        }
+
         .tags-wrapper.missing-key:focus-within {
             border-color: var(--danger);
             box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
@@ -2230,6 +2482,7 @@ $currentConfig = $configManager->getConfig();
             bounds: null,
             centerBias: null,
             boundsRestrictionMode: null,
+            addressRequiredWords: [],
             confirmation_mode: 1,
             getUser_enabled: true,
             askForName: true,
@@ -2272,6 +2525,7 @@ $currentConfig = $configManager->getConfig();
                 'bounds': 'Geographic Bounds',
                 'centerBias': 'Center Bias',
                 'boundsRestrictionMode': 'Bounds Restriction Mode',
+                'addressRequiredWords': 'Required Address Words (Municipality Filter)',
                 'confirmation_mode': 'Confirmation Mode',
                 'getUser_enabled': 'Get User Enabled',
                 'askForName': 'Ask For Name',
@@ -2312,6 +2566,23 @@ $currentConfig = $configManager->getConfig();
                 'bounds_tooltip': 'Set geographic bounds for post-processing validation. Results outside bounds will be rejected. Leave empty to accept all areas.',
                 'centerBias_tooltip': 'Set center point and radius to bias API search results. Enter coordinates and radius in meters.',
                 'boundsRestrictionMode_tooltip': 'Control when bounds/centerBias apply: 0/null=Never, 1=Pickup only, 2=Dropoff only, 3=Both locations',
+                'addressRequiredWords_tooltip': 'The address GOOGLE returns must contain at least one of these words, otherwise it is discarded and the caller is asked again. Empty list = no municipality restriction.',
+                'wl_status_off': 'No restriction (empty list)',
+                'wl_status_on': 'active',
+                'wl_status_warn': 'inactive: set Bounds Restriction Mode to 1/2/3',
+                'wl_words': 'word(s)',
+                'wl_placeholder': 'Type a municipality/area and press Enter (paste many separated by comma or new line)',
+                'wl_add': 'Add',
+                'wl_clear': 'Clear all',
+                'wl_sort': 'Sort A→Z',
+                'wl_empty': 'No words - every area is accepted.',
+                'wl_preview_prefix': 'Will be matched as:',
+                'wl_note': 'Matching ignores accents and case (text is uppercased, tones removed) and is anchored at the <strong>start of a word</strong>. So <code>ΑΘΗΝ</code> matches Αθήνα / Αθηνών / Αθηναίων, while <code>ΑΘΗΝΑ</code> matches Αθήνα but not Αθηνών. Multi-word entries (e.g. <code>ΝΕΑ ΣΜΥΡΝΗ</code>) are matched as a phrase. Both the formatted address and the Google address components are searched.',
+                'wl_warning': '⚠ These words are ignored while Bounds Restriction Mode is None. Set it to 1 (Pickup), 2 (Dropoff) or 3 (Both) for the filter to run.',
+                'wl_test_placeholder': 'Test a Google address, e.g. Κειριαδών 116, Αθήνα 118 53',
+                'wl_test_pass': '✓ Accepted',
+                'wl_test_fail': '✗ Rejected - caller would be asked again',
+                'wl_confirm_clear': 'Remove all required address words?',
                 'confirmation_mode_tooltip': 'Mode 1: Reads name, pickup, dropoff via TTS and waits for confirmation. Mode 2: Only plays confirmation prompt without TTS details',
                 'getUser_enabled_tooltip': 'Enable to check server for existing user data (name and address). Disable to always ask for new user information',
                 'askForName_tooltip': 'Enable to ask customer for their name during call. Disable to skip name collection.',
@@ -2452,6 +2723,7 @@ $currentConfig = $configManager->getConfig();
                 'bounds': 'Γεωγραφικά Όρια',
                 'centerBias': 'Κεντρική Προκατάληψη',
                 'boundsRestrictionMode': 'Λειτουργία Περιορισμού Ορίων',
+                'addressRequiredWords': 'Υποχρεωτικές Λέξεις Διεύθυνσης (Φίλτρο Δήμου)',
                 'confirmation_mode': 'Λειτουργία Επιβεβαίωσης',
                 'getUser_enabled': 'Ενεργοποίηση Λήψης Χρήστη',
                 'askForName': 'Ερώτηση για Όνομα',
@@ -2492,6 +2764,23 @@ $currentConfig = $configManager->getConfig();
                 'bounds_tooltip': 'Ορίστε γεωγραφικά όρια για επικύρωση αποτελεσμάτων. Αποτελέσματα εκτός ορίων θα απορρίπτονται. Αφήστε κενό για αποδοχή όλων των περιοχών.',
                 'centerBias_tooltip': 'Ορίστε κεντρικό σημείο και ακτίνα για προκατάληψη αποτελεσμάτων API. Εισάγετε συντεταγμένες και ακτίνα σε μέτρα.',
                 'boundsRestrictionMode_tooltip': 'Έλεγχος εφαρμογής ορίων/κέντρου: 0/null=Ποτέ, 1=Μόνο παραλαβή, 2=Μόνο προορισμός, 3=Και τα δύο',
+                'addressRequiredWords_tooltip': 'Η διεύθυνση που επιστρέφει η GOOGLE πρέπει να περιέχει τουλάχιστον μία από αυτές τις λέξεις, αλλιώς απορρίπτεται και ο πελάτης ερωτάται ξανά. Κενή λίστα = χωρίς περιορισμό δήμου.',
+                'wl_status_off': 'Χωρίς περιορισμό (κενή λίστα)',
+                'wl_status_on': 'ενεργό',
+                'wl_status_warn': 'ανενεργό: ορίστε Λειτουργία Περιορισμού Ορίων σε 1/2/3',
+                'wl_words': 'λέξη/εις',
+                'wl_placeholder': 'Γράψτε δήμο/περιοχή και πατήστε Enter (επικόλληση πολλών με κόμμα ή νέα γραμμή)',
+                'wl_add': 'Προσθήκη',
+                'wl_clear': 'Καθαρισμός όλων',
+                'wl_sort': 'Ταξινόμηση Α→Ω',
+                'wl_empty': 'Καμία λέξη - όλες οι περιοχές γίνονται δεκτές.',
+                'wl_preview_prefix': 'Θα ελεγχθεί ως:',
+                'wl_note': 'Ο έλεγχος αγνοεί τόνους και πεζά/κεφαλαία (το κείμενο γίνεται κεφαλαία χωρίς τόνους) και ταιριάζει από την <strong>αρχή της λέξης</strong>. Έτσι το <code>ΑΘΗΝ</code> ταιριάζει σε Αθήνα / Αθηνών / Αθηναίων, ενώ το <code>ΑΘΗΝΑ</code> ταιριάζει στο Αθήνα αλλά όχι στο Αθηνών. Οι πολυλεκτικές εγγραφές (π.χ. <code>ΝΕΑ ΣΜΥΡΝΗ</code>) ελέγχονται ως φράση. Ελέγχεται η πλήρης διεύθυνση και τα address components της Google.',
+                'wl_warning': '⚠ Οι λέξεις αγνοούνται όσο η Λειτουργία Περιορισμού Ορίων είναι Χωρίς Περιορισμούς. Ορίστε 1 (Παραλαβή), 2 (Προορισμός) ή 3 (Και τα δύο) για να λειτουργήσει το φίλτρο.',
+                'wl_test_placeholder': 'Δοκιμή διεύθυνσης Google, π.χ. Κειριαδών 116, Αθήνα 118 53',
+                'wl_test_pass': '✓ Αποδεκτή',
+                'wl_test_fail': '✗ Απορρίπτεται - ο πελάτης θα ερωτηθεί ξανά',
+                'wl_confirm_clear': 'Διαγραφή όλων των υποχρεωτικών λέξεων;',
                 'confirmation_mode_tooltip': 'Λειτουργία 1: Διαβάζει όνομα, παραλαβή, προορισμό μέσω TTS και περιμένει επιβεβαίωση. Λειτουργία 2: Μόνο αναπαράγει μήνυμα επιβεβαίωσης χωρίς TTS λεπτομέρειες',
                 'getUser_enabled_tooltip': 'Ενεργοποιήστε για έλεγχο στον διακομιστή για υπάρχοντα δεδομένα χρήστη (όνομα και διεύθυνση). Απενεργοποιήστε για να ζητάτε πάντα νέα στοιχεία χρήστη',
                 'askForName_tooltip': 'Ενεργοποιήστε για να ζητάτε όνομα πελάτη κατά τη διάρκεια της κλήσης. Απενεργοποιήστε για να παραλείπετε τη συλλογή ονόματος.',
@@ -2667,7 +2956,56 @@ $currentConfig = $configManager->getConfig();
         function getTranslation(key) {
             return translations[currentLanguage][key] || key;
         }
-        
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text === null || text === undefined ? '' : String(text);
+            return div.innerHTML;
+        }
+
+        /**
+         * Mirror of AGICallHandler::normalizeForWordMatch() in the PHP handler.
+         * Uppercase + strip accents/tonos + punctuation becomes a separator,
+         * so "Κειριαδών 116, Αθήνα 118 53" -> "ΚΕΙΡΙΑΔΩΝ 116 ΑΘΗΝΑ 118 53".
+         * Keep both implementations in sync.
+         */
+        function normalizeAddressWord(text) {
+            if (text === null || text === undefined) return '';
+            let s = String(text);
+            // Decompose, drop combining marks (tonos, dialytika, latin accents), recompose
+            s = s.normalize('NFD').replace(/[̀-ͯ]/g, '').normalize('NFC');
+            // Uppercase also folds final sigma ς -> Σ
+            s = s.toUpperCase();
+            // Everything that is not a letter or a digit becomes a separator
+            s = s.replace(/[^\p{L}\p{N}]+/gu, ' ');
+            return s.trim().replace(/\s+/g, ' ');
+        }
+
+        /**
+         * Mirror of the handler's match rule: anchored at the start of a word,
+         * so "ΑΘΗΝ" matches "Αθήνα"/"Αθηνών" but "ΑΘΗΝΑ" does not match "ΠΑΘΗΝΑ".
+         */
+        function addressMatchesWord(address, word) {
+            const needle = normalizeAddressWord(word);
+            if (!needle) return false;
+            const haystack = normalizeAddressWord(address);
+            const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            try {
+                return new RegExp('(?<![\\p{L}\\p{N}])' + escaped, 'u').test(haystack);
+            } catch (e) {
+                // Browser without lookbehind support - fall back to word-start scan
+                return haystack === needle ||
+                       haystack.startsWith(needle) ||
+                       haystack.includes(' ' + needle);
+            }
+        }
+
+        /** true when boundsRestrictionMode is 1, 2 or 3 */
+        function isBoundsRestrictionActive() {
+            const mode = parseInt(currentExtensionConfig && currentExtensionConfig.boundsRestrictionMode, 10);
+            return mode === 1 || mode === 2 || mode === 3;
+        }
+
         function showAlert(message, type = 'success') {
             const alertContainer = document.getElementById('alert-container');
             const alert = document.createElement('div');
@@ -2804,7 +3142,8 @@ $currentConfig = $configManager->getConfig();
         function loadConfigForm() {
             const container = document.getElementById('config-form-fields');
             container.innerHTML = '';
-            
+            window.__wordListRefresh = null;
+
             Object.entries(currentExtensionConfig).forEach(([key, value]) => {
                 const formGroup = createFormField(key, value);
                 container.appendChild(formGroup);
@@ -3572,6 +3911,237 @@ $currentConfig = $configManager->getConfig();
 
                 container.appendChild(actions);
                 return container;
+            } else if (fieldType === 'wordList') {
+                // Required address words (municipality / area filter)
+                const container = document.createElement('div');
+                container.className = 'wl-container' + (isMissingKey ? ' missing-key' : '');
+
+                const getWords = () => {
+                    const v = currentExtensionConfig[key];
+                    return Array.isArray(v) ? v : [];
+                };
+
+                // --- Toolbar -------------------------------------------------
+                const toolbar = document.createElement('div');
+                toolbar.className = 'wl-toolbar';
+
+                const badge = document.createElement('span');
+                badge.className = 'wl-badge off';
+                toolbar.appendChild(badge);
+
+                const spacer = document.createElement('span');
+                spacer.className = 'wl-toolbar-spacer';
+                toolbar.appendChild(spacer);
+
+                const sortBtn = document.createElement('button');
+                sortBtn.type = 'button';
+                sortBtn.className = 'wl-btn';
+                sortBtn.textContent = getTranslation('wl_sort');
+                sortBtn.onclick = () => {
+                    const sorted = [...getWords()].sort((a, b) =>
+                        normalizeAddressWord(a).localeCompare(normalizeAddressWord(b), 'el'));
+                    updateConfigValue(key, sorted);
+                    render();
+                };
+                toolbar.appendChild(sortBtn);
+
+                const clearBtn = document.createElement('button');
+                clearBtn.type = 'button';
+                clearBtn.className = 'wl-btn danger';
+                clearBtn.textContent = getTranslation('wl_clear');
+                clearBtn.onclick = () => {
+                    if (getWords().length === 0) return;
+                    if (!confirm(getTranslation('wl_confirm_clear'))) return;
+                    updateConfigValue(key, []);
+                    render();
+                };
+                toolbar.appendChild(clearBtn);
+
+                container.appendChild(toolbar);
+
+                // --- Add row -------------------------------------------------
+                const inputRow = document.createElement('div');
+                inputRow.className = 'wl-input-row';
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'wl-input';
+                input.placeholder = getTranslation('wl_placeholder');
+
+                const addBtn = document.createElement('button');
+                addBtn.type = 'button';
+                addBtn.className = 'wl-add';
+                addBtn.textContent = getTranslation('wl_add');
+
+                inputRow.appendChild(input);
+                inputRow.appendChild(addBtn);
+                container.appendChild(inputRow);
+
+                const preview = document.createElement('div');
+                preview.className = 'wl-preview';
+                container.appendChild(preview);
+
+                // Accepts single words or a comma/newline separated paste
+                const addFromInput = () => {
+                    const parts = input.value.split(/[,;\n\r\t]+/)
+                        .map(p => p.trim())
+                        .filter(p => p.length > 0);
+                    if (parts.length === 0) return;
+
+                    const current = [...getWords()];
+                    const seen = new Set(current.map(w => normalizeAddressWord(w)));
+                    let added = 0;
+
+                    parts.forEach(part => {
+                        const norm = normalizeAddressWord(part);
+                        if (norm === '' || seen.has(norm)) return;
+                        seen.add(norm);
+                        current.push(part);
+                        added++;
+                    });
+
+                    if (added > 0) {
+                        updateConfigValue(key, current);
+                    }
+                    input.value = '';
+                    render();
+                    input.focus();
+                };
+
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addFromInput();
+                    }
+                });
+                input.addEventListener('input', () => {
+                    const norm = normalizeAddressWord(input.value);
+                    preview.innerHTML = norm
+                        ? getTranslation('wl_preview_prefix') + ' <code>' + escapeHtml(norm) + '</code>'
+                        : '';
+                });
+                addBtn.onclick = addFromInput;
+
+                // --- Chips ---------------------------------------------------
+                const chips = document.createElement('div');
+                chips.className = 'wl-chips';
+                container.appendChild(chips);
+
+                // --- Note / warning ------------------------------------------
+                const note = document.createElement('div');
+                note.className = 'wl-note';
+                note.innerHTML = getTranslation('wl_note');
+                container.appendChild(note);
+
+                const warning = document.createElement('div');
+                warning.className = 'wl-warning';
+                warning.textContent = getTranslation('wl_warning');
+                container.appendChild(warning);
+
+                // --- Tester --------------------------------------------------
+                const testRow = document.createElement('div');
+                testRow.className = 'wl-test';
+
+                const testInput = document.createElement('input');
+                testInput.type = 'text';
+                testInput.className = 'wl-input';
+                testInput.placeholder = getTranslation('wl_test_placeholder');
+
+                const testResult = document.createElement('span');
+                testResult.className = 'wl-test-result';
+
+                const runTest = () => {
+                    const words = getWords();
+                    if (!testInput.value.trim()) {
+                        testResult.textContent = '';
+                        testResult.className = 'wl-test-result';
+                        return;
+                    }
+                    if (words.length === 0) {
+                        testResult.textContent = getTranslation('wl_test_pass');
+                        testResult.className = 'wl-test-result pass';
+                        return;
+                    }
+                    const hit = words.find(w => addressMatchesWord(testInput.value, w));
+                    if (hit) {
+                        testResult.textContent = getTranslation('wl_test_pass') + ' (' + hit + ')';
+                        testResult.className = 'wl-test-result pass';
+                    } else {
+                        testResult.textContent = getTranslation('wl_test_fail');
+                        testResult.className = 'wl-test-result fail';
+                    }
+                };
+                testInput.addEventListener('input', runTest);
+
+                testRow.appendChild(testInput);
+                testRow.appendChild(testResult);
+                container.appendChild(testRow);
+
+                // --- Render --------------------------------------------------
+                const render = () => {
+                    const words = getWords();
+
+                    chips.innerHTML = '';
+                    if (words.length === 0) {
+                        chips.classList.add('is-empty');
+                        chips.textContent = getTranslation('wl_empty');
+                    } else {
+                        chips.classList.remove('is-empty');
+                        words.forEach((word, index) => {
+                            const norm = normalizeAddressWord(word);
+                            const chip = document.createElement('span');
+                            chip.className = 'wl-chip';
+                            chip.title = word + ' → ' + norm;
+
+                            const text = document.createElement('span');
+                            text.className = 'wl-chip-text';
+                            text.textContent = word;
+                            chip.appendChild(text);
+
+                            if (norm !== word.trim().toUpperCase()) {
+                                const normSpan = document.createElement('span');
+                                normSpan.className = 'wl-chip-norm';
+                                normSpan.textContent = norm;
+                                chip.appendChild(normSpan);
+                            }
+
+                            const remove = document.createElement('button');
+                            remove.type = 'button';
+                            remove.className = 'wl-chip-remove';
+                            remove.textContent = '×';
+                            remove.onclick = () => {
+                                const next = [...getWords()];
+                                next.splice(index, 1);
+                                updateConfigValue(key, next);
+                                render();
+                            };
+                            chip.appendChild(remove);
+                            chips.appendChild(chip);
+                        });
+                    }
+
+                    // Status badge + warning depend on boundsRestrictionMode
+                    const restrictionActive = isBoundsRestrictionActive();
+                    if (words.length === 0) {
+                        badge.className = 'wl-badge off';
+                        badge.textContent = '○ ' + getTranslation('wl_status_off');
+                    } else if (!restrictionActive) {
+                        badge.className = 'wl-badge warn';
+                        badge.textContent = '⚠ ' + words.length + ' ' + getTranslation('wl_words') + ' – ' + getTranslation('wl_status_warn');
+                    } else {
+                        badge.className = 'wl-badge on';
+                        badge.textContent = '✓ ' + words.length + ' ' + getTranslation('wl_words') + ' – ' + getTranslation('wl_status_on');
+                    }
+
+                    warning.classList.toggle('show', words.length > 0 && !restrictionActive);
+                    runTest();
+                };
+
+                render();
+                // Let updateConfigValue() refresh this field when boundsRestrictionMode changes
+                window.__wordListRefresh = render;
+
+                return container;
             } else if (fieldType === 'array') {
                 const container = document.createElement('div');
                 container.className = 'tags-container';
@@ -3726,6 +4296,7 @@ $currentConfig = $configManager->getConfig();
             if (key === 'bounds') return 'bounds';
             if (key === 'centerBias') return 'centerBias';
             if (key === 'notWorking') return 'notWorking';
+            if (key === 'addressRequiredWords') return 'wordList';
             if (key === 'getUser_enabled') return 'checkbox';
             if (key === 'customFallCallTo') return 'checkbox';
             if (typeof value === 'number') return 'number';
@@ -3767,6 +4338,10 @@ $currentConfig = $configManager->getConfig();
             const container = document.querySelector(`[data-key="${key}"] .tags-container`);
             if (container && container.renderTags) {
                 container.renderTags();
+            }
+            // The required-words field shows whether boundsRestrictionMode enables it
+            if (key === 'boundsRestrictionMode' && typeof window.__wordListRefresh === 'function') {
+                window.__wordListRefresh();
             }
         }
         
@@ -3886,6 +4461,7 @@ $currentConfig = $configManager->getConfig();
                 bounds: null,
             centerBias: null,
             boundsRestrictionMode: null,
+            addressRequiredWords: [],
             confirmation_mode: 1,
             getUser_enabled: true,
             askForName: true,

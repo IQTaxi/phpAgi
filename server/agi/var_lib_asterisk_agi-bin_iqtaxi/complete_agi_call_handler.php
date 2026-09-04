@@ -1954,6 +1954,169 @@ class AGICallHandler
     // === GEOCODING SERVICE ===
 
     /**
+     * Normalize text for the required-word (municipality) filter.
+     *
+     * Tactic: keep the original script (Greek stays Greek, Latin stays Latin) but
+     * remove every difference a caller/Google can introduce:
+     *   - strip accents / tonos / dialytika (ά -> Α, ΐ -> Ι, ü -> U ...)
+     *   - drop leftover combining marks (decomposed UTF-8 input)
+     *   - uppercase (also folds final sigma: ς -> Σ)
+     *   - replace punctuation with spaces and collapse whitespace
+     *
+     * Example: "Κειριαδών 116, Αθήνα 118 53" -> "ΚΕΙΡΙΑΔΩΝ 116 ΑΘΗΝΑ 118 53"
+     */
+    private function normalizeForWordMatch($text)
+    {
+        if ($text === null || $text === '') {
+            return '';
+        }
+
+        $text = (string) $text;
+
+        // Strip Greek + common Latin diacritics BEFORE uppercasing, because
+        // mb_strtoupper() would otherwise turn "ΐ" into a combining sequence.
+        $accent_map = [
+            // Greek lowercase
+            'ά' => 'α', 'έ' => 'ε', 'ή' => 'η', 'ί' => 'ι', 'ό' => 'ο', 'ύ' => 'υ', 'ώ' => 'ω',
+            'ϊ' => 'ι', 'ϋ' => 'υ', 'ΐ' => 'ι', 'ΰ' => 'υ',
+            // Greek uppercase
+            'Ά' => 'Α', 'Έ' => 'Ε', 'Ή' => 'Η', 'Ί' => 'Ι', 'Ό' => 'Ο', 'Ύ' => 'Υ', 'Ώ' => 'Ω',
+            'Ϊ' => 'Ι', 'Ϋ' => 'Υ',
+            // Latin (kept minimal, callers rarely use these)
+            'á' => 'a', 'à' => 'a', 'â' => 'a', 'ä' => 'a', 'ã' => 'a', 'å' => 'a',
+            'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+            'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i',
+            'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'ö' => 'o', 'õ' => 'o',
+            'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u',
+            'ç' => 'c', 'ñ' => 'n'
+        ];
+        $text = strtr($text, $accent_map);
+
+        // Decompose when intl is available so every remaining accent becomes a
+        // separate combining mark, then drop all combining marks.
+        if (class_exists('Normalizer')) {
+            $decomposed = \Normalizer::normalize($text, \Normalizer::FORM_D);
+            if (is_string($decomposed) && $decomposed !== '') {
+                $text = $decomposed;
+            }
+        }
+        $stripped = preg_replace('/\p{Mn}+/u', '', $text);
+        if ($stripped !== null) {
+            $text = $stripped;
+        }
+
+        // Uppercase (also normalizes final sigma ς -> Σ)
+        $text = function_exists('mb_strtoupper') ? mb_strtoupper($text, 'UTF-8') : strtoupper($text);
+
+        // Anything that is not a letter or digit becomes a separator
+        $text = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $text);
+
+        return trim(preg_replace('/\s+/u', ' ', $text));
+    }
+
+    /**
+     * Read addressRequiredWords from config and return normalized entries.
+     * Returns [] when the list is empty/unset => no municipality restriction.
+     */
+    private function getNormalizedRequiredWords()
+    {
+        $raw = $this->config[$this->extension]['addressRequiredWords'] ?? [];
+
+        // Tolerate a comma/newline separated string in config
+        if (is_string($raw)) {
+            $raw = preg_split('/[,;\r\n]+/u', $raw);
+        }
+
+        if (!is_array($raw) || empty($raw)) {
+            return [];
+        }
+
+        $words = [];
+        $seen = [];
+        foreach ($raw as $word) {
+            if (!is_string($word) && !is_numeric($word)) {
+                continue;
+            }
+            $normalized = $this->normalizeForWordMatch($word);
+            if ($normalized === '' || isset($seen[$normalized])) {
+                continue;
+            }
+            $seen[$normalized] = true;
+            $words[] = ['raw' => trim((string) $word), 'normalized' => $normalized];
+        }
+
+        return $words;
+    }
+
+    /**
+     * Flatten Google address components into extra searchable text.
+     * $key_long is 'long_name' (Geocoding API v1) or 'longText' (Places API v1).
+     */
+    private function flattenAddressComponents($components, $key_long, $key_short)
+    {
+        if (empty($components) || !is_array($components)) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($components as $component) {
+            if (!empty($component[$key_long])) {
+                $parts[] = $component[$key_long];
+            }
+            if (!empty($component[$key_short])) {
+                $parts[] = $component[$key_short];
+            }
+        }
+
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Municipality / area filter: the address GOOGLE returned (not what the caller
+     * said) must contain at least one of the configured required words.
+     *
+     * Matching is accent-insensitive, case-insensitive and anchored at the start of
+     * a word, so "ΑΘΗΝ" matches "Αθήνα", "Αθηνών" and "Αθηναίων" but not "ΠΑΘΗΝΑ".
+     * Multi-word entries ("ΝΕΑ ΣΜΥΡΝΗ") are matched as a phrase.
+     *
+     * Empty word list => no restriction (always true).
+     */
+    private function addressMatchesRequiredWords($formatted_address, $components_text, $required_words, $context)
+    {
+        if (empty($required_words)) {
+            return true;
+        }
+
+        $total = count($required_words);
+        $haystack = $this->normalizeForWordMatch($formatted_address . ' ' . $components_text);
+
+        $this->logMessage("🔤 WORD FILTER [{$context}]: Checking {$total} required word(s) against Google address: {$formatted_address}", 'INFO', 'GEOCODING');
+        $this->logMessage("🔤 WORD FILTER [{$context}]: Normalized address text: {$haystack}", 'DEBUG', 'GEOCODING');
+
+        foreach ($required_words as $index => $word) {
+            $pattern = '/(?<![\p{L}\p{N}])' . preg_quote($word['normalized'], '/') . '/u';
+            if (preg_match($pattern, $haystack) === 1) {
+                $position = $index + 1;
+                $this->logMessage("✅ WORD FILTER [{$context}]: MATCH on \"{$word['raw']}\" (normalized: \"{$word['normalized']}\") - address accepted [{$position}/{$total} checked]", 'INFO', 'GEOCODING');
+                return true;
+            }
+        }
+
+        // No match - keep the failure log compact, the list can be large
+        $normalized_list = array_column($required_words, 'normalized');
+        $preview = implode(', ', array_slice($normalized_list, 0, 15));
+        if ($total > 15) {
+            $preview .= ', ... (+' . ($total - 15) . ' more)';
+        }
+
+        $this->logMessage("🚫 WORD FILTER [{$context}]: NO MATCH - none of the {$total} required word(s) found in \"{$formatted_address}\" - address rejected", 'INFO', 'GEOCODING');
+        $this->logMessage("   Normalized address text: {$haystack}", 'DEBUG', 'GEOCODING');
+        $this->logMessage("   Required words ({$total}): {$preview}", 'DEBUG', 'GEOCODING');
+
+        return false;
+    }
+
+    /**
      * Geocode address using Google Maps API (wrapper function that checks config)
      */
     private function getLatLngFromGoogle($address, $is_pickup = true)
@@ -1981,29 +2144,43 @@ class AGICallHandler
         $bounds = $applyRestrictions ? ($this->config[$this->extension]['bounds'] ?? null) : null;
         $centerBias = $applyRestrictions ? ($this->config[$this->extension]['centerBias'] ?? null) : null;
 
+        // Required address words (municipality filter) - gated by the same restriction mode.
+        // Empty list = no word restriction at all.
+        $configuredWords = $this->getNormalizedRequiredWords();
+        $requiredWords = $applyRestrictions ? $configuredWords : [];
+
+        if (!empty($configuredWords) && !$applyRestrictions) {
+            $this->logMessage("⚠️ WORD FILTER: " . count($configuredWords) . " required word(s) configured but NOT applied here (boundsRestrictionMode=" . var_export($boundsRestrictionMode, true) . ", location=" . ($is_pickup ? 'PICKUP' : 'DROPOFF') . "). Set boundsRestrictionMode to 1/2/3 to enable.", 'WARNING', 'GEOCODING');
+        }
+
         // Log which API and filters are being used
         $api_name = $geocoding_version == 2 ? 'Google Places API v1 (NEW)' : 'Google Maps Geocoding API v1 (LEGACY)';
         $location_type = $is_pickup ? 'PICKUP' : 'DROPOFF';
         $bounds_filter = empty($bounds) ? 'No bounds' : 'Bounds: ' . json_encode($bounds);
         $center_filter = empty($centerBias) ? 'No center bias' : 'Center bias: ' . json_encode($centerBias);
+        $words_filter = empty($requiredWords) ? 'No word filter' : 'Required words: ' . count($requiredWords);
         $restriction_mode = $boundsRestrictionMode === null || $boundsRestrictionMode === 0 ? 'Disabled' :
             "Mode {$boundsRestrictionMode} (1=pickup only, 2=dropoff only, 3=both)";
 
-        $this->logMessage("🗺️ GEOCODING [{$location_type}]: Using {$api_name} | Restriction: {$restriction_mode} | {$bounds_filter} | {$center_filter} | Address: {$address}", 'INFO', 'GEOCODING');
+        $this->logMessage("🗺️ GEOCODING [{$location_type}]: Using {$api_name} | Restriction: {$restriction_mode} | {$bounds_filter} | {$center_filter} | {$words_filter} | Address: {$address}", 'INFO', 'GEOCODING');
+
+        if (!empty($requiredWords)) {
+            $this->logMessage("🔤 WORD FILTER [{$location_type}]: Active list -> " . implode(', ', array_column($requiredWords, 'normalized')), 'DEBUG', 'GEOCODING');
+        }
 
         if ($geocoding_version == 2) {
             // Use new Google Places API v1
-            return $this->getLatLngFromGooglePlacesV1($address, $is_pickup, $bounds, $centerBias);
+            return $this->getLatLngFromGooglePlacesV1($address, $is_pickup, $bounds, $centerBias, $requiredWords);
         } else {
             // Use legacy Google Maps Geocoding API
-            return $this->getLatLngFromGoogleGeocoding($address, $is_pickup, $bounds, $centerBias);
+            return $this->getLatLngFromGoogleGeocoding($address, $is_pickup, $bounds, $centerBias, $requiredWords);
         }
     }
     
     /**
      * Geocode address using Google Maps Geocoding API (legacy/version 1)
      */
-    private function getLatLngFromGoogleGeocoding($address, $is_pickup = true, $bounds = null, $centerBias = null)
+    private function getLatLngFromGoogleGeocoding($address, $is_pickup = true, $bounds = null, $centerBias = null, $requiredWords = [])
     {
         // Handle special cases first
         if ($this->handleSpecialAddresses($address, $is_pickup)) {
@@ -2134,13 +2311,23 @@ class AGICallHandler
             }
         }
 
+        // Required address words (municipality) filter - checks what Google returned
+        if (!empty($requiredWords)) {
+            $components_text = $this->flattenAddressComponents($result['address_components'] ?? [], 'long_name', 'short_name');
+            $word_context = ($is_pickup ? 'PICKUP' : 'DROPOFF') . '/GEOCODING API';
+
+            if (!$this->addressMatchesRequiredWords($result['formatted_address'], $components_text, $requiredWords, $word_context)) {
+                return null;
+            }
+        }
+
         return $this->validateLocationResult($result, $is_pickup);
     }
     
     /**
      * Geocode address using Google Places API v1 (new/version 2)
      */
-    private function getLatLngFromGooglePlacesV1($address, $is_pickup = true, $bounds = null, $centerBias = null)
+    private function getLatLngFromGooglePlacesV1($address, $is_pickup = true, $bounds = null, $centerBias = null, $requiredWords = [])
     {
         // Handle special cases first
         if ($this->handleSpecialAddresses($address, $is_pickup)) {
@@ -2263,7 +2450,7 @@ class AGICallHandler
                         $this->logMessage("🔄 Error details: " . json_encode($error_data['error'], JSON_UNESCAPED_UNICODE), 'DEBUG', 'GEOCODING');
 
                         // Fallback to legacy Geocoding API
-                        $fallback_result = $this->getLatLngFromGoogleGeocoding($address, $is_pickup, $bounds, $centerBias);
+                        $fallback_result = $this->getLatLngFromGoogleGeocoding($address, $is_pickup, $bounds, $centerBias, $requiredWords);
 
                         if ($fallback_result !== null) {
                             $this->logMessage("✅ FALLBACK SUCCESS: Geocoding API v1 returned result for: {$address}", 'INFO', 'GEOCODING');
@@ -2310,6 +2497,16 @@ class AGICallHandler
                 return null;
             } else {
                 $this->logMessage("✅ PLACES API: Result within bounds", 'DEBUG', 'GEOCODING');
+            }
+        }
+
+        // Required address words (municipality) filter - checks what Google returned
+        if (!empty($requiredWords)) {
+            $components_text = $this->flattenAddressComponents($place['addressComponents'] ?? [], 'longText', 'shortText');
+            $word_context = ($is_pickup ? 'PICKUP' : 'DROPOFF') . '/PLACES API';
+
+            if (!$this->addressMatchesRequiredWords($place['formattedAddress'], $components_text, $requiredWords, $word_context)) {
+                return null;
             }
         }
 

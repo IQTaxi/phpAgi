@@ -31,6 +31,16 @@
 // 2 = Apply bounds and centerBias only to dropoff location
 // 3 = Apply bounds and centerBias to both pickup and dropoff locations
 
+// addressRequiredWords configuration:
+// [] or null = No municipality/area word restriction (default behavior)
+// Array of words = The address GOOGLE RETURNS (not what the caller said) must contain at least
+//                  one of these words, otherwise the result is discarded and the caller is asked again.
+// Example: ["Athens", "Peiraias"] - "Κειριαδών 116, Αθήνα 118 53" passes because it contains "Αθήνα".
+// Matching is accent-insensitive and case-insensitive (text is uppercased and tones removed),
+// and anchored at the start of a word, so "ΑΘΗΝ" matches Αθήνα / Αθηνών / Αθηναίων.
+// Multi-word entries are matched as a phrase.
+// Applied only where boundsRestrictionMode allows it (1=pickup, 2=dropoff, 3=both, 0/null=never).
+
 // askForName configuration:
 // true = Ask customer for their name during call (default behavior)
 // false = Skip name collection, don't include name in registration API call
@@ -93,9 +103,10 @@ class AGICallHandlerConfig
         "redirectToOperator" => false,
         "autoCallCentersMode" => 3,
         "maxRetries" => 5,
-        "bounds" => null,
-        "centerBias" => null,
-        "boundsRestrictionMode" => null,
+        "bounds" => ["north" => 38.35, "south" => 37.70, "east" => 24.15, "west" => 23.25],
+        "centerBias" => ["lat" => 37.9755, "lng" => 23.7348, "radius" => 25000],
+        "boundsRestrictionMode" => 3,
+        "addressRequiredWords" => ["ΑΘΗΝ", "ΓΑΛΑΤΣ", "ΖΩΓΡΑΦ", "ΚΑΙΣΑΡΙΑΝ", "ΒΥΡΩΝ", "ΗΛΙΟΥΠΟΛ", "ΔΑΦΝ", "ΥΜΗΤΤ", "ΣΜΥΡΝ", "ΜΟΣΧΑΤ", "ΤΑΥΡ", "ΚΑΛΛΙΘΕ", "ΦΑΛΗΡ", "ΑΛΙΜ", "ΑΡΓΥΡΟΥΠΟΛ", "ΕΛΛΗΝΙΚ", "ΓΛΥΦΑΔ", "ΠΕΡΙΣΤΕΡΙ", "ΑΙΓΑΛΕ", "ΠΕΤΡΟΥΠΟΛ", "ΙΛΙΟΝ", "ΙΛΙΟΥ", "ΧΑΪΔΑΡΙ", "ΠΕΙΡΑΙ", "ΝΙΚΑΙΑ", "ΚΟΡΥΔΑΛΛ", "ΚΕΡΑΤΣΙΝ", "ΡΕΝΤΗ", "ΧΑΛΑΝΔΡΙ", "ΜΑΡΟΥΣΙ", "ΨΥΧΙΚ", "ΦΙΛΟΘΕ", "ΧΟΛΑΡΓ", "ΠΑΠΑΓ", "ΝΕΑ ΙΩΝΙΑ", "ΝΕΑΣ ΙΩΝΙΑΣ", "ΦΙΛΑΔΕΛΦ", "ΧΑΛΚΗΔΟΝ", "ΗΡΑΚΛΕΙ"],
         "askForName" => true,
         "announceName" => true,
         "customFallCallTo" => false,
@@ -130,6 +141,7 @@ class AGICallHandlerConfig
         "bounds" => null,
         "centerBias" => null,
         "boundsRestrictionMode" => null,
+        "addressRequiredWords" => [],
         "askForName" => true,
         "announceName" => true,
         "customFallCallTo" => false,
@@ -164,6 +176,7 @@ class AGICallHandlerConfig
         "bounds" => null,
         "centerBias" => null,
         "boundsRestrictionMode" => null,
+        "addressRequiredWords" => [],
         "askForName" => true,
         "announceName" => true,
         "customFallCallTo" => false,
@@ -198,6 +211,7 @@ class AGICallHandlerConfig
         "bounds" => null,
         "centerBias" => null,
         "boundsRestrictionMode" => null,
+        "addressRequiredWords" => [],
         "askForName" => true,
         "announceName" => true,
         "customFallCallTo" => false,
@@ -232,6 +246,7 @@ class AGICallHandlerConfig
 		"bounds" => null,
 		"centerBias" => null,
 		"boundsRestrictionMode" => null,
+		"addressRequiredWords" => [],
 		"askForName" => true,
 		"announceName" => true,
 		"requireLocality" => false,
