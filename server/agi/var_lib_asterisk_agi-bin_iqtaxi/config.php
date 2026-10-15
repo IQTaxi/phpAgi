@@ -81,6 +81,12 @@
 // false = Normal zone handling by the dispatch server (default behavior)
 // true  = Send byPassZone=true in the register/reservation payload to bypass zone restrictions
 
+// osrmBaseUrl configuration (callbackMode 2 only):
+// ""    = Not used, the pickup ETA announced is the "time" sent by the dispatch server (default behavior)
+// "URL" = Base URL of our own OSRM service, e.g. "http://188.245.212.246:5000". When a taxi is found, the ETA is
+//         calculated from the taxi position (lat/lng from the callback) to the pickup location and announced as a
+//         range (-20% floor, +20% ceil), e.g. 10 min = "8 to 12 minutes". If the OSRM call fails, the server time is used.
+
 class AGICallHandlerConfig
 {
  public $globalConfiguration = [
@@ -117,7 +123,8 @@ class AGICallHandlerConfig
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
         "callbackNoTaxiFoundAction" => "operator",
-        "byPassZone" => false
+        "byPassZone" => false,
+        "osrmBaseUrl" => ""
     ],
     "4039" => [
         "name" => "iqtaxi.com",
@@ -152,7 +159,8 @@ class AGICallHandlerConfig
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
         "callbackNoTaxiFoundAction" => "operator",
-        "byPassZone" => false
+        "byPassZone" => false,
+        "osrmBaseUrl" => ""
     ],
     "4033" => [
         "name" => "Hermis-Peireas",
@@ -187,7 +195,8 @@ class AGICallHandlerConfig
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
         "callbackNoTaxiFoundAction" => "operator",
-        "byPassZone" => false
+        "byPassZone" => false,
+        "osrmBaseUrl" => ""
     ],
     "4036" => [
         "name" => "Cosmos",
@@ -222,7 +231,8 @@ class AGICallHandlerConfig
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
         "callbackNoTaxiFoundAction" => "operator",
-        "byPassZone" => false
+        "byPassZone" => false,
+        "osrmBaseUrl" => ""
     ],
     "5001" => [
 		"name" => "iqtaxi.com",
@@ -256,7 +266,8 @@ class AGICallHandlerConfig
         "geocodingProxyBaseUrl" => "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
         "callbackWaitForCarAndTime" => false,
         "callbackNoTaxiFoundAction" => "operator",
-        "byPassZone" => false
+        "byPassZone" => false,
+        "osrmBaseUrl" => ""
     ]
 ];
 }

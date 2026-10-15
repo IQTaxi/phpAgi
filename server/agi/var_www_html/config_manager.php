@@ -100,6 +100,9 @@ class ConfigManager {
         $configContent .= "// byPassZone configuration:\n";
         $configContent .= "// false = Normal zone handling by the dispatch server (default behavior)\n";
         $configContent .= "// true = Send byPassZone=true in the register/reservation payload to bypass zone restrictions\n\n";
+        $configContent .= "// osrmBaseUrl configuration (callbackMode 2 only):\n";
+        $configContent .= "// \"\" = Not used, announce the \"time\" sent by the dispatch server (default behavior)\n";
+        $configContent .= "// \"URL\" = Base URL of our own OSRM service, e.g. http://188.245.212.246:5000. ETA is calculated from taxi position to pickup and announced as a range (-20% floor, +20% ceil). Falls back to server time if OSRM fails\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -191,6 +194,9 @@ class ConfigManager {
         $configContent .= "// byPassZone configuration:\n";
         $configContent .= "// false = Normal zone handling by the dispatch server (default behavior)\n";
         $configContent .= "// true = Send byPassZone=true in the register/reservation payload to bypass zone restrictions\n\n";
+        $configContent .= "// osrmBaseUrl configuration (callbackMode 2 only):\n";
+        $configContent .= "// \"\" = Not used, announce the \"time\" sent by the dispatch server (default behavior)\n";
+        $configContent .= "// \"URL\" = Base URL of our own OSRM service, e.g. http://188.245.212.246:5000. ETA is calculated from taxi position to pickup and announced as a range (-20% floor, +20% ceil). Falls back to server time if OSRM fails\n\n";
         $configContent .= "// notWorking configuration:\n";
         $configContent .= "// Array of schedule rules that define when the system is NOT accepting calls.\n";
         $configContent .= "// When active, calls are redirected to operator after playing initial message.\n";
@@ -2496,7 +2502,8 @@ $currentConfig = $configManager->getConfig();
             commentsPrefix: '',
             useGeocodingProxy: true,
             geocodingProxyBaseUrl: "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
-            byPassZone: false
+            byPassZone: false,
+            osrmBaseUrl: ''
         };
 
         const translations = {
@@ -2540,6 +2547,7 @@ $currentConfig = $configManager->getConfig();
                 'useGeocodingProxy': 'Use Geocoding Proxy',
                 'geocodingProxyBaseUrl': 'Geocoding Proxy Base URL',
                 'byPassZone': 'Bypass Zone',
+                'osrmBaseUrl': 'OSRM Base URL (Callback 2)',
                 // Tooltips
                 'name_tooltip': 'Human readable name for this extension',
                 'googleApiKey_tooltip': 'Google Maps/Places API key for geocoding',
@@ -2600,6 +2608,7 @@ $currentConfig = $configManager->getConfig();
                 'useGeocodingProxy_tooltip': 'Enable to route geocoding requests through a caching proxy server instead of direct Google API calls. Reduces API costs and improves response times for repeated addresses.',
                 'geocodingProxyBaseUrl_tooltip': 'Base URL for the geocoding proxy server. The system appends /geocode or /places to this URL. Example: https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy',
                 'byPassZone_tooltip': 'Enable to send byPassZone=true in the register/reservation payload, telling the dispatch server to bypass zone restrictions. Disable (default) for normal zone handling.',
+                'osrmBaseUrl_tooltip': 'Callback Mode 2 only. Base URL of our own OSRM routing service, e.g. http://188.245.212.246:5000. When set, the pickup ETA is calculated from the taxi position (sent by the dispatch server) to the pickup location, and announced as a range of about 20% below and above (e.g. 10 minutes is announced as 8 to 12 minutes). Leave empty to disable and announce the time sent by the dispatch server. If the OSRM call fails, the server time is used.',
                 // Messages
                 'config_saved': 'Configuration saved successfully!',
                 'config_error': 'Error saving configuration!',
@@ -2738,6 +2747,7 @@ $currentConfig = $configManager->getConfig();
                 'useGeocodingProxy': 'Χρήση Geocoding Proxy',
                 'geocodingProxyBaseUrl': 'Βασικό URL Geocoding Proxy',
                 'byPassZone': 'Παράκαμψη Ζώνης',
+                'osrmBaseUrl': 'OSRM Base URL (Callback 2)',
                 // Tooltips
                 'name_tooltip': 'Αναγνωρίσιμο όνομα για αυτό το extension',
                 'googleApiKey_tooltip': 'Κλειδί API Google Maps/Places για γεωκωδικοποίηση',
@@ -2798,6 +2808,7 @@ $currentConfig = $configManager->getConfig();
                 'useGeocodingProxy_tooltip': 'Ενεργοποιήστε για δρομολόγηση αιτημάτων geocoding μέσω διακομιστή caching proxy αντί για απευθείας κλήσεις Google API. Μειώνει το κόστος API και βελτιώνει τους χρόνους απόκρισης για επαναλαμβανόμενες διευθύνσεις.',
                 'geocodingProxyBaseUrl_tooltip': 'Βασικό URL για τον διακομιστή geocoding proxy. Το σύστημα προσθέτει /geocode ή /places σε αυτό το URL. Παράδειγμα: https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy',
                 'byPassZone_tooltip': 'Ενεργοποιήστε για αποστολή byPassZone=true στο payload εγγραφής/κράτησης, ώστε ο διακομιστής dispatch να παρακάμπτει τους περιορισμούς ζώνης. Απενεργοποιήστε (προεπιλογή) για κανονική διαχείριση ζώνης.',
+                'osrmBaseUrl_tooltip': 'Μόνο για Λειτουργία Callback 2. Βασικό URL της δικής μας υπηρεσίας OSRM, π.χ. http://188.245.212.246:5000. Όταν συμπληρωθεί, ο χρόνος άφιξης υπολογίζεται από τη θέση του ταξί (που στέλνει ο διακομιστής) μέχρι το σημείο παραλαβής και ανακοινώνεται ως εύρος περίπου 20% κάτω και πάνω (π.χ. 10 λεπτά ανακοινώνονται ως 8 με 12 λεπτά). Αφήστε κενό για απενεργοποίηση και ανακοίνωση του χρόνου του διακομιστή. Αν αποτύχει η κλήση στο OSRM, χρησιμοποιείται ο χρόνος του διακομιστή.',
                 // Messages
                 'config_saved': 'Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!',
                 'config_error': 'Σφάλμα στην αποθήκευση των ρυθμίσεων!',
@@ -4472,7 +4483,8 @@ $currentConfig = $configManager->getConfig();
             bypassWelcome: 0,
             useGeocodingProxy: true,
             geocodingProxyBaseUrl: "https://www.iqtaxi.com/IQ_WebAPIV3/api/IQTaxi/Proxy",
-            byPassZone: false
+            byPassZone: false,
+            osrmBaseUrl: ''
             };
             
             fetch('config_manager.php', {

@@ -69,6 +69,7 @@ class AGICallHandler
     private $name_result = '';
     private $pickup_result = '';
     private $pickup_location = [];
+    private $osrm_eta_range = null; // [min, max] minutes from OSRM, null = use server time
     private $dest_result = '';
     private $dest_location = [];
     private $user_comments = '';
@@ -4042,6 +4043,16 @@ class AGICallHandler
                     $current_car_no = isset($register_info['carNo']) ? trim($register_info['carNo']) : '';
                     $current_time = isset($register_info['time']) ? intval($register_info['time']) : 0;
 
+                    // Optional own ETA via OSRM (osrmBaseUrl set). On any failure keep the server time.
+                    $this->osrm_eta_range = null;
+                    $osrm_range = $this->getOsrmEtaRange($register_info, $current_status, $current_car_no);
+                    if ($osrm_range !== null) {
+                        $this->osrm_eta_range = $osrm_range;
+                        // midpoint drives change detection, so we only re-announce when the range shifts
+                        $current_time = intval(round(($osrm_range[0] + $osrm_range[1]) / 2));
+                        $this->logMessage("OSRM ETA range: {$osrm_range[0]}-{$osrm_range[1]} min (server time was " . intval($register_info['time'] ?? 0) . ")");
+                    }
+
                     // Log every status read
                     $this->logMessage("Status read from register_info.json: status={$current_status}, carNo={$current_car_no}, time={$current_time}");
 
@@ -4063,6 +4074,121 @@ class AGICallHandler
 
         $this->logMessage("Status monitoring completed - final status reached: " . ($final_status_reached ? 'yes' : 'no'));
         return $final_status_reached;
+    }
+
+    /**
+     * Compute pickup ETA range in minutes (min, max) using our own OSRM service.
+     * Returns null when osrmBaseUrl is empty or anything fails, so callers fall back to the server time.
+     */
+    private function getOsrmEtaRange($register_info, $status, $car_no)
+    {
+        $base_url = trim($this->config[$this->extension]['osrmBaseUrl'] ?? '');
+        if ($base_url === '' || $car_no === '') {
+            return null;
+        }
+
+        // Only while the taxi is still heading to the pickup point
+        if (!in_array(intval($status), [1, 10, 50])) {
+            return null;
+        }
+
+        $taxi_lat = $register_info['lat'] ?? null;
+        $taxi_lng = $register_info['lng'] ?? null;
+        $pickup_lat = $this->pickup_location['latLng']['lat'] ?? null;
+        $pickup_lng = $this->pickup_location['latLng']['lng'] ?? null;
+
+        foreach ([$taxi_lat, $taxi_lng, $pickup_lat, $pickup_lng] as $v) {
+            if (!is_numeric($v)) {
+                $this->logMessage("OSRM ETA skipped: missing coordinates (taxi=" . json_encode($taxi_lat) . "," . json_encode($taxi_lng) . " pickup=" . json_encode($pickup_lat) . "," . json_encode($pickup_lng) . ")");
+                return null;
+            }
+        }
+        $taxi_lat = floatval($taxi_lat);
+        $taxi_lng = floatval($taxi_lng);
+        $pickup_lat = floatval($pickup_lat);
+        $pickup_lng = floatval($pickup_lng);
+
+        // 0,0 means "unknown", and reject out of range values
+        foreach ([[$taxi_lat, $taxi_lng], [$pickup_lat, $pickup_lng]] as $point) {
+            if (($point[0] == 0.0 && $point[1] == 0.0) || abs($point[0]) > 90 || abs($point[1]) > 180) {
+                $this->logMessage("OSRM ETA skipped: invalid coordinates {$point[0]},{$point[1]}");
+                return null;
+            }
+        }
+
+        if (!preg_match('#^https?://#i', $base_url)) {
+            $base_url = 'http://' . $base_url;
+        }
+        $url = rtrim($base_url, '/') . "/route/v1/driving/{$taxi_lng},{$taxi_lat};{$pickup_lng},{$pickup_lat}?overview=false";
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
+
+        if ($response === false || $http_code != 200) {
+            $this->logMessage("OSRM ETA failed (http={$http_code}, error={$curl_error}), using server time", 'WARNING');
+            return null;
+        }
+
+        $data = json_decode($response, true);
+        if (!is_array($data) || ($data['code'] ?? '') !== 'Ok' || !isset($data['routes'][0]['duration']) || !is_numeric($data['routes'][0]['duration'])) {
+            $this->logMessage("OSRM ETA failed (bad response), using server time", 'WARNING');
+            return null;
+        }
+
+        $minutes = floatval($data['routes'][0]['duration']) / 60;
+        // negative or absurd (>3h) means the data is bad, don't announce it
+        if ($minutes < 0 || $minutes > 180) {
+            $this->logMessage("OSRM ETA out of sane range ({$minutes} min), using server time", 'WARNING');
+            return null;
+        }
+
+        // 1 minute or less (or already there): [0, 1] means "less than a minute"
+        if ($minutes <= 1) {
+            return [0, 1];
+        }
+
+        // +-20%, floor the low end and ceil the high end, at least 1 minute and at least 1 minute wide
+        $min = max(1, intval(floor($minutes * 0.8)));
+        $max = max($min + 1, intval(ceil($minutes * 1.2)));
+        return [$min, $max];
+    }
+
+    /**
+     * ETA text for TTS. Uses the OSRM range when available, else the plain server time.
+     */
+    private function formatEtaMinutes($time)
+    {
+        if ($this->osrm_eta_range !== null) {
+            $min = $this->osrm_eta_range[0];
+            $max = $this->osrm_eta_range[1];
+            if ($max <= 1) {
+                if ($this->current_language == 'en') {
+                    return "less than a minute";
+                } else if ($this->current_language == 'bg') {
+                    return "по-малко от минута";
+                }
+                return "λιγότερο από ένα λεπτό";
+            }
+            if ($this->current_language == 'en') {
+                return "{$min} to {$max} minutes";
+            } else if ($this->current_language == 'bg') {
+                return "{$min} до {$max} минути";
+            }
+            return "{$min} με {$max} λεπτά";
+        }
+        if ($this->current_language == 'en') {
+            return "{$time} minutes";
+        } else if ($this->current_language == 'bg') {
+            return "{$time} минути";
+        }
+        return "{$time} λεπτά";
     }
 
     private function processStatusUpdate($current_status, $current_car_no, $current_time, $status_file, &$has_announced, &$last_status, &$last_car_no, &$last_time)
@@ -4128,7 +4254,7 @@ class AGICallHandler
                 $this->logMessage("Driver accepted with car: {$current_car_no}");
                 // Pass the ETA only when the wait-for-time feature is on, so default behavior
                 // (announce without time) stays unchanged
-                $this->playStatusMessage('driver_accepted', $current_car_no, $status_file, $current_status, $wait_for_car_and_time ? $current_time : 0);
+                $this->playStatusMessage('driver_accepted', $current_car_no, $status_file, $current_status, ($wait_for_car_and_time || $this->osrm_eta_range !== null) ? $current_time : 0);
                 $has_announced = true;
                 $this->updateLastValues($last_status, $last_car_no, $last_time, $current_status, $current_car_no, $current_time);
                 return false;
@@ -4277,17 +4403,17 @@ class AGICallHandler
                 // Without an ETA, keep the original status-10 phrase unchanged (default behavior).
                 if ($this->current_language == 'en') {
                     if ($time > 0) {
-                        return "Taxi number {$car_no} accepted your call and will arrive in {$time} minutes";
+                        return "Taxi number {$car_no} accepted your call and will arrive in " . $this->formatEtaMinutes($time);
                     }
                     return "Taxi number {$car_no} " . $lang_status[10];
                 } else if ($this->current_language == 'bg') {
                     if ($time > 0) {
-                        return "Такси номер {$car_no} прие вашето повикване и ще пристигне за {$time} минути";
+                        return "Такси номер {$car_no} прие вашето повикване и ще пристигне за " . $this->formatEtaMinutes($time);
                     }
                     return "Такси номер {$car_no} " . $lang_status[10];
                 } else {
                     if ($time > 0) {
-                        return "Το ταξί με αριθμό {$car_no} δέχτηκε την κλήση σας και θα φτάσει σε {$time} λεπτά";
+                        return "Το ταξί με αριθμό {$car_no} δέχτηκε την κλήση σας και θα φτάσει σε " . $this->formatEtaMinutes($time);
                     }
                     return "Το ταξί με αριθμό {$car_no} " . $lang_status[10];
                 }
@@ -4307,17 +4433,17 @@ class AGICallHandler
                 if ($this->current_language == 'en') {
                     $message = "Taxi {$car_no} {$status_text}";
                     if ($time > 0) {
-                        $message .= " in {$time} minutes";
+                        $message .= " in " . $this->formatEtaMinutes($time);
                     }
                 } else if ($this->current_language == 'bg') {
                     $message = "Такси {$car_no} {$status_text}";
                     if ($time > 0) {
-                        $message .= " за {$time} минути";
+                        $message .= " за " . $this->formatEtaMinutes($time);
                     }
                 } else {
                     $message = "Το ταξί {$car_no} {$status_text}";
                     if ($time > 0) {
-                        $message .= " σε {$time} λεπτά";
+                        $message .= " σε " . $this->formatEtaMinutes($time);
                     }
                 }
                 
